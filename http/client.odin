@@ -35,7 +35,7 @@ client_destroy :: proc(c: ^Client) {
 	strings.builder_destroy(&c.body_builder)
 }
 
-client_get :: proc(c: ^Client, url: string) -> (Http_Response, Http_Error) {
+client_get :: proc(c: ^Client, url: string) -> (Http_Response, Maybe(Http_Error)) {
 	strings.builder_reset(&c.header_builder)
 	strings.builder_reset(&c.body_builder)
 
@@ -52,13 +52,14 @@ client_get :: proc(c: ^Client, url: string) -> (Http_Response, Http_Error) {
 
 	response_code := curl.easy_perform(c.handle)
 	if response_code != .E_OK {
-		return {}, {code = response_code, message = string(curl.easy_strerror(response_code))}
+		return {}, Http_Error{code = response_code, message = string(curl.easy_strerror(response_code))}
 	}
 
 	return {
-		header = strings.to_string(c.header_builder),
-		body = strings.to_string(c.body_builder),
-	}, {}
+			header = strings.to_string(c.header_builder),
+			body = strings.to_string(c.body_builder),
+		},
+		nil
 }
 
 write_callback :: proc "c" (ptr: rawptr, size, nmemb: uint, userdata: rawptr) -> uint {
