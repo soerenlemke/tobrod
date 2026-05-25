@@ -7,7 +7,7 @@ Stage 1 — HTTP Client
  - [x] Basic GET requests via vendor:curl
  - [x] Response headers parsing
  - [x] Error handling
- - [ ] Connection reuse
+ - [x] Connection reuse
 
 Stage 2 — Window & UI
 
