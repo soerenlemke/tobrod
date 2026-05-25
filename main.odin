@@ -1,9 +1,7 @@
 package main
 
 import "core:fmt"
-import "core:strings"
 import "http"
-
 
 main :: proc() {
 	http_client := http.client_init()
