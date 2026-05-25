@@ -9,45 +9,56 @@ Http_Error :: struct {
 	message: string,
 }
 
+Http_Response :: struct {
+	header: string,
+	body:   string,
+}
+
 Client :: struct {
-	handle:          ^curl.CURL,
-	strings_builder: strings.Builder,
+	handle:         ^curl.CURL,
+	header_builder: strings.Builder,
+	body_builder:   strings.Builder,
 }
 
 client_init :: proc() -> Client {
 	c: Client
 	c.handle = curl.easy_init()
-	strings.builder_init(&c.strings_builder)
+	strings.builder_init(&c.header_builder)
+	strings.builder_init(&c.body_builder)
 
 	return c
 }
 
 client_destroy :: proc(c: ^Client) {
 	curl.easy_cleanup(c.handle)
-	strings.builder_destroy(&c.strings_builder)
+	strings.builder_destroy(&c.header_builder)
+	strings.builder_destroy(&c.body_builder)
 }
 
-client_get :: proc(c: ^Client, url: string) -> (string, Http_Error) {
-	strings.builder_reset(&c.strings_builder)
+client_get :: proc(c: ^Client, url: string) -> (Http_Response, Http_Error) {
+	strings.builder_reset(&c.header_builder)
+	strings.builder_reset(&c.body_builder)
 
 	// passing a null terminated c string to libcurl
 	url_c := strings.clone_to_cstring(url)
 	defer delete(url_c)
 
+	// get header
 	curl.easy_setopt(c.handle, .URL, url_c)
+	curl.easy_setopt(c.handle, .HEADERFUNCTION, write_callback)
+	curl.easy_setopt(c.handle, .HEADERDATA, &c.header_builder) // header
 	curl.easy_setopt(c.handle, .WRITEFUNCTION, write_callback)
-	curl.easy_setopt(c.handle, .WRITEDATA, &c.strings_builder)
+	curl.easy_setopt(c.handle, .WRITEDATA, &c.body_builder) // body
 
-	// TODO: introduce debug mode
-	// curl.easy_setopt(c.handle, .VERBOSE, 1) -> verbose for debugging
-	// curl.easy_setopt(c.handle, .VERBOSE, 0) -> verbose off for normal mode
-
-	res := curl.easy_perform(c.handle)
-	if res != .E_OK {
-		return "", Http_Error{code = res, message = string(curl.easy_strerror(res))}
+	response_code := curl.easy_perform(c.handle)
+	if response_code != .E_OK {
+		return {}, {code = response_code, message = string(curl.easy_strerror(response_code))}
 	}
 
-	return strings.to_string(c.strings_builder), {}
+	return {
+		header = strings.to_string(c.header_builder),
+		body = strings.to_string(c.body_builder),
+	}, {}
 }
 
 write_callback :: proc "c" (ptr: rawptr, size, nmemb: uint, userdata: rawptr) -> uint {
