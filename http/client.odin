@@ -1,9 +1,13 @@
 package http
 
 import "base:runtime"
-import "core:fmt"
 import "core:strings"
 import "vendor:curl"
+
+Http_Error :: struct {
+	code:    curl.code,
+	message: string,
+}
 
 Client :: struct {
 	handle:          ^curl.CURL,
@@ -23,7 +27,7 @@ client_destroy :: proc(c: ^Client) {
 	strings.builder_destroy(&c.strings_builder)
 }
 
-client_get :: proc(c: ^Client, url: string) -> string {
+client_get :: proc(c: ^Client, url: string) -> (string, Http_Error) {
 	strings.builder_reset(&c.strings_builder)
 
 	// passing a null terminated c string to libcurl
@@ -40,10 +44,10 @@ client_get :: proc(c: ^Client, url: string) -> string {
 
 	res := curl.easy_perform(c.handle)
 	if res != .E_OK {
-		fmt.eprintln("curl error:", curl.easy_strerror(res))
+		return "", Http_Error{code = res, message = string(curl.easy_strerror(res))}
 	}
 
-	return strings.to_string(c.strings_builder)
+	return strings.to_string(c.strings_builder), {}
 }
 
 write_callback :: proc "c" (ptr: rawptr, size, nmemb: uint, userdata: rawptr) -> uint {
