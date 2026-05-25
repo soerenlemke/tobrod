@@ -6,10 +6,9 @@ import "http"
 
 
 main :: proc() {
-	strings_builder: strings.Builder
-	strings.builder_init(&strings_builder)
-	defer strings.builder_destroy(&strings_builder)
+	http_client := http.client_init()
+	defer http.client_destroy(&http_client)
 
-	body := http.get_body(&strings_builder, "https://example.com")
-	fmt.println(body)
+	response := http.client_get(&http_client, "https://example.com")
+	fmt.println(response)
 }

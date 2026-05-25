@@ -5,20 +5,45 @@ import "core:fmt"
 import "core:strings"
 import "vendor:curl"
 
-get_body :: proc(strings_builder: ^strings.Builder, url: string) -> string {
-	handle := curl.easy_init()
-	defer curl.easy_cleanup(handle)
+Client :: struct {
+	handle:          ^curl.CURL,
+	strings_builder: strings.Builder,
+}
 
-	curl.easy_setopt(handle, .URL, url)
-	curl.easy_setopt(handle, .WRITEFUNCTION, write_callback)
-	curl.easy_setopt(handle, .WRITEDATA, strings_builder)
+client_init :: proc() -> Client {
+	c: Client
+	c.handle = curl.easy_init()
+	strings.builder_init(&c.strings_builder)
 
-	res := curl.easy_perform(handle)
+	return c
+}
+
+client_destroy :: proc(c: ^Client) {
+	curl.easy_cleanup(c.handle)
+	strings.builder_destroy(&c.strings_builder)
+}
+
+client_get :: proc(c: ^Client, url: string) -> string {
+	strings.builder_reset(&c.strings_builder)
+
+	// passing a null terminated c string to libcurl
+	url_c := strings.clone_to_cstring(url)
+	defer delete(url_c)
+
+	curl.easy_setopt(c.handle, .URL, url_c)
+	curl.easy_setopt(c.handle, .WRITEFUNCTION, write_callback)
+	curl.easy_setopt(c.handle, .WRITEDATA, &c.strings_builder)
+
+	// TODO: introduce debug mode
+	// curl.easy_setopt(c.handle, .VERBOSE, 1) -> verbose for debugging
+	// curl.easy_setopt(c.handle, .VERBOSE, 0) -> verbose off for normal mode
+
+	res := curl.easy_perform(c.handle)
 	if res != .E_OK {
 		fmt.eprintln("curl error:", curl.easy_strerror(res))
 	}
 
-	return strings.to_string(strings_builder^)
+	return strings.to_string(c.strings_builder)
 }
 
 write_callback :: proc "c" (ptr: rawptr, size, nmemb: uint, userdata: rawptr) -> uint {
