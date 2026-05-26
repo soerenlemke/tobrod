@@ -11,10 +11,8 @@ main :: proc() {
 		width  = 1024,
 		heihgt = 768,
 	}
-	fmt.println("window settings:", window_settings)
 
 	window, ui_err := ui.ui_init(window_settings)
-	fmt.println("ui_init result:", window)
 	if ui_err, ok := ui_err.?; ok {
 		fmt.println("UI Error:", ui_err.message)
 		return
