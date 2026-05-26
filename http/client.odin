@@ -39,11 +39,9 @@ client_get :: proc(c: ^Client, url: string) -> (Http_Response, Maybe(Http_Error)
 	strings.builder_reset(&c.header_builder)
 	strings.builder_reset(&c.body_builder)
 
-	// passing a null terminated c string to libcurl
 	url_c := strings.clone_to_cstring(url)
 	defer delete(url_c)
 
-	// get header
 	curl.easy_setopt(c.handle, .URL, url_c)
 	curl.easy_setopt(c.handle, .HEADERFUNCTION, write_callback)
 	curl.easy_setopt(c.handle, .HEADERDATA, &c.header_builder) // header

@@ -1,5 +1,13 @@
 tobrod - a toy browser in Odin
 
+## Dependencies
+
+- [libcurl](https://curl.se)
+- [SDL3](https://libsdl.org)
+
+## Setup
+Run `.\setup.ps1` before building.
+
 # Planned stages
 
 Stage 1 — HTTP Client
@@ -11,7 +19,7 @@ Stage 1 — HTTP Client
 
 Stage 2 — Window & UI
 
- - [ ] Window creation via vendor:sdl3
+ - [x] Window creation via vendor:sdl3
  - [ ] Address bar
  - [ ] Basic tab management
  - [ ] Navigation buttons (back, forward, reload)
