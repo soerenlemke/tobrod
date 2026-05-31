@@ -5,8 +5,13 @@ tobrod - a toy browser in Odin
 - [libcurl](https://curl.se)
 - [SDL3](https://libsdl.org)
 
-## Setup
+## Setup Windows
 Run `.\setup.ps1` before building.
+
+## Setup MacOS
+- brew install sdl3
+- brew install curl
+- brew install mbedtls
 
 # Planned stages
 
