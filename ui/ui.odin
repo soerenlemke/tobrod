@@ -3,7 +3,6 @@ package ui
 import "core:strings"
 import sdl "vendor:sdl3"
 
-// TODO: Address; bar
 // TODO: Basic; tab; management
 // TODO: Navigation; buttons(back, forward, reload)<
 
@@ -61,24 +60,32 @@ ui_destroy :: proc(ui: ^Ui_Window) {
 }
 
 ui_run :: proc(ui: ^Ui_Window) {
-	running := true
+	w, h: i32
+	sdl.GetWindowSize(ui.window, &w, &h)
 
+	address_bar := ui_address_bar_init(w)
+	ADDRESS_BAR_HEIGHT :: f32(36)
+
+	running := true
 	for running {
 		event: sdl.Event
 		for sdl.PollEvent(&event) {
+			ui_address_bar_handle_event(&address_bar, &event)
+
 			#partial switch event.type {
 			case .QUIT:
 				running = false
-			case .KEY_DOWN:
-				if event.key.key == sdl.K_ESCAPE {
-					running = false
-				}
+			case .WINDOW_RESIZED:
+				address_bar.rect.w = f32(event.window.data1)
 			}
 		}
 
 		sdl.SetRenderDrawColor(ui.renderer, 255, 255, 255, 255)
 		sdl.RenderClear(ui.renderer)
 
+		// TODO: page content
+
+		ui_address_bar_render(ui, &address_bar)
 		sdl.RenderPresent(ui.renderer)
 	}
 }
