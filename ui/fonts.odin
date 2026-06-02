@@ -12,7 +12,7 @@ Ui_FontError :: struct {
 }
 
 // should be called at the start of the app to make sure fonts are available
-ui_init_fonts :: proc(font_path: string) {
+ui_fonts_init :: proc(font_path: string) {
 	if ttf.Init() == false {
 		panic("ttf init failed")
 	}
@@ -24,7 +24,7 @@ ui_init_fonts :: proc(font_path: string) {
 	}
 }
 
-ui_close_fonts :: proc() {
+ui_fonts_close :: proc() {
 	if font != nil {
 		ttf.CloseFont(font)
 	}
@@ -32,7 +32,7 @@ ui_close_fonts :: proc() {
 }
 
 // renders text to sdl texture
-ui_render_font_to_texture :: proc(
+ui_fonts_render_text_to_texture :: proc(
 	renderer: ^sdl.Renderer,
 	text: cstring,
 	color: sdl.Color,

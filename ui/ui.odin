@@ -3,9 +3,6 @@ package ui
 import "core:strings"
 import sdl "vendor:sdl3"
 
-// TODO: Basic; tab; management
-// TODO: Navigation; buttons(back, forward, reload)<
-
 Ui_Error :: struct {
 	message: string,
 }
@@ -51,7 +48,7 @@ ui_init :: proc(window_settings: Ui_WindowSettings) -> (Ui_Window, Maybe(Ui_Erro
 	}
 
 	// load fonts to make them globally available
-	ui_init_fonts("assets/fonts/Inter_18pt-Regular.ttf")
+	ui_fonts_init("assets/fonts/Inter_18pt-Regular.ttf")
 
 	return Ui_Window{window = window, renderer = renderer}, nil
 }
@@ -59,6 +56,7 @@ ui_init :: proc(window_settings: Ui_WindowSettings) -> (Ui_Window, Maybe(Ui_Erro
 ui_destroy :: proc(ui: ^Ui_Window) {
 	sdl.DestroyWindow(ui.window)
 	sdl.DestroyRenderer(ui.renderer)
+	ui_fonts_close()
 	sdl.Quit()
 }
 

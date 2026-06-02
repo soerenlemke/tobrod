@@ -3,8 +3,6 @@ package ui
 import "core:strings"
 import sdl "vendor:sdl3"
 
-// TODO: vendor: stb truetype for text rendering
-
 Ui_AddressBar :: struct {
 	rect:         sdl.FRect, // for position and size
 	text:         strings.Builder, // input text
@@ -68,7 +66,7 @@ ui_address_bar_render :: proc(ui: ^Ui_Window, bar: ^Ui_AddressBar) {
 	// render text
 	if len(bar.text.buf) > 0 {
 		text_c := strings.to_cstring(&bar.text)
-		texture := ui_render_font_to_texture(ui.renderer, text_c, {30, 30, 30, 255})
+		texture := ui_fonts_render_text_to_texture(ui.renderer, text_c, {30, 30, 30, 255})
 
 		if texture != nil {
 			defer sdl.DestroyTexture(texture)
