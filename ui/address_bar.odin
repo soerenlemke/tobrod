@@ -1,26 +1,28 @@
 package ui
 
+import "core:strings"
 import sdl "vendor:sdl3"
 
-// TODO: real text rendering with SDL3_ttf?
-// should we write our own bindings for SDL_ttf.h?
+// TODO: vendor: stb truetype for text rendering
 
 Ui_AddressBar :: struct {
 	rect:         sdl.FRect, // for position and size
-	text:         [dynamic]u8, // input text
+	text:         strings.Builder, // input text
 	focused:      bool,
 	bg_color:     sdl.Color,
 	border_color: sdl.Color,
 }
 
 ui_address_bar_init :: proc(window_width: i32) -> Ui_AddressBar {
-	return Ui_AddressBar {
+	bar := Ui_AddressBar {
 		rect = sdl.FRect{x = 0, y = 0, w = f32(window_width), h = 36},
-		text = make([dynamic]u8),
 		focused = false,
 		bg_color = sdl.Color{240, 240, 240, 255},
 		border_color = sdl.Color{180, 180, 180, 255},
 	}
+	strings.builder_init(&bar.text)
+
+	return bar
 }
 
 ui_address_bar_render :: proc(ui: ^Ui_Window, bar: ^Ui_AddressBar) {
@@ -62,9 +64,30 @@ ui_address_bar_render :: proc(ui: ^Ui_Window, bar: ^Ui_AddressBar) {
 		sdl.SetRenderDrawColor(ui.renderer, 200, 200, 200, 255)
 	}
 	sdl.RenderRect(ui.renderer, &input_rect)
+
+	// render text
+	if len(bar.text.buf) > 0 {
+		text_c := strings.to_cstring(&bar.text)
+		texture := ui_render_font_to_texture(ui.renderer, text_c, {30, 30, 30, 255})
+
+		if texture != nil {
+			defer sdl.DestroyTexture(texture)
+
+			text_width, text_height: f32
+			sdl.GetTextureSize(texture, &text_width, &text_height)
+
+			dst := sdl.FRect {
+				x = input_rect.x + 6,
+				y = input_rect.y + (input_rect.h - text_height) / 2,
+				w = text_width,
+				h = text_height,
+			}
+			sdl.RenderTexture(ui.renderer, texture, nil, &dst)
+		}
+	}
 }
 
-ui_address_bar_handle_event :: proc(bar: ^Ui_AddressBar, event: ^sdl.Event) {
+ui_address_bar_handle_event :: proc(ui: ^Ui_Window, bar: ^Ui_AddressBar, event: ^sdl.Event) {
 	#partial switch event.type {
 	case .MOUSE_BUTTON_DOWN:
 		mx := f32(event.button.x)
@@ -76,28 +99,26 @@ ui_address_bar_handle_event :: proc(bar: ^Ui_AddressBar, event: ^sdl.Event) {
 			my >= bar.rect.y &&
 			my <= bar.rect.y + bar.rect.h
 
-		// TODO: should we handle the return values this?
+		// TODO: should we handle the return values of these?
 		if bar.focused {
-			_ = sdl.StartTextInput(nil)
+			_ = sdl.StartTextInput(ui.window)
 		} else {
-			_ = sdl.StopTextInput(nil)
+			_ = sdl.StopTextInput(ui.window)
 		}
 
 	case .TEXT_INPUT:
 		if bar.focused {
-			text := string(event.text.text)
-			for ch in text {
-				if ch == 0 do break
-				append(&bar.text, u8(ch))
-			}
+			strings.write_string(&bar.text, string(event.text.text))
 		}
 
 	case .KEY_DOWN:
 		if bar.focused {
 			switch event.key.key {
 			case sdl.K_BACKSPACE:
-				if len(bar.text) > 0 {
-					pop(&bar.text)
+				s := strings.to_string(bar.text)
+				if len(s) > 0 {
+					strings.builder_reset(&bar.text)
+					strings.write_string(&bar.text, s[:len(s) - 1])
 				}
 			case sdl.K_RETURN:
 				// TODO: callback/event navigate to url
@@ -107,7 +128,6 @@ ui_address_bar_handle_event :: proc(bar: ^Ui_AddressBar, event: ^sdl.Event) {
 				_ = sdl.StopTextInput(nil)
 				bar.focused = false
 			}
-
 		}
 	}
 }

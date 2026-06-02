@@ -13,6 +13,7 @@ Run `.\setup.ps1` before building.
 - brew install sdl3
 - brew install curl
 - brew install mbedtls
+- brew install sdl3_ttf
 
 # Planned stages
 
@@ -27,6 +28,10 @@ Stage 2 — Window & UI
 
  - [x] Window creation via vendor:sdl3
  - [ ] Address bar
+    - [x] basic address bar ui
+    - [x] basic text rendering for user input
+    - [ ] triggering http client to call page when hitting enter
+    - [ ] harden input by auto adding http when missing
  - [ ] Basic tab management
  - [ ] Navigation buttons (back, forward, reload)
 

@@ -50,6 +50,9 @@ ui_init :: proc(window_settings: Ui_WindowSettings) -> (Ui_Window, Maybe(Ui_Erro
 		return {}, Ui_Error{message = string(sdl.GetError())}
 	}
 
+	// load fonts to make them globally available
+	ui_init_fonts("assets/fonts/Inter_18pt-Regular.ttf")
+
 	return Ui_Window{window = window, renderer = renderer}, nil
 }
 
@@ -70,7 +73,7 @@ ui_run :: proc(ui: ^Ui_Window) {
 	for running {
 		event: sdl.Event
 		for sdl.PollEvent(&event) {
-			ui_address_bar_handle_event(&address_bar, &event)
+			ui_address_bar_handle_event(ui, &address_bar, &event)
 
 			#partial switch event.type {
 			case .QUIT:

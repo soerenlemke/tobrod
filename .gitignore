@@ -1,2 +1,5 @@
 *.dll
 *.exe
+
+# macos
+.DS_Store
