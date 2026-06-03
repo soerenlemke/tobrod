@@ -82,7 +82,7 @@ run :: proc(ui: ^MainWindow) {
 			case .QUIT:
 				running = false
 			case .WINDOW_RESIZED:
-				ui.address_bar.rect.w = f32(event.window.data1)
+				address_bar_handle_resize(&ui.address_bar, event.window.data1, event.window.data2)
 			}
 		}
 

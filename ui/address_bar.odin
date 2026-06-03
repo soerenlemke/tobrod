@@ -89,6 +89,10 @@ address_bar_render :: proc(ui: ^MainWindow, bar: ^AddressBar) {
 	}
 }
 
+address_bar_handle_resize :: proc(bar: ^AddressBar, window_width, window_height: i32) {
+	bar.rect.w = f32(window_width)
+}
+
 address_bar_handle_event :: proc(ui: ^MainWindow, bar: ^AddressBar, event: ^sdl.Event) {
 	#partial switch event.type {
 	case .MOUSE_BUTTON_DOWN:
