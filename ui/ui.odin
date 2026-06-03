@@ -1,5 +1,6 @@
 package ui
 
+import "core:fmt"
 import "core:strings"
 import sdl "vendor:sdl3"
 
@@ -14,8 +15,9 @@ WindowSettings :: struct {
 }
 
 MainWindow :: struct {
-	window:   ^sdl.Window,
-	renderer: ^sdl.Renderer,
+	window:      ^sdl.Window,
+	renderer:    ^sdl.Renderer,
+	address_bar: AddressBar,
 }
 
 init :: proc(window_settings: WindowSettings) -> (MainWindow, Maybe(Error)) {
@@ -47,10 +49,18 @@ init :: proc(window_settings: WindowSettings) -> (MainWindow, Maybe(Error)) {
 		return {}, Error{message = string(sdl.GetError())}
 	}
 
+	address_bar, address_bar_error := address_bar_init(window_settings.init_width)
+	if alloc_err, ok := address_bar_error.?; ok {
+		sdl.DestroyRenderer(renderer)
+		sdl.DestroyWindow(window)
+		sdl.Quit()
+		return {}, Error{message = fmt.tprintf("address bar init failed: %v", alloc_err)}
+	}
+
 	// load fonts to make them globally available
 	fonts_init("assets/fonts/Inter_18pt-Regular.ttf")
 
-	return MainWindow{window = window, renderer = renderer}, nil
+	return MainWindow{window = window, renderer = renderer, address_bar = address_bar}, nil
 }
 
 destroy :: proc(ui: ^MainWindow) {
@@ -61,24 +71,17 @@ destroy :: proc(ui: ^MainWindow) {
 }
 
 run :: proc(ui: ^MainWindow) {
-	w, h: i32
-	sdl.GetWindowSize(ui.window, &w, &h)
-
-	// TODO: address_bar should be part of main window -> init should be in ui init
-	address_bar := address_bar_init(w)
-	ADDRESS_BAR_HEIGHT :: f32(36)
-
 	running := true
 	for running {
 		event: sdl.Event
 		for sdl.PollEvent(&event) {
-			address_bar_handle_event(ui, &address_bar, &event)
+			address_bar_handle_event(ui, &ui.address_bar, &event)
 
 			#partial switch event.type {
 			case .QUIT:
 				running = false
 			case .WINDOW_RESIZED:
-				address_bar.rect.w = f32(event.window.data1)
+				ui.address_bar.rect.w = f32(event.window.data1)
 			}
 		}
 
@@ -87,7 +90,7 @@ run :: proc(ui: ^MainWindow) {
 
 		// TODO: page content
 
-		address_bar_render(ui, &address_bar)
+		address_bar_render(ui, &ui.address_bar)
 		sdl.RenderPresent(ui.renderer)
 	}
 }
