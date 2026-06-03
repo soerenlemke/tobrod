@@ -1,10 +1,12 @@
 package browser
 
+import "../http"
 import "../ui"
 import "core:fmt"
 
 Browser :: struct {
-	window: ui.MainWindow,
+	window:      ui.MainWindow,
+	http_client: http.Client,
 }
 
 init :: proc(settings: ui.WindowSettings) -> (Browser, Maybe(ui.Error)) {
@@ -15,6 +17,13 @@ init :: proc(settings: ui.WindowSettings) -> (Browser, Maybe(ui.Error)) {
 		return {}, ui_err
 	}
 	b.window = main_window
+
+	http_client, http_err := http.init()
+	if http_err, ok := http_err.?; ok {
+		ui.destroy(&b.window)
+		return {}, ui.Error{message = fmt.tprintf("http client init failed: %v", http_err)}
+	}
+	b.http_client = http_client
 
 	register_callbacks(&b)
 
@@ -27,6 +36,7 @@ run :: proc(b: ^Browser) {
 
 destroy :: proc(b: ^Browser) {
 	ui.destroy(&b.window)
+	http.destroy(&b.http_client)
 }
 
 register_callbacks :: proc(b: ^Browser) {

@@ -20,13 +20,20 @@ Client :: struct {
 	body_builder:   strings.Builder,
 }
 
-init :: proc() -> Client {
+init :: proc() -> (Client, Maybe(runtime.Allocator_Error)) {
 	c: Client
 	c.handle = curl.easy_init()
-	strings.builder_init(&c.header_builder)
-	strings.builder_init(&c.body_builder)
 
-	return c
+	_, err := strings.builder_init(&c.header_builder)
+	if err != .None do return {}, err
+
+	_, err2 := strings.builder_init(&c.body_builder)
+	if err2 != .None {
+		strings.builder_destroy(&c.header_builder)
+		return {}, err2
+	}
+
+	return c, nil
 }
 
 destroy :: proc(c: ^Client) {
