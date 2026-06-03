@@ -20,6 +20,9 @@ address_bar_init :: proc(window_width: i32) -> (AddressBar, Maybe(runtime.Alloca
 		border_color = sdl.Color{180, 180, 180, 255},
 	}
 	_, err := strings.builder_init(&bar.text)
+	if err == .None {
+		return bar, nil
+	}
 
 	return bar, err
 }
@@ -119,7 +122,9 @@ address_bar_handle_event :: proc(ui: ^MainWindow, bar: ^AddressBar, event: ^sdl.
 					strings.write_string(&bar.text, s[:len(s) - 1])
 				}
 			case sdl.K_RETURN:
-				// TODO: callback/event navigate to url
+				if ui.on_url_submit != nil {
+					ui.on_url_submit(strings.to_string(bar.text))
+				}
 				_ = sdl.StopTextInput(nil)
 				bar.focused = false
 			case sdl.K_ESCAPE:

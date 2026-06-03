@@ -16,11 +16,7 @@ init :: proc(settings: ui.WindowSettings) -> (Browser, Maybe(ui.Error)) {
 	}
 	b.window = main_window
 
-	// TODO: create on_url_submit in window
-	b.window.on_url_submit = proc(url: string) {
-		fmt.println("Navigiere zu:", url)
-		// http_fetch(url)
-	}
+	register_callbacks(&b)
 
 	return b, nil
 }
@@ -31,4 +27,13 @@ run :: proc(b: ^Browser) {
 
 destroy :: proc(b: ^Browser) {
 	ui.destroy(&b.window)
+}
+
+register_callbacks :: proc(b: ^Browser) {
+	// address_bar callbacks
+	b.window.on_url_submit = proc(url: string) {
+		fmt.println("Navigating to:", url)
+	}
+
+	// other callbacks ...
 }

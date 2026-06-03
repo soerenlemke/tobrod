@@ -15,9 +15,10 @@ WindowSettings :: struct {
 }
 
 MainWindow :: struct {
-	window:      ^sdl.Window,
-	renderer:    ^sdl.Renderer,
-	address_bar: AddressBar,
+	window:        ^sdl.Window,
+	renderer:      ^sdl.Renderer,
+	address_bar:   AddressBar,
+	on_url_submit: proc(url: string),
 }
 
 init :: proc(window_settings: WindowSettings) -> (MainWindow, Maybe(Error)) {
