@@ -7,12 +7,12 @@ import "vendor:sdl3/ttf"
 // Global font for text rendering
 font: ^ttf.Font = nil
 
-Ui_FontError :: struct {
+FontError :: struct {
 	message: string,
 }
 
 // should be called at the start of the app to make sure fonts are available
-ui_fonts_init :: proc(font_path: string) {
+fonts_init :: proc(font_path: string) {
 	if ttf.Init() == false {
 		panic("ttf init failed")
 	}
@@ -24,7 +24,7 @@ ui_fonts_init :: proc(font_path: string) {
 	}
 }
 
-ui_fonts_close :: proc() {
+fonts_close :: proc() {
 	if font != nil {
 		ttf.CloseFont(font)
 	}
@@ -32,7 +32,7 @@ ui_fonts_close :: proc() {
 }
 
 // renders text to sdl texture
-ui_fonts_render_text_to_texture :: proc(
+fonts_render_text_to_texture :: proc(
 	renderer: ^sdl.Renderer,
 	text: cstring,
 	color: sdl.Color,

@@ -3,16 +3,16 @@ package ui
 import "core:strings"
 import sdl "vendor:sdl3"
 
-Ui_AddressBar :: struct {
-	rect:         sdl.FRect, // for position and size
-	text:         strings.Builder, // input text
+AddressBar :: struct {
+	rect:         sdl.FRect,
+	text:         strings.Builder,
 	focused:      bool,
 	bg_color:     sdl.Color,
 	border_color: sdl.Color,
 }
 
-ui_address_bar_init :: proc(window_width: i32) -> Ui_AddressBar {
-	bar := Ui_AddressBar {
+address_bar_init :: proc(window_width: i32) -> AddressBar {
+	bar := AddressBar {
 		rect = sdl.FRect{x = 0, y = 0, w = f32(window_width), h = 36},
 		focused = false,
 		bg_color = sdl.Color{240, 240, 240, 255},
@@ -23,7 +23,7 @@ ui_address_bar_init :: proc(window_width: i32) -> Ui_AddressBar {
 	return bar
 }
 
-ui_address_bar_render :: proc(ui: ^Ui_Window, bar: ^Ui_AddressBar) {
+address_bar_render :: proc(ui: ^MainWindow, bar: ^AddressBar) {
 	// background
 	sdl.SetRenderDrawColor(
 		ui.renderer,
@@ -66,7 +66,7 @@ ui_address_bar_render :: proc(ui: ^Ui_Window, bar: ^Ui_AddressBar) {
 	// render text
 	if len(bar.text.buf) > 0 {
 		text_c := strings.to_cstring(&bar.text)
-		texture := ui_fonts_render_text_to_texture(ui.renderer, text_c, {30, 30, 30, 255})
+		texture := fonts_render_text_to_texture(ui.renderer, text_c, {30, 30, 30, 255})
 
 		if texture != nil {
 			defer sdl.DestroyTexture(texture)
@@ -85,7 +85,7 @@ ui_address_bar_render :: proc(ui: ^Ui_Window, bar: ^Ui_AddressBar) {
 	}
 }
 
-ui_address_bar_handle_event :: proc(ui: ^Ui_Window, bar: ^Ui_AddressBar, event: ^sdl.Event) {
+address_bar_handle_event :: proc(ui: ^MainWindow, bar: ^AddressBar, event: ^sdl.Event) {
 	#partial switch event.type {
 	case .MOUSE_BUTTON_DOWN:
 		mx := f32(event.button.x)
@@ -97,7 +97,6 @@ ui_address_bar_handle_event :: proc(ui: ^Ui_Window, bar: ^Ui_AddressBar, event: 
 			my >= bar.rect.y &&
 			my <= bar.rect.y + bar.rect.h
 
-		// TODO: should we handle the return values of these?
 		if bar.focused {
 			_ = sdl.StartTextInput(ui.window)
 		} else {

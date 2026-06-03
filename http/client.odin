@@ -20,7 +20,7 @@ Client :: struct {
 	body_builder:   strings.Builder,
 }
 
-client_init :: proc() -> Client {
+init :: proc() -> Client {
 	c: Client
 	c.handle = curl.easy_init()
 	strings.builder_init(&c.header_builder)
@@ -29,13 +29,13 @@ client_init :: proc() -> Client {
 	return c
 }
 
-client_destroy :: proc(c: ^Client) {
+destroy :: proc(c: ^Client) {
 	curl.easy_cleanup(c.handle)
 	strings.builder_destroy(&c.header_builder)
 	strings.builder_destroy(&c.body_builder)
 }
 
-client_get :: proc(c: ^Client, url: string) -> (Http_Response, Maybe(Http_Error)) {
+get :: proc(c: ^Client, url: string) -> (Http_Response, Maybe(Http_Error)) {
 	strings.builder_reset(&c.header_builder)
 	strings.builder_reset(&c.body_builder)
 

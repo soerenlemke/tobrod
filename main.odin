@@ -1,22 +1,22 @@
 package main
 
+import "browser"
 import "core:fmt"
-
 import "ui"
 
 main :: proc() {
-	window_settings := ui.Ui_WindowSettings {
-		name   = "Browser",
-		width  = 1024,
-		heihgt = 768,
+	settings := ui.WindowSettings {
+		name        = "Browser",
+		init_width  = 1024,
+		init_heihgt = 768,
 	}
 
-	window, ui_err := ui.ui_init(window_settings)
-	if ui_err, ok := ui_err.?; ok {
-		fmt.println("UI Error:", ui_err.message)
+	b, err := browser.init(settings)
+	if err, ok := err.?; ok {
+		fmt.println("Error:", err.message)
 		return
 	}
-	defer ui.ui_destroy(&window)
+	defer browser.destroy(&b)
 
-	ui.ui_run(&window)
+	browser.run(&b)
 }
