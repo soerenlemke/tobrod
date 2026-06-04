@@ -30,17 +30,22 @@ Stage 2 — Window & UI
  - [ ] Address bar
     - [x] basic address bar ui
     - [x] basic text rendering for user input
-    - [ ] triggering http client to call page when hitting enter
-    - [ ] harden input by auto adding http when missing
- - [ ] Basic tab management
- - [ ] Navigation buttons (back, forward, reload)
+    - [x] triggering http client to call page when hitting enter
+    - [ ] harden input by auto adding http when missing -> TODO for later
+ - [ ] Basic tab management -> TODO for later
+ - [ ] Navigation buttons (back, forward, reload) -> TODO for later
 
-Stage 3 — HTML & CSS Parsing
+Stage 3 — HTML & CSS Parsing -> page view renderer
 
  - [ ] Bind lexbor for HTML parsing
  - [ ] Build a DOM tree from parsed HTML
  - [ ] CSS parsing and CSSOM construction
  - [ ] Selector matching
+
+ Stage 3.1 - Threads
+ - [ ] Run http requests in own thread
+ - [ ] how to send results back to ui? -> SDL_PushEvent?
+ - [ ] http client is not thread safe... what to do?
 
 Stage 4 — Rendering
 

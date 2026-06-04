@@ -5,6 +5,7 @@ import sdl "vendor:sdl3"
 PageView :: struct {
 	rect:     sdl.FRect,
 	bg_color: sdl.Color,
+	content:  string,
 }
 
 page_view_init :: proc(window_width, window_height: i32) -> PageView {

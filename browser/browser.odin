@@ -25,8 +25,6 @@ init :: proc(settings: ui.WindowSettings) -> (Browser, Maybe(ui.Error)) {
 	}
 	b.http_client = http_client
 
-	register_callbacks(&b)
-
 	return b, nil
 }
 
@@ -40,11 +38,17 @@ destroy :: proc(b: ^Browser) {
 }
 
 register_callbacks :: proc(b: ^Browser) {
-	// address_bar callbacks
-	b.window.on_url_submit = proc(url: string) {
-		fmt.println("Navigating to:", url)
-		// TODO: trigger rendering of page view component
-	}
+	b.window.on_url_submit_ctx = b
+	b.window.on_url_submit = proc(url: string, ctx: rawptr) {
+		browser := cast(^Browser)ctx
+		response, err := http.get(&browser.http_client, url)
+		if http_err, ok := err.?; ok {
+			browser.window.page_view.content = fmt.tprintf("Error: %v", http_err.message)
+			return
+		}
 
-	// other callbacks ...
+		// TODO: we need a page_view renderer to display the content
+		browser.window.page_view.content = response.body
+		fmt.println("reponse body", browser.window.page_view.content)
+	}
 }

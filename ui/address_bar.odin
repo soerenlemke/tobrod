@@ -127,7 +127,7 @@ address_bar_handle_event :: proc(ui: ^MainWindow, bar: ^AddressBar, event: ^sdl.
 				}
 			case sdl.K_RETURN:
 				if ui.on_url_submit != nil {
-					ui.on_url_submit(strings.to_string(bar.text))
+					ui.on_url_submit(strings.to_string(bar.text), ui.on_url_submit_ctx)
 				}
 				_ = sdl.StopTextInput(nil)
 				bar.focused = false

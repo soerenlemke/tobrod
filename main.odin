@@ -18,5 +18,6 @@ main :: proc() {
 	}
 	defer browser.destroy(&b)
 
+	browser.register_callbacks(&b)
 	browser.run(&b)
 }

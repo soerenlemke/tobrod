@@ -18,11 +18,12 @@ WindowSettings :: struct {
 }
 
 MainWindow :: struct {
-	window:        ^sdl.Window,
-	renderer:      ^sdl.Renderer,
-	address_bar:   AddressBar,
-	page_view:     PageView,
-	on_url_submit: proc(url: string),
+	window:            ^sdl.Window,
+	renderer:          ^sdl.Renderer,
+	address_bar:       AddressBar,
+	page_view:         PageView,
+	on_url_submit:     proc(url: string, ctx: rawptr),
+	on_url_submit_ctx: rawptr,
 }
 
 init :: proc(window_settings: WindowSettings) -> (MainWindow, Maybe(Error)) {
