@@ -4,6 +4,9 @@ import "core:fmt"
 import "core:strings"
 import sdl "vendor:sdl3"
 
+// ui wide constants
+ADDRESS_BAR_HEIGHT :: 36
+
 Error :: struct {
 	message: string,
 }
@@ -11,13 +14,14 @@ Error :: struct {
 WindowSettings :: struct {
 	name:        string,
 	init_width:  i32,
-	init_heihgt: i32,
+	init_height: i32,
 }
 
 MainWindow :: struct {
 	window:        ^sdl.Window,
 	renderer:      ^sdl.Renderer,
 	address_bar:   AddressBar,
+	page_view:     PageView,
 	on_url_submit: proc(url: string),
 }
 
@@ -35,7 +39,7 @@ init :: proc(window_settings: WindowSettings) -> (MainWindow, Maybe(Error)) {
 	window := sdl.CreateWindow(
 		name_cstring,
 		window_settings.init_width,
-		window_settings.init_heihgt,
+		window_settings.init_height,
 		{.RESIZABLE},
 	)
 	if window == nil {
@@ -58,16 +62,24 @@ init :: proc(window_settings: WindowSettings) -> (MainWindow, Maybe(Error)) {
 		return {}, Error{message = fmt.tprintf("address bar init failed: %v", alloc_err)}
 	}
 
+	page_view := page_view_init(window_settings.init_width, window_settings.init_height)
+
 	// load fonts to make them globally available
 	fonts_init("assets/fonts/Inter_18pt-Regular.ttf")
 
-	return MainWindow{window = window, renderer = renderer, address_bar = address_bar}, nil
+	return MainWindow {
+			window = window,
+			renderer = renderer,
+			address_bar = address_bar,
+			page_view = page_view,
+		},
+		nil
 }
 
 destroy :: proc(ui: ^MainWindow) {
-	sdl.DestroyWindow(ui.window)
-	sdl.DestroyRenderer(ui.renderer)
 	fonts_close()
+	sdl.DestroyRenderer(ui.renderer)
+	sdl.DestroyWindow(ui.window)
 	sdl.Quit()
 }
 
@@ -83,14 +95,14 @@ run :: proc(ui: ^MainWindow) {
 				running = false
 			case .WINDOW_RESIZED:
 				address_bar_handle_resize(&ui.address_bar, event.window.data1, event.window.data2)
+				page_view_handle_resize(&ui.page_view, event.window.data1, event.window.data2)
 			}
 		}
 
 		sdl.SetRenderDrawColor(ui.renderer, 255, 255, 255, 255)
 		sdl.RenderClear(ui.renderer)
 
-		// TODO: page content
-
+		page_view_render(ui, &ui.page_view) // page view before address bar so bar is always overlaying
 		address_bar_render(ui, &ui.address_bar)
 		sdl.RenderPresent(ui.renderer)
 	}

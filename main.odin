@@ -8,7 +8,7 @@ main :: proc() {
 	settings := ui.WindowSettings {
 		name        = "Browser",
 		init_width  = 1024,
-		init_heihgt = 768,
+		init_height = 768,
 	}
 
 	b, err := browser.init(settings)

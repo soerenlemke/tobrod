@@ -43,6 +43,7 @@ register_callbacks :: proc(b: ^Browser) {
 	// address_bar callbacks
 	b.window.on_url_submit = proc(url: string) {
 		fmt.println("Navigating to:", url)
+		// TODO: trigger rendering of page view component
 	}
 
 	// other callbacks ...

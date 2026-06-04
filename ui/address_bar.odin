@@ -14,7 +14,7 @@ AddressBar :: struct {
 
 address_bar_init :: proc(window_width: i32) -> (AddressBar, Maybe(runtime.Allocator_Error)) {
 	bar := AddressBar {
-		rect = sdl.FRect{x = 0, y = 0, w = f32(window_width), h = 36},
+		rect = sdl.FRect{x = 0, y = 0, w = f32(window_width), h = ADDRESS_BAR_HEIGHT},
 		focused = false,
 		bg_color = sdl.Color{240, 240, 240, 255},
 		border_color = sdl.Color{180, 180, 180, 255},
