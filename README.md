@@ -19,43 +19,42 @@ Run `.\setup.ps1` before building.
 
 Stage 1 — HTTP Client
 
- - [x] Basic GET requests via vendor:curl
- - [x] Response headers parsing
- - [x] Error handling
- - [x] Connection reuse
+- [x] Basic GET requests via vendor:curl
+- [x] Response headers parsing
+- [x] Error handling
+- [x] Connection reuse
 
 Stage 2 — Window & UI
 
- - [x] Window creation via vendor:sdl3
- - [ ] Address bar
-    - [x] basic address bar ui
-    - [x] basic text rendering for user input
-    - [x] triggering http client to call page when hitting enter
-    - [ ] harden input by auto adding http when missing -> TODO for later
- - [ ] Basic tab management -> TODO for later
- - [ ] Navigation buttons (back, forward, reload) -> TODO for later
+- [x] Window creation via vendor:sdl3
+- [ ] Address bar
+   - [x] basic address bar ui
+   - [x] basic text rendering for user input
+   - [x] triggering http client to call page when hitting enter
+   - [ ] harden input by auto adding http when missing -> TODO for later
+- [ ] Basic tab management -> TODO for later
+- [ ] Navigation buttons (back, forward, reload) -> TODO for later
 
-Stage 3 — HTML & CSS Parsing -> page view renderer
+Stage 3 — Page View Renderer (Raw Text)
 
- - [ ] Bind lexbor for HTML parsing
- - [ ] Build a DOM tree from parsed HTML
- - [ ] CSS parsing and CSSOM construction
- - [ ] Selector matching
+- [x] Text rendering in page view
+- [ ] Text wrapping
+- [ ] Scrolling
 
- Stage 3.1 - Threads
- - [ ] Run http requests in own thread
- - [ ] how to send results back to ui? -> SDL_PushEvent?
- - [ ] http client is not thread safe... what to do?
+Stage 4 — HTML & CSS Parsing
 
-Stage 4 — Rendering
+- [ ] Bind lexbor for HTML parsing
+- [ ] Build a DOM tree from parsed HTML
+- [ ] CSS parsing and CSSOM construction
+- [ ] Selector matching
 
- - [ ] Font loading and rendering via vendor:stb
- - [ ] Basic text layout
- - [ ] Box model implementation
- - [ ] OpenGL-based paint layer via vendor:OpenGL
+Stage 5 - Threads
+- [ ] Run http requests in own thread
+- [ ] how to send results back to ui? -> SDL_PushEvent?
+- [ ] http client is not thread safe... what to do?
 
-Stage 5 — JavaScript Engine
+Stage 6 — JavaScript Engine
 
- - [ ] Bind QuickJS as the JavaScript engine
- - [ ] Connect JS engine to the DOM
- - [ ] Basic DOM manipulation via JavaScript
+- [ ] Bind QuickJS as the JavaScript engine
+- [ ] Connect JS engine to the DOM
+- [ ] Basic DOM manipulation via JavaScript
