@@ -32,7 +32,7 @@ renderer_get_text_texture :: proc(
 	// if requested text has no cached texture we create one an put it to the text cache
 	text_c := strings.clone_to_cstring(text)
 	defer delete(text_c)
-	texture := fonts_render_text_to_texture(r.sdl_renderer, text_c, {30, 30, 30, 255}, widht_limit)
+	texture := fonts_render_text_to_texture(r.sdl_renderer, text_c, color, widht_limit)
 	r.text_cache[text] = texture
 
 	return texture
