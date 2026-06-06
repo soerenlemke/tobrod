@@ -36,8 +36,9 @@ fonts_render_text_to_texture :: proc(
 	renderer: ^sdl.Renderer,
 	text: cstring,
 	color: sdl.Color,
+	width_limit: f32,
 ) -> ^sdl.Texture {
-	surface := ttf.RenderText_Blended(font, text, len(text), color)
+	surface := ttf.RenderText_Blended_Wrapped(font, text, len(text), color, i32(width_limit))
 	if surface == nil {
 		return nil
 	}

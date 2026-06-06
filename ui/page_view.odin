@@ -9,10 +9,6 @@ PageView :: struct {
 	content:  string,
 }
 
-PageViewRenderer :: struct {
-	// TODO
-}
-
 page_view_init :: proc(window_width, window_height: i32) -> PageView {
 	return PageView {
 		rect = sdl.FRect {
@@ -36,7 +32,12 @@ page_view_render :: proc(ui: ^MainWindow, pv: ^PageView) {
 	sdl.RenderFillRect(ui.renderer.sdl_renderer, &pv.rect)
 
 	if len(pv.content) > 0 {
-		texture := renderer_get_text_texture(&ui.renderer, pv.content, {30, 30, 30, 255})
+		texture := renderer_get_text_texture(
+			&ui.renderer,
+			pv.content,
+			{30, 30, 30, 255},
+			pv.rect.w,
+		)
 
 		if texture != nil {
 			text_width, text_height: f32
@@ -52,7 +53,9 @@ page_view_render :: proc(ui: ^MainWindow, pv: ^PageView) {
 	}
 }
 
-page_view_handle_resize :: proc(pv: ^PageView, window_width, window_height: i32) {
+page_view_handle_resize :: proc(pv: ^PageView, r: ^Renderer, window_width, window_height: i32) {
 	pv.rect.w = f32(window_width)
 	pv.rect.h = f32(window_height) - ADDRESS_BAR_HEIGHT
+
+	renderer_invalidate_text_cache(r, pv.content) // needed for getting a new texture that fits the new window size
 }

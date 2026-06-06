@@ -73,6 +73,7 @@ address_bar_render :: proc(ui: ^MainWindow, bar: ^AddressBar) {
 			&ui.renderer,
 			strings.to_string(bar.text),
 			{30, 30, 30, 255},
+			bar.rect.w,
 		)
 
 		if texture != nil {

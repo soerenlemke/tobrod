@@ -96,7 +96,12 @@ run :: proc(ui: ^MainWindow) {
 				running = false
 			case .WINDOW_RESIZED:
 				address_bar_handle_resize(&ui.address_bar, event.window.data1, event.window.data2)
-				page_view_handle_resize(&ui.page_view, event.window.data1, event.window.data2)
+				page_view_handle_resize(
+					&ui.page_view,
+					&ui.renderer,
+					event.window.data1,
+					event.window.data2,
+				)
 			}
 		}
 

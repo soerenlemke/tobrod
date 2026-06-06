@@ -19,7 +19,12 @@ renderer_destroy :: proc(r: ^Renderer) {
 	delete(r.text_cache)
 }
 
-renderer_get_text_texture :: proc(r: ^Renderer, text: string, color: sdl.Color) -> ^sdl.Texture {
+renderer_get_text_texture :: proc(
+	r: ^Renderer,
+	text: string,
+	color: sdl.Color,
+	widht_limit: f32,
+) -> ^sdl.Texture {
 	if texture, ok := r.text_cache[text]; ok {
 		return texture
 	}
@@ -27,8 +32,15 @@ renderer_get_text_texture :: proc(r: ^Renderer, text: string, color: sdl.Color) 
 	// if requested text has no cached texture we create one an put it to the text cache
 	text_c := strings.clone_to_cstring(text)
 	defer delete(text_c)
-	texture := fonts_render_text_to_texture(r.sdl_renderer, text_c, {30, 30, 30, 255})
+	texture := fonts_render_text_to_texture(r.sdl_renderer, text_c, {30, 30, 30, 255}, widht_limit)
 	r.text_cache[text] = texture
 
 	return texture
+}
+
+renderer_invalidate_text_cache :: proc(r: ^Renderer, text: string) {
+	if texture, ok := r.text_cache[text]; ok {
+		sdl.DestroyTexture(texture)
+		delete_key(&r.text_cache, text)
+	}
 }
