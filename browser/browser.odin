@@ -33,6 +33,7 @@ run :: proc(b: ^Browser) {
 }
 
 destroy :: proc(b: ^Browser) {
+	ui.renderer_destroy(&b.window.renderer)
 	ui.destroy(&b.window)
 	http.destroy(&b.http_client)
 }
@@ -47,7 +48,6 @@ register_callbacks :: proc(b: ^Browser) {
 			return
 		}
 
-		// TODO: we need a page_view renderer to display the content
 		browser.window.page_view.content = response.body
 		fmt.println("reponse body", browser.window.page_view.content)
 	}

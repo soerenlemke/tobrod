@@ -1,0 +1,34 @@
+package ui
+
+import "core:strings"
+import sdl "vendor:sdl3"
+
+Renderer :: struct {
+	sdl_renderer: ^sdl.Renderer,
+	text_cache:   map[string]^sdl.Texture,
+}
+
+renderer_init :: proc(sdl_renderer: ^sdl.Renderer) -> Renderer {
+	return Renderer{sdl_renderer = sdl_renderer, text_cache = make(map[string]^sdl.Texture)}
+}
+
+renderer_destroy :: proc(r: ^Renderer) {
+	for _, texture in r.text_cache {
+		sdl.DestroyTexture(texture)
+	}
+	delete(r.text_cache)
+}
+
+renderer_get_text_texture :: proc(r: ^Renderer, text: string, color: sdl.Color) -> ^sdl.Texture {
+	if texture, ok := r.text_cache[text]; ok {
+		return texture
+	}
+
+	// if requested text has no cached texture we create one an put it to the text cache
+	text_c := strings.clone_to_cstring(text)
+	defer delete(text_c)
+	texture := fonts_render_text_to_texture(r.sdl_renderer, text_c, {30, 30, 30, 255})
+	r.text_cache[text] = texture
+
+	return texture
+}

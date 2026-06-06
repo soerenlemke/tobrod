@@ -19,7 +19,7 @@ WindowSettings :: struct {
 
 MainWindow :: struct {
 	window:            ^sdl.Window,
-	renderer:          ^sdl.Renderer,
+	renderer:          Renderer,
 	address_bar:       AddressBar,
 	page_view:         PageView,
 	on_url_submit:     proc(url: string, ctx: rawptr),
@@ -70,7 +70,7 @@ init :: proc(window_settings: WindowSettings) -> (MainWindow, Maybe(Error)) {
 
 	return MainWindow {
 			window = window,
-			renderer = renderer,
+			renderer = Renderer{sdl_renderer = renderer},
 			address_bar = address_bar,
 			page_view = page_view,
 		},
@@ -79,7 +79,7 @@ init :: proc(window_settings: WindowSettings) -> (MainWindow, Maybe(Error)) {
 
 destroy :: proc(ui: ^MainWindow) {
 	fonts_close()
-	sdl.DestroyRenderer(ui.renderer)
+	sdl.DestroyRenderer(ui.renderer.sdl_renderer)
 	sdl.DestroyWindow(ui.window)
 	sdl.Quit()
 }
@@ -100,11 +100,11 @@ run :: proc(ui: ^MainWindow) {
 			}
 		}
 
-		sdl.SetRenderDrawColor(ui.renderer, 255, 255, 255, 255)
-		sdl.RenderClear(ui.renderer)
+		sdl.SetRenderDrawColor(ui.renderer.sdl_renderer, 255, 255, 255, 255)
+		sdl.RenderClear(ui.renderer.sdl_renderer)
 
 		page_view_render(ui, &ui.page_view) // page view before address bar so bar is always overlaying
 		address_bar_render(ui, &ui.address_bar)
-		sdl.RenderPresent(ui.renderer)
+		sdl.RenderPresent(ui.renderer.sdl_renderer)
 	}
 }

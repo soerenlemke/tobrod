@@ -30,24 +30,24 @@ address_bar_init :: proc(window_width: i32) -> (AddressBar, Maybe(runtime.Alloca
 address_bar_render :: proc(ui: ^MainWindow, bar: ^AddressBar) {
 	// background
 	sdl.SetRenderDrawColor(
-		ui.renderer,
+		ui.renderer.sdl_renderer,
 		bar.bg_color.r,
 		bar.bg_color.g,
 		bar.bg_color.b,
 		bar.bg_color.a,
 	)
-	sdl.RenderFillRect(ui.renderer, &bar.rect)
+	sdl.RenderFillRect(ui.renderer.sdl_renderer, &bar.rect)
 
 	// border bottom
 	sdl.SetRenderDrawColor(
-		ui.renderer,
+		ui.renderer.sdl_renderer,
 		bar.bg_color.r,
 		bar.bg_color.g,
 		bar.bg_color.b,
 		bar.bg_color.a,
 	)
 	bottom_line := sdl.FRect{0, bar.rect.h - 1, bar.rect.w, 1}
-	sdl.RenderFillRect(ui.renderer, &bottom_line)
+	sdl.RenderFillRect(ui.renderer.sdl_renderer, &bottom_line)
 
 	// input field
 	input_rect := sdl.FRect {
@@ -56,25 +56,26 @@ address_bar_render :: proc(ui: ^MainWindow, bar: ^AddressBar) {
 		w = bar.rect.w - 160, // space for reload etc. on the right
 		h = 24,
 	}
-	sdl.SetRenderDrawColor(ui.renderer, 255, 255, 255, 255)
-	sdl.RenderFillRect(ui.renderer, &input_rect)
+	sdl.SetRenderDrawColor(ui.renderer.sdl_renderer, 255, 255, 255, 255)
+	sdl.RenderFillRect(ui.renderer.sdl_renderer, &input_rect)
 
 	// focus border
 	if bar.focused {
-		sdl.SetRenderDrawColor(ui.renderer, 66, 133, 244, 255)
+		sdl.SetRenderDrawColor(ui.renderer.sdl_renderer, 66, 133, 244, 255)
 	} else {
-		sdl.SetRenderDrawColor(ui.renderer, 200, 200, 200, 255)
+		sdl.SetRenderDrawColor(ui.renderer.sdl_renderer, 200, 200, 200, 255)
 	}
-	sdl.RenderRect(ui.renderer, &input_rect)
+	sdl.RenderRect(ui.renderer.sdl_renderer, &input_rect)
 
 	// render text
 	if len(bar.text.buf) > 0 {
-		text_c := strings.to_cstring(&bar.text)
-		texture := fonts_render_text_to_texture(ui.renderer, text_c, {30, 30, 30, 255})
+		texture := renderer_get_text_texture(
+			&ui.renderer,
+			strings.to_string(bar.text),
+			{30, 30, 30, 255},
+		)
 
 		if texture != nil {
-			defer sdl.DestroyTexture(texture)
-
 			text_width, text_height: f32
 			sdl.GetTextureSize(texture, &text_width, &text_height)
 
@@ -84,7 +85,7 @@ address_bar_render :: proc(ui: ^MainWindow, bar: ^AddressBar) {
 				w = text_width,
 				h = text_height,
 			}
-			sdl.RenderTexture(ui.renderer, texture, nil, &dst)
+			sdl.RenderTexture(ui.renderer.sdl_renderer, texture, nil, &dst)
 		}
 	}
 }

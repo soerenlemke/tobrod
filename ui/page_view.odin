@@ -26,17 +26,19 @@ page_view_init :: proc(window_width, window_height: i32) -> PageView {
 }
 
 page_view_render :: proc(ui: ^MainWindow, pv: ^PageView) {
-	sdl.SetRenderDrawColor(ui.renderer, pv.bg_color.r, pv.bg_color.g, pv.bg_color.b, pv.bg_color.a)
-	sdl.RenderFillRect(ui.renderer, &pv.rect)
+	sdl.SetRenderDrawColor(
+		ui.renderer.sdl_renderer,
+		pv.bg_color.r,
+		pv.bg_color.g,
+		pv.bg_color.b,
+		pv.bg_color.a,
+	)
+	sdl.RenderFillRect(ui.renderer.sdl_renderer, &pv.rect)
 
 	if len(pv.content) > 0 {
-		text_c := strings.clone_to_cstring(pv.content)
-		defer delete(text_c)
-		texture := fonts_render_text_to_texture(ui.renderer, text_c, {30, 30, 30, 255})
+		texture := renderer_get_text_texture(&ui.renderer, pv.content, {30, 30, 30, 255})
 
 		if texture != nil {
-			defer sdl.DestroyTexture(texture)
-
 			text_width, text_height: f32
 			sdl.GetTextureSize(texture, &text_width, &text_height)
 			dst := sdl.FRect {
@@ -45,7 +47,7 @@ page_view_render :: proc(ui: ^MainWindow, pv: ^PageView) {
 				w = text_width,
 				h = text_height,
 			}
-			sdl.RenderTexture(ui.renderer, texture, nil, &dst)
+			sdl.RenderTexture(ui.renderer.sdl_renderer, texture, nil, &dst)
 		}
 	}
 }
