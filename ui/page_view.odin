@@ -1,6 +1,5 @@
 package ui
 
-import "core:strings"
 import sdl "vendor:sdl3"
 
 PageView :: struct {
