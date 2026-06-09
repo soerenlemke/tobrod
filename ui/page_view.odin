@@ -2,10 +2,13 @@ package ui
 
 import sdl "vendor:sdl3"
 
+SCROLL_SPEED :: f32(30)
+
 PageView :: struct {
 	rect:     sdl.FRect,
 	bg_color: sdl.Color,
 	content:  string,
+	scroll_y: f32,
 }
 
 page_view_init :: proc(window_width, window_height: i32) -> PageView {
@@ -21,6 +24,15 @@ page_view_init :: proc(window_width, window_height: i32) -> PageView {
 }
 
 page_view_render :: proc(ui: ^MainWindow, pv: ^PageView) {
+	clip := sdl.Rect {
+		x = i32(pv.rect.x),
+		y = i32(pv.rect.y),
+		w = i32(pv.rect.w),
+		h = i32(pv.rect.h),
+	}
+	sdl.SetRenderClipRect(ui.renderer.sdl_renderer, &clip)
+	defer sdl.SetRenderClipRect(ui.renderer.sdl_renderer, nil)
+
 	sdl.SetRenderDrawColor(
 		ui.renderer.sdl_renderer,
 		pv.bg_color.r,
@@ -43,7 +55,7 @@ page_view_render :: proc(ui: ^MainWindow, pv: ^PageView) {
 			sdl.GetTextureSize(texture, &text_width, &text_height)
 			dst := sdl.FRect {
 				x = pv.rect.x,
-				y = pv.rect.y,
+				y = pv.rect.y - pv.scroll_y,
 				w = text_width,
 				h = text_height,
 			}
@@ -57,4 +69,9 @@ page_view_handle_resize :: proc(pv: ^PageView, r: ^Renderer, window_width, windo
 	pv.rect.h = f32(window_height) - ADDRESS_BAR_HEIGHT
 
 	renderer_invalidate_text_cache(r, pv.content) // needed for getting a new texture that fits the new window size
+}
+
+page_view_handle_scroll :: proc(pv: ^PageView, wheel_y: f32) {
+	pv.scroll_y -= wheel_y * SCROLL_SPEED
+	pv.scroll_y = max(pv.scroll_y, 0)
 }

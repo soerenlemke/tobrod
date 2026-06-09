@@ -102,6 +102,8 @@ run :: proc(ui: ^MainWindow) {
 					event.window.data1,
 					event.window.data2,
 				)
+			case .MOUSE_WHEEL:
+				page_view_handle_scroll(&ui.page_view, event.wheel.y)
 			}
 		}
 

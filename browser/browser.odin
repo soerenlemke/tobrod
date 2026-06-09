@@ -49,6 +49,5 @@ register_callbacks :: proc(b: ^Browser) {
 		}
 
 		browser.window.page_view.content = response.body
-		fmt.println("reponse body", browser.window.page_view.content)
 	}
 }
