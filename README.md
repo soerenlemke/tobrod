@@ -40,6 +40,7 @@ Stage 3 — Page View Renderer (Raw Text)
 - [x] Text rendering in page view
 - [x] Text wrapping
 - [x] Scrolling
+   - [x] scrolling should only be possible if the content exceeds the view
 
 Stage 4 — HTML & CSS Parsing
 

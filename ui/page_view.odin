@@ -5,10 +5,11 @@ import sdl "vendor:sdl3"
 SCROLL_SPEED :: f32(30)
 
 PageView :: struct {
-	rect:     sdl.FRect,
-	bg_color: sdl.Color,
-	content:  string,
-	scroll_y: f32,
+	rect:           sdl.FRect,
+	bg_color:       sdl.Color,
+	content:        string,
+	scroll_y:       f32,
+	content_height: f32,
 }
 
 page_view_init :: proc(window_width, window_height: i32) -> PageView {
@@ -53,6 +54,7 @@ page_view_render :: proc(ui: ^MainWindow, pv: ^PageView) {
 		if texture != nil {
 			text_width, text_height: f32
 			sdl.GetTextureSize(texture, &text_width, &text_height)
+			pv.content_height = text_height
 			dst := sdl.FRect {
 				x = pv.rect.x,
 				y = pv.rect.y - pv.scroll_y,
@@ -71,7 +73,11 @@ page_view_handle_resize :: proc(pv: ^PageView, r: ^Renderer, window_width, windo
 	renderer_invalidate_text_cache(r, pv.content) // needed for getting a new texture that fits the new window size
 }
 
-page_view_handle_scroll :: proc(pv: ^PageView, wheel_y: f32) {
+page_view_handle_scroll :: proc(pv: ^PageView, wheel_y: f32, content_height: f32) {
 	pv.scroll_y -= wheel_y * SCROLL_SPEED
 	pv.scroll_y = max(pv.scroll_y, 0)
+
+	// limit scrolling when content is smaller than view
+	max_scroll := max(content_height - pv.rect.h, 0)
+	pv.scroll_y = min(pv.scroll_y, max_scroll)
 }
