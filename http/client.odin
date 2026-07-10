@@ -4,6 +4,8 @@ import "base:runtime"
 import "core:strings"
 import "vendor:curl"
 
+STANDARD_READ_TIMEOUT :: 30
+
 Http_Error :: struct {
 	code:    curl.code,
 	message: string,
@@ -54,6 +56,7 @@ get :: proc(c: ^Client, url: string) -> (Http_Response, Maybe(Http_Error)) {
 	curl.easy_setopt(c.handle, .HEADERDATA, &c.header_builder) // header
 	curl.easy_setopt(c.handle, .WRITEFUNCTION, write_callback)
 	curl.easy_setopt(c.handle, .WRITEDATA, &c.body_builder) // body
+	curl.easy_setopt(c.handle, .TIMEOUT, STANDARD_READ_TIMEOUT)
 
 	response_code := curl.easy_perform(c.handle)
 	if response_code != .E_OK {

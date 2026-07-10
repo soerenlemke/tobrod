@@ -28,14 +28,14 @@ init :: proc(settings: ui.WindowSettings) -> (Browser, Maybe(ui.Error)) {
 	return b, nil
 }
 
-run :: proc(b: ^Browser) {
-	ui.run(&b.window)
-}
-
 destroy :: proc(b: ^Browser) {
 	ui.renderer_destroy(&b.window.renderer)
 	ui.destroy(&b.window)
 	http.destroy(&b.http_client)
+}
+
+run :: proc(b: ^Browser) {
+	ui.run(&b.window)
 }
 
 register_callbacks :: proc(b: ^Browser) {
