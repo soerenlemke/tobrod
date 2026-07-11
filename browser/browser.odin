@@ -29,7 +29,6 @@ init :: proc(settings: ui.WindowSettings) -> (Browser, Maybe(ui.Error)) {
 }
 
 destroy :: proc(b: ^Browser) {
-	ui.renderer_destroy(&b.window.renderer)
 	ui.destroy(&b.window)
 	http.destroy(&b.http_client)
 }

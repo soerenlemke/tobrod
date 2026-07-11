@@ -1,12 +1,11 @@
 package ui
 
-import sdl "vendor:sdl3"
-
-SCROLL_SPEED :: f32(30)
+import "core:strings"
+import rl "vendor:raylib"
 
 PageView :: struct {
-	rect:           sdl.FRect,
-	bg_color:       sdl.Color,
+	rect:           rl.Rectangle,
+	bg_color:       rl.Color,
 	content:        string,
 	scroll_y:       f32,
 	content_height: f32,
@@ -14,70 +13,45 @@ PageView :: struct {
 
 page_view_init :: proc(window_width, window_height: i32) -> PageView {
 	return PageView {
-		rect = sdl.FRect {
+		rect = rl.Rectangle {
 			x = 0,
 			y = f32(ADDRESS_BAR_HEIGHT),
-			w = f32(window_width),
-			h = f32(window_height) - f32(ADDRESS_BAR_HEIGHT),
+			width = f32(window_width),
+			height = f32(window_height) - f32(ADDRESS_BAR_HEIGHT),
 		},
-		bg_color = sdl.Color{255, 255, 255, 255},
+		bg_color = rl.Color{255, 255, 255, 255},
 	}
 }
 
-page_view_render :: proc(ui: ^MainWindow, pv: ^PageView) {
-	clip := sdl.Rect {
-		x = i32(pv.rect.x),
-		y = i32(pv.rect.y),
-		w = i32(pv.rect.w),
-		h = i32(pv.rect.h),
-	}
-	sdl.SetRenderClipRect(ui.renderer.sdl_renderer, &clip)
-	defer sdl.SetRenderClipRect(ui.renderer.sdl_renderer, nil)
+page_view_render :: proc(pv: ^PageView) {
+	rl.BeginScissorMode(i32(pv.rect.x), i32(pv.rect.y), i32(pv.rect.width), i32(pv.rect.height))
+	defer rl.EndScissorMode()
 
-	sdl.SetRenderDrawColor(
-		ui.renderer.sdl_renderer,
-		pv.bg_color.r,
-		pv.bg_color.g,
-		pv.bg_color.b,
-		pv.bg_color.a,
-	)
-	sdl.RenderFillRect(ui.renderer.sdl_renderer, &pv.rect)
+	rl.DrawRectangleRec(pv.rect, pv.bg_color)
 
 	if len(pv.content) > 0 {
-		texture := renderer_get_text_texture(
-			&ui.renderer,
-			pv.content,
-			{30, 30, 30, 255},
-			pv.rect.w,
-		)
+		text_c := strings.clone_to_cstring(pv.content)
+		defer delete(text_c)
 
-		if texture != nil {
-			text_width, text_height: f32
-			sdl.GetTextureSize(texture, &text_width, &text_height)
-			pv.content_height = text_height
-			dst := sdl.FRect {
-				x = pv.rect.x,
-				y = pv.rect.y - pv.scroll_y,
-				w = text_width,
-				h = text_height,
-			}
-			sdl.RenderTexture(ui.renderer.sdl_renderer, texture, nil, &dst)
-		}
+		font_size: f32 = 16
+		size := rl.MeasureTextEx(font, text_c, font_size, 0)
+		pv.content_height = size.y
+
+		pos := rl.Vector2{pv.rect.x, pv.rect.y - pv.scroll_y}
+		rl.DrawTextEx(font, text_c, pos, font_size, 0, rl.Color{30, 30, 30, 255})
 	}
 }
 
-page_view_handle_resize :: proc(pv: ^PageView, r: ^Renderer, window_width, window_height: i32) {
-	pv.rect.w = f32(window_width)
-	pv.rect.h = f32(window_height) - ADDRESS_BAR_HEIGHT
-
-	renderer_invalidate_text_cache(r, pv.content) // needed for getting a new texture that fits the new window size
+page_view_handle_resize :: proc(pv: ^PageView, window_width, window_height: i32) {
+	pv.rect.width = f32(window_width)
+	pv.rect.height = f32(window_height) - ADDRESS_BAR_HEIGHT
 }
 
 page_view_handle_scroll :: proc(pv: ^PageView, wheel_y: f32, content_height: f32) {
-	pv.scroll_y -= wheel_y * SCROLL_SPEED
+	pv.scroll_y -= wheel_y * PAGE_VIEW_SCROLL_SPEED
 	pv.scroll_y = max(pv.scroll_y, 0)
 
 	// limit scrolling when content is smaller than view
-	max_scroll := max(content_height - pv.rect.h, 0)
+	max_scroll := max(content_height - pv.rect.height, 0)
 	pv.scroll_y = min(pv.scroll_y, max_scroll)
 }

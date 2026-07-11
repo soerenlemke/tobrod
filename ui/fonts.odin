@@ -1,52 +1,23 @@
 package ui
 
 import "core:strings"
-import sdl "vendor:sdl3"
-import "vendor:sdl3/ttf"
+import rl "vendor:raylib"
 
-// Global font for text rendering
-font: ^ttf.Font = nil
+// Global font for text rendering, initialized once via fonts_init
+font: rl.Font
 
-FontError :: struct {
-	message: string,
-}
-
-// should be called at the start of the app to make sure fonts are available
-fonts_init :: proc(font_path: string) {
-	if ttf.Init() == false {
-		panic("ttf init failed")
-	}
-
+fonts_init :: proc(font_path: string) -> Maybe(Error) {
 	font_c := strings.clone_to_cstring(font_path)
-	font = ttf.OpenFont(font_c, 16)
-	if font == nil {
-		panic("could not load selected font")
+	defer delete(font_c)
+
+	font = rl.LoadFontEx(font_c, 32, nil, 0)
+	if font.texture.id == 0 {
+		return Error{message = "could not load font"}
 	}
+
+	return nil
 }
 
 fonts_close :: proc() {
-	if font != nil {
-		ttf.CloseFont(font)
-	}
-	ttf.Quit()
-}
-
-// renders text to sdl texture
-fonts_render_text_to_texture :: proc(
-	renderer: ^sdl.Renderer,
-	text: cstring,
-	color: sdl.Color,
-	width_limit: f32,
-) -> ^sdl.Texture {
-	surface := ttf.RenderText_Blended_Wrapped(font, text, len(text), color, i32(width_limit))
-	if surface == nil {
-		return nil
-	}
-
-	texture := sdl.CreateTextureFromSurface(renderer, surface)
-	sdl.free(surface)
-
-	sdl.SetTextureBlendMode(texture, sdl.BLENDMODE_BLEND)
-
-	return texture
+	rl.UnloadFont(font)
 }
