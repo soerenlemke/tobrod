@@ -2,141 +2,94 @@ package ui
 
 import "base:runtime"
 import "core:strings"
-import sdl "vendor:sdl3"
+import rl "vendor:raylib"
 
 AddressBar :: struct {
-	rect:         sdl.FRect,
+	rect:         rl.Rectangle,
 	text:         strings.Builder,
 	focused:      bool,
-	bg_color:     sdl.Color,
-	border_color: sdl.Color,
+	bg_color:     rl.Color,
+	border_color: rl.Color,
 }
 
-address_bar_init :: proc(window_width: i32) -> (AddressBar, Maybe(runtime.Allocator_Error)) {
+address_bar_init :: proc(window_width: i32) -> AddressBar {
 	bar := AddressBar {
-		rect = sdl.FRect{x = 0, y = 0, w = f32(window_width), h = ADDRESS_BAR_HEIGHT},
+		rect = rl.Rectangle{x = 0, y = 0, width = f32(window_width), height = ADDRESS_BAR_HEIGHT},
 		focused = false,
-		bg_color = sdl.Color{240, 240, 240, 255},
-		border_color = sdl.Color{180, 180, 180, 255},
+		bg_color = rl.Color{240, 240, 240, 255},
+		border_color = rl.Color{180, 180, 180, 255},
 	}
-	_, err := strings.builder_init(&bar.text)
-	if err == .None {
-		return bar, nil
-	}
-
-	return bar, err
+	strings.builder_init(&bar.text)
+	return bar
 }
 
-address_bar_render :: proc(ui: ^MainWindow, bar: ^AddressBar) {
-	// background
-	sdl.SetRenderDrawColor(
-		ui.renderer.sdl_renderer,
-		bar.bg_color.r,
-		bar.bg_color.g,
-		bar.bg_color.b,
-		bar.bg_color.a,
-	)
-	sdl.RenderFillRect(ui.renderer.sdl_renderer, &bar.rect)
+address_bar_render :: proc(bar: ^AddressBar) {
+	rl.DrawRectangleRec(bar.rect, bar.bg_color)
 
 	// border bottom
-	sdl.SetRenderDrawColor(
-		ui.renderer.sdl_renderer,
-		bar.bg_color.r,
-		bar.bg_color.g,
-		bar.bg_color.b,
-		bar.bg_color.a,
-	)
-	bottom_line := sdl.FRect{0, bar.rect.h - 1, bar.rect.w, 1}
-	sdl.RenderFillRect(ui.renderer.sdl_renderer, &bottom_line)
+	bottom_line := rl.Rectangle{0, bar.rect.height - 1, bar.rect.width, 1}
+	rl.DrawRectangleRec(bottom_line, bar.border_color)
 
 	// input field
-	input_rect := sdl.FRect {
-		x = 80, // space for icons/buttons on the left
-		y = 6,
-		w = bar.rect.w - 160, // space for reload etc. on the right
-		h = 24,
+	input_rect := rl.Rectangle {
+		x      = 80, // space for icons/buttons on the left
+		y      = 6,
+		width  = bar.rect.width - 160, // space for reload etc. on the right
+		height = 24,
 	}
-	sdl.SetRenderDrawColor(ui.renderer.sdl_renderer, 255, 255, 255, 255)
-	sdl.RenderFillRect(ui.renderer.sdl_renderer, &input_rect)
+	rl.DrawRectangleRec(input_rect, rl.WHITE)
 
 	// focus border
-	if bar.focused {
-		sdl.SetRenderDrawColor(ui.renderer.sdl_renderer, 66, 133, 244, 255)
-	} else {
-		sdl.SetRenderDrawColor(ui.renderer.sdl_renderer, 200, 200, 200, 255)
-	}
-	sdl.RenderRect(ui.renderer.sdl_renderer, &input_rect)
+	focus_color := bar.focused ? rl.Color{66, 133, 244, 255} : rl.Color{200, 200, 200, 255}
+	rl.DrawRectangleLinesEx(input_rect, 1, focus_color)
 
 	// render text
-	if len(bar.text.buf) > 0 {
-		texture := renderer_get_text_texture(
-			&ui.renderer,
-			strings.to_string(bar.text),
-			{30, 30, 30, 255},
-			bar.rect.w,
-		)
+	if strings.builder_len(bar.text) > 0 {
+		text_c := strings.clone_to_cstring(strings.to_string(bar.text))
+		defer delete(text_c)
 
-		if texture != nil {
-			text_width, text_height: f32
-			sdl.GetTextureSize(texture, &text_width, &text_height)
+		font_size: f32 = 16
+		size := rl.MeasureTextEx(font, text_c, font_size, 0)
 
-			dst := sdl.FRect {
-				x = input_rect.x + 6,
-				y = input_rect.y + (input_rect.h - text_height) / 2,
-				w = text_width,
-				h = text_height,
-			}
-			sdl.RenderTexture(ui.renderer.sdl_renderer, texture, nil, &dst)
-		}
+		pos := rl.Vector2{input_rect.x + 6, input_rect.y + (input_rect.height - size.y) / 2}
+		rl.DrawTextEx(font, text_c, pos, font_size, 0, rl.Color{30, 30, 30, 255})
 	}
 }
 
 address_bar_handle_resize :: proc(bar: ^AddressBar, window_width, window_height: i32) {
-	bar.rect.w = f32(window_width)
+	bar.rect.width = f32(window_width)
 }
 
-address_bar_handle_event :: proc(ui: ^MainWindow, bar: ^AddressBar, event: ^sdl.Event) {
-	#partial switch event.type {
-	case .MOUSE_BUTTON_DOWN:
-		mx := f32(event.button.x)
-		my := f32(event.button.y)
+address_bar_handle_input :: proc(ui: ^MainWindow, bar: ^AddressBar) {
+	if rl.IsMouseButtonPressed(.LEFT) {
+		bar.focused = rl.CheckCollisionPointRec(rl.GetMousePosition(), bar.rect)
+	}
 
-		bar.focused =
-			mx >= bar.rect.x &&
-			mx <= bar.rect.x + bar.rect.w &&
-			my >= bar.rect.y &&
-			my <= bar.rect.y + bar.rect.h
+	if !bar.focused do return
 
-		if bar.focused {
-			_ = sdl.StartTextInput(ui.window)
-		} else {
-			_ = sdl.StopTextInput(ui.window)
+	// raylib can deliver multiple characters per frame, so use a loop instead of a single event
+	for {
+		key := rl.GetCharPressed()
+		if key == 0 do break
+		strings.write_rune(&bar.text, key)
+	}
+
+	if rl.IsKeyPressed(.BACKSPACE) {
+		s := strings.to_string(bar.text)
+		if len(s) > 0 {
+			strings.builder_reset(&bar.text)
+			strings.write_string(&bar.text, s[:len(s) - 1])
 		}
+	}
 
-	case .TEXT_INPUT:
-		if bar.focused {
-			strings.write_string(&bar.text, string(event.text.text))
+	if rl.IsKeyPressed(.ENTER) {
+		if ui.on_url_submit != nil {
+			ui.on_url_submit(strings.to_string(bar.text), ui.on_url_submit_ctx)
 		}
+		bar.focused = false
+	}
 
-	case .KEY_DOWN:
-		if bar.focused {
-			switch event.key.key {
-			case sdl.K_BACKSPACE:
-				s := strings.to_string(bar.text)
-				if len(s) > 0 {
-					strings.builder_reset(&bar.text)
-					strings.write_string(&bar.text, s[:len(s) - 1])
-				}
-			case sdl.K_RETURN:
-				if ui.on_url_submit != nil {
-					ui.on_url_submit(strings.to_string(bar.text), ui.on_url_submit_ctx)
-				}
-				_ = sdl.StopTextInput(nil)
-				bar.focused = false
-			case sdl.K_ESCAPE:
-				_ = sdl.StopTextInput(nil)
-				bar.focused = false
-			}
-		}
+	if rl.IsKeyPressed(.ESCAPE) {
+		bar.focused = false
 	}
 }

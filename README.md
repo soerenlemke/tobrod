@@ -4,16 +4,14 @@ tobrod - a toy browser in Odin
 ## Dependencies
 
 - [libcurl](https://curl.se)
-- [SDL3](https://libsdl.org)
+- [raylib](https://www.raylib.com) (bundled via `vendor:raylib`, no separate download needed)
 
 ## Setup Windows
 Run `.\setup.ps1` before building.
 
 ## Setup MacOS
-- brew install sdl3
 - brew install curl
 - brew install mbedtls
-- brew install sdl3_ttf
 
 # Planned stages
 
@@ -26,7 +24,7 @@ Stage 1 — HTTP Client
 
 Stage 2 — Window & UI
 
-- [x] Window creation via vendor:sdl3
+- [x] Window creation via vendor:raylib
 - [ ] Address bar
    - [x] basic address bar ui
    - [x] basic text rendering for user input
@@ -38,7 +36,7 @@ Stage 2 — Window & UI
 Stage 3 — Page View Renderer (Raw Text)
 
 - [x] Text rendering in page view
-- [x] Text wrapping
+- [ ] Text wrapping
 - [x] Scrolling
    - [x] scrolling should only be possible if the content exceeds the view
 
@@ -51,7 +49,7 @@ Stage 4 — HTML & CSS Parsing
 
 Stage 5 - Threads
 - [ ] Run http requests in own thread
-- [ ] how to send results back to ui? -> SDL_PushEvent?
+- [ ] how to send results back to ui?
 - [ ] http client is not thread safe... what to do?
 
 Stage 6 — JavaScript Engine

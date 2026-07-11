@@ -2,10 +2,7 @@ package ui
 
 import "core:fmt"
 import "core:strings"
-import sdl "vendor:sdl3"
-
-// ui wide constants
-ADDRESS_BAR_HEIGHT :: 36
+import rl "vendor:raylib"
 
 Error :: struct {
 	message: string,
@@ -18,8 +15,6 @@ WindowSettings :: struct {
 }
 
 MainWindow :: struct {
-	window:            ^sdl.Window,
-	renderer:          Renderer,
 	address_bar:       AddressBar,
 	page_view:         PageView,
 	on_url_submit:     proc(url: string, ctx: rawptr),
@@ -27,91 +22,52 @@ MainWindow :: struct {
 }
 
 init :: proc(window_settings: WindowSettings) -> (MainWindow, Maybe(Error)) {
-	if !sdl.Init({.VIDEO}) {
-		return {}, Error{message = string(sdl.GetError())}
-	}
-
 	name_cstring, alloc_err := strings.clone_to_cstring(window_settings.name)
 	if alloc_err != .None {
 		return {}, Error{message = "Could not allocate window name"}
 	}
 	defer delete(name_cstring)
 
-	window := sdl.CreateWindow(
-		name_cstring,
-		window_settings.init_width,
-		window_settings.init_height,
-		{.RESIZABLE},
-	)
-	if window == nil {
-		sdl.Quit()
-		return {}, Error{message = string(sdl.GetError())}
+	rl.SetConfigFlags({.WINDOW_RESIZABLE})
+	rl.InitWindow(window_settings.init_width, window_settings.init_height, name_cstring)
+
+	if err, has_err := fonts_init("assets/fonts/Inter_18pt-Regular.ttf").?; has_err {
+		rl.CloseWindow()
+		return {}, err
 	}
 
-	renderer := sdl.CreateRenderer(window, nil)
-	if renderer == nil {
-		sdl.DestroyWindow(window)
-		sdl.Quit()
-		return {}, Error{message = string(sdl.GetError())}
-	}
-
-	address_bar, address_bar_error := address_bar_init(window_settings.init_width)
-	if alloc_err, ok := address_bar_error.?; ok {
-		sdl.DestroyRenderer(renderer)
-		sdl.DestroyWindow(window)
-		sdl.Quit()
-		return {}, Error{message = fmt.tprintf("address bar init failed: %v", alloc_err)}
-	}
-
+	address_bar := address_bar_init(window_settings.init_width)
 	page_view := page_view_init(window_settings.init_width, window_settings.init_height)
 
-	// load fonts to make them globally available
-	fonts_init("assets/fonts/Inter_18pt-Regular.ttf")
-
-	return MainWindow {
-			window = window,
-			renderer = Renderer{sdl_renderer = renderer},
-			address_bar = address_bar,
-			page_view = page_view,
-		},
-		nil
+	return MainWindow{address_bar = address_bar, page_view = page_view}, nil
 }
 
 destroy :: proc(ui: ^MainWindow) {
 	fonts_close()
-	sdl.DestroyRenderer(ui.renderer.sdl_renderer)
-	sdl.DestroyWindow(ui.window)
-	sdl.Quit()
+	rl.CloseWindow()
 }
 
 run :: proc(ui: ^MainWindow) {
-	running := true
-	for running {
-		event: sdl.Event
-		for sdl.PollEvent(&event) {
-			address_bar_handle_event(ui, &ui.address_bar, &event)
-
-			#partial switch event.type {
-			case .QUIT:
-				running = false
-			case .WINDOW_RESIZED:
-				address_bar_handle_resize(&ui.address_bar, event.window.data1, event.window.data2)
-				page_view_handle_resize(
-					&ui.page_view,
-					&ui.renderer,
-					event.window.data1,
-					event.window.data2,
-				)
-			case .MOUSE_WHEEL:
-				page_view_handle_scroll(&ui.page_view, event.wheel.y, ui.page_view.content_height)
-			}
+	for !rl.WindowShouldClose() {
+		if rl.IsWindowResized() {
+			w := rl.GetScreenWidth()
+			h := rl.GetScreenHeight()
+			address_bar_handle_resize(&ui.address_bar, w, h)
+			page_view_handle_resize(&ui.page_view, w, h)
 		}
 
-		sdl.SetRenderDrawColor(ui.renderer.sdl_renderer, 255, 255, 255, 255)
-		sdl.RenderClear(ui.renderer.sdl_renderer)
+		address_bar_handle_input(ui, &ui.address_bar)
 
-		page_view_render(ui, &ui.page_view) // page view before address bar so bar is always overlaying
-		address_bar_render(ui, &ui.address_bar)
-		sdl.RenderPresent(ui.renderer.sdl_renderer)
+		if wheel := rl.GetMouseWheelMove(); wheel != 0 {
+			page_view_handle_scroll(&ui.page_view, wheel, ui.page_view.content_height)
+		}
+
+		rl.BeginDrawing()
+		rl.ClearBackground(rl.WHITE)
+
+		page_view_render(&ui.page_view)
+		address_bar_render(&ui.address_bar)
+
+		rl.EndDrawing()
 	}
 }
