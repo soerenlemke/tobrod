@@ -30,15 +30,16 @@ page_view_render :: proc(pv: ^PageView) {
 	rl.DrawRectangleRec(pv.rect, pv.bg_color)
 
 	if len(pv.content) > 0 {
-		text_c := strings.clone_to_cstring(pv.content)
-		defer delete(text_c)
+		lines := wrap_text(pv.content, pv.rect.width)
+		pv.content_height = f32(len(lines)) * LINE_HEIGHT
 
-		font_size: f32 = 16
-		size := rl.MeasureTextEx(font, text_c, font_size, 0)
-		pv.content_height = size.y
-
-		pos := rl.Vector2{pv.rect.x, pv.rect.y - pv.scroll_y}
-		rl.DrawTextEx(font, text_c, pos, font_size, 0, rl.Color{30, 30, 30, 255})
+		y := pv.rect.y - pv.scroll_y
+		for line in lines {
+			line_c := strings.clone_to_cstring(line, context.temp_allocator)
+			pos := rl.Vector2{pv.rect.x, y}
+			rl.DrawTextEx(font, line_c, pos, FONT_SIZE, LINE_SPACING, rl.Color{30, 30, 30, 255})
+			y += LINE_HEIGHT
+		}
 	}
 }
 
@@ -54,4 +55,42 @@ page_view_handle_scroll :: proc(pv: ^PageView, wheel_y: f32, content_height: f32
 	// limit scrolling when content is smaller than view
 	max_scroll := max(content_height - pv.rect.height, 0)
 	pv.scroll_y = min(pv.scroll_y, max_scroll)
+}
+
+wrap_text :: proc(text: string, max_width: f32) -> []string {
+	// using temp_allocator so we don't have to manually delete every frame
+	// this will be done in the ui run loop with free_all(context.temp_allocator)
+	lines := make([dynamic]string, context.temp_allocator)
+	words := strings.fields(text, context.temp_allocator)
+	current_line := strings.builder_make(context.temp_allocator)
+
+	for word in words {
+		candidate: string
+		if strings.builder_len(current_line) == 0 {
+			candidate = word
+		} else {
+			candidate = strings.concatenate(
+				{strings.to_string(current_line), " ", word},
+				context.temp_allocator,
+			)
+		}
+
+		candidate_c := strings.clone_to_cstring(candidate, context.temp_allocator)
+		width := rl.MeasureTextEx(font, candidate_c, FONT_SIZE, LINE_SPACING).x
+
+		if width > max_width && strings.builder_len(current_line) > 0 {
+			append(&lines, strings.clone(strings.to_string(current_line), context.temp_allocator))
+			strings.builder_reset(&current_line)
+			strings.write_string(&current_line, word)
+		} else {
+			strings.builder_reset(&current_line)
+			strings.write_string(&current_line, candidate)
+		}
+	}
+
+	if strings.builder_len(current_line) > 0 {
+		append(&lines, strings.clone(strings.to_string(current_line), context.temp_allocator))
+	}
+
+	return lines[:]
 }

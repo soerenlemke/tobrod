@@ -1,6 +1,5 @@
 package ui
 
-import "core:fmt"
 import "core:strings"
 import rl "vendor:raylib"
 
@@ -69,5 +68,9 @@ run :: proc(ui: ^MainWindow) {
 		address_bar_render(&ui.address_bar)
 
 		rl.EndDrawing()
+
+		// cleaning up the temp allocated stuff each frame
+		// e.g. wrap text is currently using the temp allocator
+		free_all(context.temp_allocator)
 	}
 }
