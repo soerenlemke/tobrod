@@ -2,7 +2,7 @@ package http
 
 import "base:runtime"
 import "core:strings"
-import "vendor:curl"
+import "../vendor/curl"
 
 STANDARD_READ_TIMEOUT :: 30
 

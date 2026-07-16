@@ -3,13 +3,18 @@ tobrod - a toy browser in Odin
 
 ## Dependencies
 
-- [libcurl](https://curl.se)
+- [libcurl](https://curl.se) (built from source via git submodule, see Setup)
 - [raylib](https://www.raylib.com) (bundled via `vendor:raylib`, no separate download needed)
+- [lexbor](https://github.com/lexbor/lexbor)
 
 ## Setup Windows
-Run `.\setup.ps1` before building.
+
+Requires CMake and Visual Studio Build Tools (for the MSVC linker/compiler) to be installed beforehand.
+
+Run `.\setup.ps1` before building. This builds curl from source (statically, with a CRT setting compatible with `vendor:raylib` — Odin's bundled `vendor:curl` conflicts with raylib on Windows, see git history for details).
 
 ## Setup MacOS
+
 - brew install curl
 - brew install mbedtls
 - brew install lexbor
@@ -18,7 +23,7 @@ Run `.\setup.ps1` before building.
 
 Stage 1 — HTTP Client
 
-- [x] Basic GET requests via vendor:curl
+- [x] Basic GET requests via self-built libcurl bindings (`vendor/curl`)
 - [x] Response headers parsing
 - [x] Error handling
 - [x] Connection reuse

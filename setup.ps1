@@ -1,13 +1,22 @@
 # setup.ps1
 
-# --- curl ---
-if (!(Test-Path "curl.dll")) {
-    Write-Host "Downloading curl 8.14.0..."
-    Invoke-WebRequest "https://curl.se/windows/dl-8.14.0_1/curl-8.14.0_1-win64-mingw.zip" -OutFile "curl.zip"
-    Expand-Archive "curl.zip" -DestinationPath "curl_tmp"
-    Copy-Item "curl_tmp\curl-8.14.0_1-win64-mingw\bin\libcurl-x64.dll" "curl.dll"
-    Remove-Item "curl.zip"
-    Remove-Item "curl_tmp" -Recurse
+# --- curl (built from source via git submodule) ---
+if (!(Test-Path "vendor\curl-src\build\lib\Release\libcurl.lib")) {
+    Write-Host "Initializing curl submodule..."
+    git submodule update --init --recursive vendor/curl-src
+
+    Write-Host "Building curl (this takes a few minutes)..."
+    Push-Location vendor\curl-src
+    cmake -B build -G "Visual Studio 18 2026" -A x64 `
+        -DBUILD_SHARED_LIBS=OFF `
+        -DCURL_USE_SCHANNEL=ON `
+        -DCURL_USE_LIBPSL=OFF `
+        -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreadedDLL" `
+        -DBUILD_CURL_EXE=OFF
+    cmake --build build --config Release
+    Pop-Location
+} else {
+    Write-Host "curl already built, skipping."
 }
 
 Write-Host "Done! Run 'odin run .' to start." -ForegroundColor Green

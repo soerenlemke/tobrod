@@ -3,3 +3,7 @@
 
 # macos
 .DS_Store
+
+# etc
+vendor/curl-src/build/
+vendor/curl/lib/
