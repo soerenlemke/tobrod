@@ -1,0 +1,3 @@
+[submodule "vendor/curl-src"]
+	path = vendor/curl-src
+	url = https://github.com/curl/curl.git
