@@ -74,7 +74,26 @@ wrap_text :: proc(text: string, max_width: f32) -> []string {
 	// using temp_allocator so we don't have to manually delete every frame
 	// this will be done in the ui run loop with free_all(context.temp_allocator)
 	lines := make([dynamic]string, context.temp_allocator)
+
+	// Line breaks in the content are hard breaks, so split on them first and
+	// wrap each line on its own. Empty lines stay as empty lines.
+	rest := text
+	for line in strings.split_lines_iterator(&rest) {
+		wrap_line(&lines, strings.trim_right(line, ""), max_width)
+	}
+
+	return lines[:]
+}
+
+// Word-wraps a single line (without line breaks) and appends the result to lines.
+@(private)
+wrap_line :: proc(lines: ^[dynamic]string, text: string, max_width: f32) {
 	words := strings.fields(text, context.temp_allocator)
+	if len(words) == 0 {
+		append(lines, "")
+		return
+	}
+
 	current_line := strings.builder_make(context.temp_allocator)
 
 	for word in words {
@@ -92,7 +111,7 @@ wrap_text :: proc(text: string, max_width: f32) -> []string {
 		width := rl.MeasureTextEx(font, candidate_c, FONT_SIZE, LINE_SPACING).x
 
 		if width > max_width && strings.builder_len(current_line) > 0 {
-			append(&lines, strings.clone(strings.to_string(current_line), context.temp_allocator))
+			append(lines, strings.clone(strings.to_string(current_line), context.temp_allocator))
 			strings.builder_reset(&current_line)
 			strings.write_string(&current_line, word)
 		} else {
@@ -102,8 +121,6 @@ wrap_text :: proc(text: string, max_width: f32) -> []string {
 	}
 
 	if strings.builder_len(current_line) > 0 {
-		append(&lines, strings.clone(strings.to_string(current_line), context.temp_allocator))
+		append(lines, strings.clone(strings.to_string(current_line), context.temp_allocator))
 	}
-
-	return lines[:]
 }
