@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>tobrod table test</title>
+  <style>
+    body { max-width: 50em; margin: 16px auto }
+    .data { border-collapse: collapse; margin: 12px 0 }
+    .data th, .data td { border: 1px solid #a2a9b1; padding: 4px 8px }
+    .data th { background: #eaecf0 }
+    .data .num { text-align: right }
+    .infobox { border: 1px solid #a2a9b1; background: #f8f9fa; width: 22em; padding: 4px; margin: 12px 0 }
+    .infobox th { text-align: left; vertical-align: top; padding-right: 8px }
+    .infobox .title { text-align: center; font-size: 1.25em; background: #cedff2 }
+  </style>
+</head>
+<body>
+  <h1>Tables</h1>
+  <p>A data table with collapsed borders, a header row and right-aligned numbers:</p>
+  <table class="data">
+    <thead><tr><th>Browser</th><th>Engine</th><th>Share</th></tr></thead>
+    <tbody>
+      <tr><td>Chrome</td><td>Blink</td><td class="num">69 %</td></tr>
+      <tr><td>Safari</td><td>WebKit</td><td class="num">16 %</td></tr>
+      <tr><td>Firefox</td><td>Gecko</td><td class="num">2 %</td></tr>
+      <tr><td>tobrod</td><td>lexbor + our own layout, written in Odin as a learning project</td><td class="num">0 %</td></tr>
+    </tbody>
+  </table>
+
+  <p>An infobox like on Wikipedia, with a title spanning both columns:</p>
+  <table class="infobox">
+    <tr><th colspan="2" class="title">tobrod</th></tr>
+    <tr><td colspan="2" style="text-align: center"><img src="images/logo.png" width="64" height="64"></td></tr>
+    <tr><th>Written in</th><td>Odin</td></tr>
+    <tr><th>Engine</th><td>lexbor for parsing, everything else self-made</td></tr>
+    <tr><th>License</th><td>MIT</td></tr>
+  </table>
+
+  <table border="1" style="margin-top: 12px">
+    <caption>A plain table with a caption and default spacing</caption>
+    <tr><td>one</td><td>two</td><td>three</td></tr>
+    <tr><td colspan="3">a cell spanning three columns</td></tr>
+  </table>
+</body>
+</html>

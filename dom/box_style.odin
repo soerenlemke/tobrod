@@ -62,6 +62,8 @@ default_box :: proc(tag: string, style: ^Style) {
 		style.margin = edges(em(1), px(40), em(1), px(40))
 	case "dd":
 		style.margin[.Left] = px(40)
+	case "td", "th":
+		style.padding = edges(px(1), px(1), px(1), px(1))
 	case "h1":
 		style.margin = edges(em(0.67), {}, em(0.67), {})
 	case "h2":
