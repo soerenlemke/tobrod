@@ -16,3 +16,7 @@ vendor/curl/lib/
 
 # lexbor build output (Windows)
 vendor/lexbor-src/build/
+
+# debug symbols and incremental link files (Windows)
+*.pdb
+*.ilk

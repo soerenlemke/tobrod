@@ -2,7 +2,7 @@
 
 **tobrod** ist ein Toy-Browser in [Odin](https://odin-lang.org). Er ist ein Lernprojekt: Ziel ist, die Bausteine eines Browsers (HTTP, Fenster/UI, Rendering, HTML/CSS-Parsing, Threads, JS) Schritt für Schritt selbst zu bauen. Externe C-Bibliotheken werden über eigene, schlanke Odin-Bindings angebunden. Lizenz: MIT.
 
-Die Roadmap mit dem aktuellen Fortschritt steht in [README.md](README.md) („Planned stages“). Halte diese Checkliste aktuell, wenn ein Punkt erledigt ist.
+Die Roadmap mit dem aktuellen Fortschritt steht in [README.md](README.md) („Roadmap“). Halte diese Checkliste aktuell, wenn ein Punkt erledigt ist. Die README ist das öffentliche Gesicht des Projekts (Englisch): Features, Bauen, Benutzung, Tests, Aufbau, bekannte Grenzen, Lizenzen. Die Screenshots darin liegen in `docs/screenshots/` und stammen von den eigenen Testseiten (keine fremden Inhalte).
 
 ## Zusammenarbeit
 
@@ -96,9 +96,9 @@ ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
   fonts.odin              globaler Font (fonts_init/fonts_close)
   constants.odin          UI-Konstanten (Höhen, Fontgröße, Scroll-Speed)
   screenshot.odin         Fenster als PNG speichern (Testmodus)
-vendor/curl/            eigene Kopie der Odin-curl-Bindings (Package vendor_curl) + C-Header
+vendor/curl/            eigene, leicht geänderte Kopie der Odin-curl-Bindings (Package vendor_curl) + C-Header; LICENSE = curl, LICENSE-odin = Odins zlib-Lizenz + Liste unserer Änderungen (bei weiteren Änderungen dort ergänzen)
 vendor/curl-src/        git-Submodul: curl-Quellcode (nur für den Windows-Build)
-vendor/lexbor-src/      git-Submodul: lexbor-Quellcode v3.0.1 (nur für den Windows-Build)
+vendor/lexbor-src/      git-Submodul: lexbor-Quellcode, gepinnt auf das Tag v3.0.1 (nur für den Windows-Build)
 vendor/lexbor/          lexbor-Bindings + Tests (lexbor.odin: HTML/DOM, style.odin: CSS-Kaskade)
 assets/fonts/           Inter 18pt Regular (Google Fonts) + Inter Bold (rsms/inter v4.1, extras/ttf), beide SIL OFL 1.1 (OFL.txt)
 testdata/               lokale Fixtures für den Testmodus
