@@ -18,7 +18,7 @@ Ordered by how much they change what a page looks like, weighed against how big 
 
 ### Bugs
 
-1. **`<link media="...">` is not evaluated.** Only `media="print"` is skipped, so the Python docs load their `(prefers-color-scheme: dark)` stylesheet and turn dark.
+1. ~~**`<link media="...">` is not evaluated.**~~ Fixed: the `media` attribute of `<link>` and `<style>` is evaluated like an `@media` block. The Python docs used to load their `(prefers-color-scheme: dark)` stylesheet and turn dark.
 
 ### Text
 

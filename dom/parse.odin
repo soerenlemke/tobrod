@@ -77,7 +77,7 @@ parse :: proc(html: string, stylesheets: Stylesheet_Loader = {}, media := DEFAUL
 	// <style> elements: lexbor applied them while parsing, but without their
 	// @media blocks. Add the contents of the matching ones.
 	style_texts := make([dynamic]string, context.temp_allocator)
-	find_style_elements(lxb_doc, lxb.document_node(lxb_doc), &style_texts)
+	find_style_elements(lxb_doc, lxb.document_node(lxb_doc), media, &style_texts)
 	for text in style_texts {
 		add_sheet(lxb_doc, &css_parser, &sheets, apply_media_queries(text, media, only_media = true, allocator = context.temp_allocator))
 	}
@@ -85,7 +85,7 @@ parse :: proc(html: string, stylesheets: Stylesheet_Loader = {}, media := DEFAUL
 	// external stylesheets, in document order
 	if stylesheets.load != nil {
 		hrefs := make([dynamic]string, context.temp_allocator)
-		find_stylesheet_links(lxb.document_node(lxb_doc), &hrefs)
+		find_stylesheet_links(lxb.document_node(lxb_doc), media, &hrefs)
 		for href in hrefs {
 			css, ok := stylesheets.load(stylesheets.ctx, href)
 			if !ok {
@@ -209,21 +209,21 @@ compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inh
 // Collects the hrefs of <link rel="stylesheet"> in document order. Print-only
 // stylesheets are skipped. (Other media queries are not evaluated yet.)
 @(private)
-find_stylesheet_links :: proc(node: ^lxb.Dom_Node, hrefs: ^[dynamic]string) {
+find_stylesheet_links :: proc(node: ^lxb.Dom_Node, env: Media_Env, hrefs: ^[dynamic]string) {
 	for child := lxb.lxb_dom_node_first_child_noi(node); child != nil; child = lxb.lxb_dom_node_next_noi(child) {
 		if element := lxb.element_from_node(child); element != nil {
-			if lxb.element_name(element) == "link" && is_stylesheet_link(element) {
+			if lxb.element_name(element) == "link" && is_stylesheet_link(element, env) {
 				if href, ok := lxb.element_attribute(element, "href"); ok && href != "" {
 					append(hrefs, href)
 				}
 			}
-			find_stylesheet_links(child, hrefs)
+			find_stylesheet_links(child, env, hrefs)
 		}
 	}
 }
 
 @(private)
-is_stylesheet_link :: proc(element: ^lxb.Dom_Element) -> bool {
+is_stylesheet_link :: proc(element: ^lxb.Dom_Element, env: Media_Env) -> bool {
 	rel := lxb.element_attribute(element, "rel") or_return
 	// rel is a space separated list, e.g. "alternate stylesheet" (which we skip)
 	is_stylesheet, is_alternate := false, false
@@ -239,24 +239,32 @@ is_stylesheet_link :: proc(element: ^lxb.Dom_Element) -> bool {
 	if !is_stylesheet || is_alternate {
 		return false
 	}
+	// media="print", media="(prefers-color-scheme: dark)", ...: only if it
+	// matches, like an @media block around the whole stylesheet
 	media, has_media := lxb.element_attribute(element, "media")
-	return !has_media || strings.to_lower(strings.trim_space(media), context.temp_allocator) != "print"
+	return !has_media || media_query_list_matches(media, env)
 }
 
 // Collects the text of <style> elements that contain @media (the others are
-// fully handled by lexbor already).
+// fully handled by lexbor already). lexbor ignores the media attribute of
+// <style>, so elements whose media doesn't match are taken out of the cascade.
 @(private)
-find_style_elements :: proc(lxb_doc: ^lxb.Html_Document, node: ^lxb.Dom_Node, texts: ^[dynamic]string) {
+find_style_elements :: proc(lxb_doc: ^lxb.Html_Document, node: ^lxb.Dom_Node, env: Media_Env, texts: ^[dynamic]string) {
 	for child := lxb.lxb_dom_node_first_child_noi(node); child != nil; child = lxb.lxb_dom_node_next_noi(child) {
 		if element := lxb.element_from_node(child); element != nil {
 			if lxb.element_name(element) == "style" {
+				// <style media="print">: lexbor applied it anyway, take it out again
+				if media, ok := lxb.element_attribute(element, "media"); ok && !media_query_list_matches(media, env) {
+					lxb.lxb_html_style_element_remove(element)
+					continue
+				}
 				text := lxb.node_text_content(lxb_doc, child, context.temp_allocator)
 				if strings.contains(strings.to_lower(text, context.temp_allocator), "@media") {
 					append(texts, text)
 				}
 				continue
 			}
-			find_style_elements(lxb_doc, child, texts)
+			find_style_elements(lxb_doc, child, env, texts)
 		}
 	}
 }

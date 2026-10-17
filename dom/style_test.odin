@@ -264,6 +264,8 @@ test_external_stylesheets :: proc(t: ^testing.T) {
 	html := `<html><head>
 		<link rel="stylesheet" href="a.css">
 		<link rel="stylesheet" href="print.css" media="print">
+		<link rel="stylesheet" href="dark.css" media="(prefers-color-scheme: dark)">
+		<link rel="stylesheet" href="wide.css" media="screen and (min-width: 600px)">
 		<link rel="alternate stylesheet" href="alt.css">
 		<link rel="icon" href="x.ico">
 		<link rel="stylesheet" href="missing.css">
@@ -288,8 +290,10 @@ test_external_stylesheets :: proc(t: ^testing.T) {
 		switch href {
 		case "a.css":
 			return "p { color: red } div { display: none }", true
-		case "print.css", "alt.css":
+		case "print.css", "alt.css", "dark.css":
 			return "p { color: blue }", true
+		case "wide.css":
+			return "div { margin-left: 3px }", true
 		}
 		return "", false // missing.css
 	}
@@ -300,11 +304,13 @@ test_external_stylesheets :: proc(t: ^testing.T) {
 	}
 	defer destroy(doc)
 
-	// only real, non-print stylesheets are requested, in document order
-	testing.expect_value(t, len(fake.requested), 2)
-	if len(fake.requested) == 2 {
+	// only real stylesheets whose media matches (a 1024 x 768 screen, light
+	// theme) are requested, in document order
+	testing.expect_value(t, len(fake.requested), 3)
+	if len(fake.requested) == 3 {
 		testing.expect_value(t, fake.requested[0], "a.css")
-		testing.expect_value(t, fake.requested[1], "missing.css")
+		testing.expect_value(t, fake.requested[1], "wide.css")
+		testing.expect_value(t, fake.requested[2], "missing.css")
 	}
 
 	p := find_element(doc.root, "p")
@@ -312,6 +318,7 @@ test_external_stylesheets :: proc(t: ^testing.T) {
 	testing.expect_value(t, p.style.font_weight, 700)               // <style> still works
 	div := find_element(doc.root, "div")
 	testing.expect_value(t, div.style.display, Display.None)
+	testing.expect_value(t, div.style.margin[.Left], px(3)) // from wide.css
 }
 
 @(test)
@@ -447,4 +454,24 @@ test_css_report :: proc(t: ^testing.T) {
 	testing.expect_value(t, report.values["display: grid"], 2)
 	testing.expect_value(t, report.values["position: sticky"], 1)
 	testing.expect_value(t, report.values["calc() in width"], 1)
+}
+
+@(test)
+test_style_element_media :: proc(t: ^testing.T) {
+	// the media attribute of <style> works like an @media block around it
+	doc, err := parse(`<html><head>
+		<style media="print">p { color: blue }</style>
+		<style media="(prefers-color-scheme: dark)">div { color: blue }</style>
+		<style media="screen">span { color: red }</style>
+	</head><body><p>x</p><div>y</div><span>z</span></body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	black := Color{0, 0, 0, 255}
+	testing.expect_value(t, find_element(doc.root, "p").style.color, black)
+	testing.expect_value(t, find_element(doc.root, "div").style.color, black)
+	span := find_element(find_element(doc.root, "body"), "span")
+	testing.expect_value(t, span.style.color, Color{255, 0, 0, 255})
 }

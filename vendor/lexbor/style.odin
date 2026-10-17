@@ -95,6 +95,11 @@ foreign lib {
 	// from lexbor/style/html/interfaces/document.h; the stylesheet must stay
 	// alive as long as the document uses it
 	lxb_html_document_stylesheet_attach_noi :: proc(document: ^Html_Document, sst: ^Css_Stylesheet) -> Status ---
+
+	// from lexbor/style/html/interfaces/style_element.h: takes the rules of a
+	// <style> element (which lexbor applies while parsing) out of the cascade.
+	// element must be a <style> element.
+	lxb_html_style_element_remove :: proc(element: ^Dom_Element) -> Status ---
 }
 
 // Walking all declarations of an element (lexbor/style/dom/interfaces/element.h).
