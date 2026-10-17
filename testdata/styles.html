@@ -5,6 +5,10 @@
   <title>tobrod style test</title>
   <style>
     .note { color: #888; font-size: 0.875em }
+    code { background: #f3f4f6; border: 1px solid #d1d5db; padding: 1px 4px }
+    mark { background: #fde047 }
+    .tag { background: #2563eb; color: white; padding: 2px 8px; margin: 0 4px }
+    .long { background: #dcfce7; border: 1px solid #16a34a; padding: 0 4px }
     .warn { color: rgb(200, 60, 0); font-weight: bold }
     .big { font-size: 1.5em }
     .hidden { display: none }
@@ -32,5 +36,8 @@
   <pre>pre:  keeps   spaces
 and line breaks</pre>
   <p>Line one<br>Line two after br</p>
+  <h3>Inline backgrounds</h3>
+  <p>Some <code>inline code</code>, a <mark>highlighted phrase</mark> and two <span class="tag">tags</span><span class="tag">with margins</span> in a line.</p>
+  <p>A <span class="long">long span with a border that is broken across the lines: the left border is on the first piece, the right border on the last one, like box-decoration-break: slice in a real browser</span> and the text goes on.</p>
 </body>
 </html>
