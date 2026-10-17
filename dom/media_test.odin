@@ -67,8 +67,8 @@ test_media_in_parse :: proc(t: ^testing.T) {
 		@media print { div { display: none } }
 	</style><link rel="stylesheet" href="a.css"></head><body><p>x</p><div>y</div><span>z</span></body></html>`
 
-	load := proc(ctx: rawptr, href: string) -> (css: string, ok: bool) {
-		return "@media screen and (max-width: 600px) { span { display: none } }", true
+	load := proc(ctx: rawptr, href, base: string) -> (css, url: string, ok: bool) {
+		return "@media screen and (max-width: 600px) { span { display: none } }", href, true
 	}
 
 	// wide: the min-width rule matches, the max-width rule doesn't

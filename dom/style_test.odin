@@ -283,19 +283,19 @@ test_external_stylesheets :: proc(t: ^testing.T) {
 		delete(fake.requested)
 	}
 
-	load := proc(ctx: rawptr, href: string) -> (css: string, ok: bool) {
+	load := proc(ctx: rawptr, href, base: string) -> (css, url: string, ok: bool) {
 		fake := cast(^Fake)ctx
 		// href points into lexbor's memory, which is gone after parse: keep a copy
 		append(&fake.requested, strings.clone(href))
 		switch href {
 		case "a.css":
-			return "p { color: red } div { display: none }", true
+			return "p { color: red } div { display: none }", href, true
 		case "print.css", "alt.css", "dark.css":
-			return "p { color: blue }", true
+			return "p { color: blue }", href, true
 		case "wide.css":
-			return "div { margin-left: 3px }", true
+			return "div { margin-left: 3px }", href, true
 		}
-		return "", false // missing.css
+		return "", "", false // missing.css
 	}
 
 	doc, err := parse(html, {load = load, ctx = &fake})
@@ -550,4 +550,73 @@ test_line_height :: proc(t: ^testing.T) {
 	testing.expect_value(t, line_height_px(find_element(divs[1], "p").style), 20)
 	testing.expect_value(t, line_height_px(divs[2].style), 24)
 	testing.expect_value(t, line_height_px(divs[3].style), 20) // normal: 1.25 x 16
+}
+
+@(test)
+test_css_import :: proc(t: ^testing.T) {
+	// main.css imports base.css (relative to main.css) and, only for print,
+	// print.css; base.css imports deep.css. Imported rules come first, so
+	// main.css wins over base.css.
+	html := `<html><head><link rel="stylesheet" href="css/main.css"></head>
+		<body><p>x</p><div>y</div><span>z</span></body></html>`
+
+	Fake :: struct {
+		requested: [dynamic]string, // "href from base"
+	}
+	fake: Fake
+	defer {
+		for r in fake.requested {
+			delete(r)
+		}
+		delete(fake.requested)
+	}
+	load := proc(ctx: rawptr, href, base: string) -> (css, url: string, ok: bool) {
+		fake := cast(^Fake)ctx
+		append(&fake.requested, strings.concatenate({href, " from ", base if base != "" else "page"}))
+		switch href {
+		case "css/main.css":
+			return `@charset "utf-8";
+				/* a comment */
+				@import url("base.css");
+				@import "print.css" print;
+				p { color: red }`, "http://x/css/main.css", true
+		case "base.css":
+			return `@import url(deep.css) screen and (min-width: 100px); p { color: blue } div { color: blue }`, "http://x/css/base.css", true
+		case "deep.css":
+			return `span { color: green }`, "http://x/css/deep.css", true
+		}
+		return "", "", false
+	}
+
+	doc, err := parse(html, {load = load, ctx = &fake})
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	testing.expect_value(t, len(fake.requested), 3)
+	if len(fake.requested) == 3 {
+		testing.expect_value(t, fake.requested[0], "css/main.css from page")
+		testing.expect_value(t, fake.requested[1], "base.css from http://x/css/main.css")
+		testing.expect_value(t, fake.requested[2], "deep.css from http://x/css/base.css")
+	}
+	body := find_element(doc.root, "body")
+	testing.expect_value(t, find_element(body, "p").style.color, Color{255, 0, 0, 255})
+	testing.expect_value(t, find_element(body, "div").style.color, Color{0, 0, 255, 255})
+	testing.expect_value(t, find_element(body, "span").style.color, Color{0, 128, 0, 255})
+}
+
+@(test)
+test_split_imports :: proc(t: ^testing.T) {
+	imports, rest := split_imports(`@layer base, theme;
+		@import url('a.css') layer(base) supports(display: grid) screen;
+		@import "b.css";
+		@media print { p { color: red } } @import "late.css";`)
+	testing.expect_value(t, len(imports), 2)
+	if len(imports) == 2 {
+		testing.expect_value(t, imports[0], Css_Import{"a.css", "screen"})
+		testing.expect_value(t, imports[1], Css_Import{"b.css", ""})
+	}
+	// an @import after other rules is not valid, it stays in the rest
+	testing.expect(t, strings.has_prefix(rest, "@media print"), "rest starts with the first rule")
 }
