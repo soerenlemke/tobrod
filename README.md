@@ -58,7 +58,8 @@ Stage 4 — HTML & CSS Parsing
 - [x] Selector matching and cascade (via lexbor: specificity, `!important`, inline styles)
 - [ ] Use computed styles in our DOM and when rendering
    - [x] `display` (UA defaults + CSS, `display: none` hides elements)
-   - [ ] inheritance and defaults for other properties (color, font-size, font-weight)
+   - [x] inheritance and defaults for other properties (color, font-size, font-weight)
+   - [ ] render text with its style (font size, bold, color)
 
 Stage 5 - Threads
 - [ ] Run http requests in own thread

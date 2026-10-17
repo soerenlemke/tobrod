@@ -36,6 +36,7 @@ parse :: proc(html: string) -> (doc: ^Document, err: Maybe(Parse_Error)) {
 	doc.root = new(Node, allocator)
 	doc.root.kind = .Document
 	doc.root.children.allocator = allocator
+	doc.root.style = ROOT_STYLE
 	copy_children(lxb_doc, lxb.document_node(lxb_doc), doc.root, allocator)
 	return doc, nil
 }
@@ -52,7 +53,7 @@ copy_children :: proc(lxb_doc: ^lxb.Html_Document, from: ^lxb.Dom_Node, to: ^Nod
 			element := lxb.element_from_node(child)
 			node.tag = strings.clone(lxb.element_name(element), allocator)
 			node.attributes = copy_attributes(element, allocator)
-			node.style = compute_style(node, element)
+			node.style = compute_style(node, element, to.style)
 			copy_children(lxb_doc, child, node, allocator)
 		case .Text:
 			node = new_node(.Text, to, allocator)
@@ -95,15 +96,16 @@ copy_attributes :: proc(element: ^lxb.Dom_Element, allocator: mem.Allocator) -> 
 	return attributes
 }
 
-// Default style for the tag, overridden by whatever the CSS cascade decided.
+// Inherited values and tag defaults, overridden by whatever the CSS cascade
+// decided. Parents are computed before their children, so parent is final.
 @(private)
-compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element) -> Style {
+compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style) -> Style {
 	_, hidden := attribute(node, "hidden")
-	style := default_style(node.tag, hidden)
+	style := default_style(node.tag, hidden, parent)
 
-	if value, ok := lxb.element_style(element, "display", context.temp_allocator); ok {
-		if display, known := parse_display(value); known {
-			style.display = display
+	for property in STYLE_PROPERTIES {
+		if value, ok := lxb.element_style(element, property, context.temp_allocator); ok {
+			apply_declaration(&style, property, value, parent)
 		}
 	}
 	return style

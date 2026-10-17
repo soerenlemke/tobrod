@@ -66,7 +66,8 @@ dom/                    Package dom: eigener DOM-Baum (Parsen über lexbor, dann
   dom.odin                Node, Document, destroy, attribute
   parse.odin              parse: lexbor-Baum → eigener Baum
   print.odin              tree_to_string (Debug/Tests)
-  style.odin              Style/Display, default_style (UA-Stylesheet), parse_display
+  style.odin              Style, Color, ROOT_STYLE, default_style (Vererbung + UA-Stylesheet), apply_declaration
+  css_values.odin         Wert-Parser: parse_color, parse_font_size, parse_font_weight
   text.odin               to_display_text: DOM → lesbarer Text für die PageView
 ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
   main_window.odin        MainWindow, init/destroy, Haupt-Loop (run)
@@ -126,7 +127,11 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - `Node`: `kind` (`Document`/`Element`/`Text`/`Comment`), `parent`, `children` (`[dynamic]^Node`), `tag` (lowercase), `attributes` (`[]Attribute`, Quellreihenfolge), `text`, `style` (nur Elemente). Doctype und Processing Instructions werden weggelassen.
 - Speicher: Ein `virtual.Arena` pro `Document`, alle Nodes und Strings liegen darin; `destroy` gibt alles auf einmal frei.
 - lexbor ergänzt fehlendes `<html>`/`<head>`/`<body>` wie ein echter Browser.
-- Styles: `parse` ruft `lxb_style_init` vor dem Parsen auf. Pro Element: `default_style(tag, hidden)` (unser vereinfachtes UA-Stylesheet: Block-Tags, `li` = `List_Item`, `head`/`script`/`style`/… und `hidden` = `None`), dann überschreibt der Kaskaden-Wert von lexbor (`element_style(el, "display")` → `parse_display`). Nicht unterstützte Layout-Modi fallen auf ihr äußeres Verhalten zurück (`flex`/`grid`/`table` → Block, `inline-block` → Inline).
+- Styles (`Style`: `display`, `color` (eigener Typ `Color :: [4]u8`, kein raylib), `font_size` in px, `font_weight` 1..1000): `parse` ruft `lxb_style_init` vor dem Parsen auf; der Document-Node hat `ROOT_STYLE` (schwarz, 16 px, 400). Pro Element in drei Schritten wie im Browser:
+  1. vererbte Properties (`color`, `font-size`, `font-weight`) vom Eltern-Node, `display` nicht,
+  2. `default_style(tag, hidden, parent)`: unser vereinfachtes UA-Stylesheet (Block-Tags, `li` = `List_Item`, `head`/`script`/… und `hidden` = `None`, `h1`–`h6` Größe + fett, `b`/`strong` fett, `small` kleiner, `a` = `LINK_COLOR`),
+  3. `apply_declaration` für jede Property aus `STYLE_PROPERTIES`, die lexbors Kaskade liefert. Unbekannte Werte werden ignoriert (Default bleibt). `inherit`/`initial`/`unset` werden behandelt.
+- lexbor serialisiert normalisiert (lowercase, `#F00` → `#f00`, Kommas vereinheitlicht), lässt relative Einheiten (`em`, `%`, `smaller`, `bolder`) aber stehen – die rechnen wir gegen den Eltern-Style um. Unterstützt: Farben benannt (Teilmenge), Hex, `rgb()`/`rgba()`, `transparent`, `currentcolor` (kein `hsl()`); Größen `px`, `em`, `rem`, `%`, `pt`, Schlüsselwörter; Gewichte `normal`/`bold`/Zahl/`bolder`/`lighter`. Nicht unterstützte Layout-Modi fallen bei `display` auf ihr äußeres Verhalten zurück.
 - `to_display_text` ist noch kein Layout, nur Text mit Browser-Grundregeln: `display: none` wird übersprungen, Whitespace-Collapsing (außer in `<pre>`), `Block`/`List_Item` auf neuer Zeile (`p`, `h1`–`h6`, Listen u. a. mit Leerzeile als Ersatz für Margins, `has_vertical_margin`), `<br>` als Umbruch, `• ` vor `List_Item`. Umbrüche werden nur vor dem nächsten Text geschrieben (`pending_breaks`), so stapeln sie sich nicht.
 
 **vendor/lexbor** ([vendor/lexbor/lexbor.odin](vendor/lexbor/lexbor.odin))
@@ -175,6 +180,6 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 - Stage 1 HTTP-Client – erledigt
 - Stage 2 Fenster & UI – Fenster und Adressleiste stehen; offen: Schema-Ergänzung, Tabs, Navigation (zurück/vor/neu laden)
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
-- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, HTML wird als Text angezeigt, CSS-Kaskade über lexbor gebunden; `display` wird übernommen und beim Anzeigen genutzt; nächster Schritt: Vererbung/Defaults für weitere Properties, dann echtes Layout (Schriftgröße, Fett, Farbe)
+- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, HTML wird als Text angezeigt, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS), genutzt wird bisher nur `display`; nächster Schritt: Layout mit gestylten Textstücken
 - Stage 5 Threads – HTTP in eigenen Thread, Ergebnis-Übergabe an die UI, Thread-Sicherheit des Clients
 - Stage 6 JavaScript – QuickJS anbinden
