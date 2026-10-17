@@ -1,0 +1,152 @@
+package dom
+
+import "core:testing"
+
+@(test)
+test_parse_color :: proc(t: ^testing.T) {
+	current := Color{1, 2, 3, 255}
+	cases := []struct {
+		value: string,
+		color: Color,
+		ok:    bool,
+	} {
+		{"red", {255, 0, 0, 255}, true},
+		{"#f00", {255, 0, 0, 255}, true},
+		{"#ff000080", {255, 0, 0, 128}, true},
+		{"#12345", {}, false},
+		{"rgb(255, 0, 0)", {255, 0, 0, 255}, true},
+		{"rgba(255, 0, 0, 0.5)", {255, 0, 0, 128}, true},
+		{"rgb(255 0 0 / 50%)", {255, 0, 0, 128}, true},
+		{"rgb(100%, 0%, 0%)", {255, 0, 0, 255}, true},
+		{"currentcolor", current, true},
+		{"transparent", {0, 0, 0, 0}, true},
+		{"hsl(0, 100%, 50%)", {}, false},
+	}
+	for c in cases {
+		color, ok := parse_color(c.value, current)
+		testing.expectf(t, ok == c.ok && (!ok || color == c.color), "%q: got %v %v", c.value, color, ok)
+	}
+}
+
+@(test)
+test_parse_font_size :: proc(t: ^testing.T) {
+	parent := f32(20)
+	cases := []struct {
+		value: string,
+		px:    f32,
+		ok:    bool,
+	} {
+		{"12px", 12, true},
+		{"1.5em", 30, true},
+		{"2rem", 32, true},
+		{"50%", 10, true},
+		{"12pt", 16, true},
+		{"medium", 16, true},
+		{"larger", 24, true},
+		{"0", 0, true},
+		{"12", 0, false},
+		{"12vw", 0, false},
+	}
+	for c in cases {
+		px, ok := parse_font_size(c.value, parent)
+		testing.expectf(t, ok == c.ok && (!ok || abs(px - c.px) < 0.01), "%q: got %v %v", c.value, px, ok)
+	}
+}
+
+@(test)
+test_parse_font_weight :: proc(t: ^testing.T) {
+	cases := []struct {
+		value:  string,
+		parent: int,
+		weight: int,
+		ok:     bool,
+	} {
+		{"normal", 700, 400, true},
+		{"bold", 400, 700, true},
+		{"600", 400, 600, true},
+		{"bolder", 400, 700, true},
+		{"bolder", 700, 900, true},
+		{"lighter", 700, 400, true},
+		{"1001", 400, 0, false},
+	}
+	for c in cases {
+		weight, ok := parse_font_weight(c.value, c.parent)
+		testing.expectf(t, ok == c.ok && (!ok || weight == c.weight), "%q (parent %v): got %v %v", c.value, c.parent, weight, ok)
+	}
+}
+
+@(test)
+test_computed_styles :: proc(t: ^testing.T) {
+	doc, err := parse(`<html><head><style>
+		body { color: #333; font-size: 20px }
+		.note { font-size: 0.5em; color: inherit }
+		.red { color: red }
+		h1 { font-weight: normal }
+	</style></head><body>
+		<p>plain <span>span</span></p>
+		<p class="red">red <b>bold</b> <a href="/">link</a></p>
+		<p class="note">note</p>
+		<h1>h1</h1><h2>h2</h2>
+	</body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	body := find_element(doc.root, "body")
+	ps := children_with_tag(body, "p")
+	defer delete(ps)
+	testing.expect_value(t, len(ps), 3)
+
+	grey := Color{0x33, 0x33, 0x33, 255}
+
+	// inherited from body
+	span := find_element(ps[0], "span")
+	testing.expect_value(t, span.style.color, grey)
+	testing.expect_value(t, span.style.font_size, 20)
+	testing.expect_value(t, span.style.font_weight, 400)
+
+	// author color is inherited by <b>; <a> keeps its own default link color
+	b := find_element(ps[1], "b")
+	testing.expect_value(t, b.style.color, Color{255, 0, 0, 255})
+	testing.expect_value(t, b.style.font_weight, 700)
+	a := find_element(ps[1], "a")
+	testing.expect_value(t, a.style.color, LINK_COLOR)
+
+	// em is relative to the parent's font size
+	testing.expect_value(t, ps[2].style.font_size, 10)
+	testing.expect_value(t, ps[2].style.color, grey)
+
+	// tag defaults: h1 is 2em, but author CSS overrides its weight; h2 keeps bold
+	h1 := find_element(body, "h1")
+	testing.expect_value(t, h1.style.font_size, 40)
+	testing.expect_value(t, h1.style.font_weight, 400)
+	h2 := find_element(body, "h2")
+	testing.expect_value(t, h2.style.font_size, 30)
+	testing.expect_value(t, h2.style.font_weight, 700)
+}
+
+// Depth-first search for the first element with the tag.
+@(private = "file")
+find_element :: proc(node: ^Node, tag: string) -> ^Node {
+	for child in node.children {
+		if child.kind == .Element && child.tag == tag {
+			return child
+		}
+		if found := find_element(child, tag); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+@(private = "file")
+children_with_tag :: proc(node: ^Node, tag: string) -> [dynamic]^Node {
+	result: [dynamic]^Node
+	for child in node.children {
+		if child.kind == .Element && child.tag == tag {
+			append(&result, child)
+		}
+	}
+	return result
+}
