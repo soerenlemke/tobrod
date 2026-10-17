@@ -1,5 +1,6 @@
 package browser
 
+import "../dom"
 import "../http"
 import "../loader"
 import "../ui"
@@ -9,7 +10,10 @@ import "core:strings"
 Browser :: struct {
 	window:      ui.MainWindow,
 	page_loader: loader.Loader,  // field not named loader: that would hide the package
-	loading_id:  loader.Request_Id, // the request we are waiting for, 0 if none
+	loading_id:  loader.Request_Id, // the page we are waiting for, 0 if none
+	// images of the current page that are still loading: request id -> src as
+	// written in the page (owned)
+	image_requests: map[loader.Request_Id]string,
 	history:     History,           // the current entry is the base for relative links
 }
 
@@ -44,6 +48,8 @@ init :: proc(settings: ui.WindowSettings) -> (b: ^Browser, err: Maybe(ui.Error))
 
 destroy :: proc(b: ^Browser) {
 	loader.destroy(&b.page_loader) // stops the worker before anything it uses goes away
+	forget_image_requests(b)
+	delete(b.image_requests)
 	ui.destroy(&b.window)
 	history_destroy(&b.history)
 	free(b)
@@ -117,20 +123,23 @@ open_current :: proc(b: ^Browser) {
 	ui.address_bar_set_text(&b.window.address_bar, url)
 	ui.set_navigation_state(&b.window, history_can_back(&b.history), history_can_forward(&b.history))
 
-	// only starts loading; the page arrives later in receive_pages
+	// only starts loading; the page arrives later in receive_pages.
+	// The loader drops the queued images of the old page.
+	forget_image_requests(b)
 	b.loading_id = loader.load(&b.page_loader, url)
 	ui.set_loading(&b.window, true)
 }
 
 @(private)
 stop_loading :: proc(b: ^Browser) {
-	loader.cancel(&b.page_loader)
+	loader.cancel(&b.page_loader) // the page and its images
 	b.loading_id = 0
+	forget_image_requests(b)
 	ui.set_loading(&b.window, false)
 }
 
-// Called once per frame: takes finished pages from the loader and shows the
-// one we are waiting for. Results of older requests are dropped.
+// Called once per frame: takes finished pages and images from the loader.
+// Results of older requests (another page meanwhile) are dropped.
 @(private)
 receive_pages :: proc(b: ^Browser) {
 	for {
@@ -138,27 +147,82 @@ receive_pages :: proc(b: ^Browser) {
 		if !ok {
 			return
 		}
-		if result.id != b.loading_id {
-			loader.result_destroy(&result)
-			continue
-		}
-		b.loading_id = 0
-		ui.set_loading(&b.window, false)
-
-		// after redirects we are somewhere else: remember and show that,
-		// links on the page are relative to it
-		if current, _ := history_current(&b.history); result.url != "" && result.url != current {
-			history_replace_current(&b.history, result.url)
-			ui.address_bar_set_text(&b.window.address_bar, result.url)
-		}
-
-		if result.error != "" {
-			ui.page_view_set_content(&b.window.page_view, fmt.tprintf("Error: %s", result.error))
-		} else {
-			// the page view owns the document from now on
-			ui.page_view_set_document(&b.window.page_view, result.document)
-			result.document = nil
+		switch result.kind {
+		case .Page:
+			if result.id == b.loading_id {
+				show_page(b, &result)
+			}
+		case .Resource:
+			if src, waiting := b.image_requests[result.id]; waiting {
+				if result.error == "" {
+					ui.page_view_add_image(&b.window.page_view, src, result.url, result.content_type, result.data)
+				}
+				delete(src)
+				delete_key(&b.image_requests, result.id)
+			}
 		}
 		loader.result_destroy(&result)
+		update_loading_state(b)
 	}
+}
+
+@(private)
+show_page :: proc(b: ^Browser, result: ^loader.Result) {
+	b.loading_id = 0
+
+	// after redirects we are somewhere else: remember and show that,
+	// links on the page are relative to it
+	if current, _ := history_current(&b.history); result.url != "" && result.url != current {
+		history_replace_current(&b.history, result.url)
+		ui.address_bar_set_text(&b.window.address_bar, result.url)
+	}
+
+	if result.error != "" {
+		ui.page_view_set_content(&b.window.page_view, fmt.tprintf("Error: %s", result.error))
+		return
+	}
+	doc := result.document
+	result.document = nil
+	// the page view owns the document from now on
+	ui.page_view_set_document(&b.window.page_view, doc)
+	request_images(b, doc)
+}
+
+// Queues every <img> of the page in the loader, each src only once.
+@(private)
+request_images :: proc(b: ^Browser, doc: ^dom.Document) {
+	base, _ := history_current(&b.history)
+	requested := make(map[string]bool, allocator = context.temp_allocator)
+
+	request :: proc(b: ^Browser, node: ^dom.Node, base: string, requested: ^map[string]bool) {
+		if node.kind == .Element && node.tag == "img" {
+			if src, ok := dom.attribute(node, "src"); ok && src != "" && !(src in requested) {
+				requested[src] = true
+				url, resolved := http.resolve_url(base, src, context.temp_allocator)
+				if resolved && http.is_loadable_url(url) {
+					id := loader.load_resource(&b.page_loader, url)
+					b.image_requests[id] = strings.clone(src)
+				}
+			}
+		}
+		for child in node.children {
+			request(b, child, base, requested)
+		}
+	}
+	request(b, doc.root, base, &requested)
+}
+
+// Like in a browser, a page counts as loaded once its images are there too:
+// until then the loading bar runs and the stop button stays.
+@(private)
+update_loading_state :: proc(b: ^Browser) {
+	ui.set_loading(&b.window, b.loading_id != 0 || len(b.image_requests) > 0)
+}
+
+@(private)
+forget_image_requests :: proc(b: ^Browser) {
+	for _, src in b.image_requests {
+		delete(src)
+	}
+	clear(&b.image_requests)
 }

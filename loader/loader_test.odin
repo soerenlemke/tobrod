@@ -87,6 +87,8 @@ handle_connection :: proc(client: net.TCP_Socket) {
 		respond(client, "200 OK", "text/plain", "just text")
 	case "/redirect":
 		net.send_tcp(client, transmute([]u8)string("HTTP/1.1 302 Found\r\nLocation: /page.html\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+	case "/image.bin":
+		respond(client, "200 OK", "image/png", "PNG fake bytes")
 	case "/slow":
 		time.sleep(SLOW_RESPONSE)
 		respond(client, "200 OK", "text/plain", "slow")
@@ -252,4 +254,56 @@ test_destroy_while_loading :: proc(t: ^testing.T) {
 @(init)
 init_curl :: proc "contextless" () {
 	curl.global_init(curl.GLOBAL_DEFAULT)
+}
+
+@(test)
+test_resources :: proc(t: ^testing.T) {
+	s: Test_Server
+	l: Loader
+	setup(t, &s, &l)
+	defer server_stop(&s)
+	defer destroy(&l)
+
+	a := load_resource(&l, fmt.tprintf("%s/image.bin", s.base_url))
+	b := load_resource(&l, fmt.tprintf("%s/text", s.base_url))
+
+	// both arrive, in order, as raw bytes with their content type
+	first, ok := wait_for_result(&l, 5 * time.Second)
+	testing.expect(t, ok, "expected the first resource")
+	defer result_destroy(&first)
+	testing.expect_value(t, first.id, a)
+	testing.expect_value(t, first.kind, Request_Kind.Resource)
+	testing.expect_value(t, string(first.data), "PNG fake bytes")
+	testing.expect_value(t, first.content_type, "image/png")
+	testing.expect(t, first.document == nil, "resources are not parsed")
+
+	second, ok2 := wait_for_result(&l, 5 * time.Second)
+	testing.expect(t, ok2, "expected the second resource")
+	defer result_destroy(&second)
+	testing.expect_value(t, second.id, b)
+}
+
+@(test)
+test_new_page_drops_queued_resources :: proc(t: ^testing.T) {
+	s: Test_Server
+	l: Loader
+	setup(t, &s, &l)
+	defer server_stop(&s)
+	defer destroy(&l)
+
+	// the slow resource blocks the worker, the second one waits in the queue
+	load_resource(&l, fmt.tprintf("%s/slow", s.base_url))
+	time.sleep(100 * time.Millisecond)
+	load_resource(&l, fmt.tprintf("%s/image.bin", s.base_url))
+	page := load(&l, fmt.tprintf("%s/page.html", s.base_url))
+
+	// only the page arrives: the slow resource is aborted, the queued one dropped
+	result, ok := wait_for_result(&l, 5 * time.Second)
+	testing.expect(t, ok, "expected the page")
+	defer result_destroy(&result)
+	testing.expect_value(t, result.id, page)
+	testing.expect_value(t, result.kind, Request_Kind.Page)
+
+	_, more := wait_for_result(&l, 500 * time.Millisecond)
+	testing.expect(t, !more, "the old resources must not arrive")
 }

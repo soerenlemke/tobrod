@@ -67,12 +67,12 @@ Stage 4 — HTML & CSS Parsing
    - [x] render text with its style (font size, bold, color)
       - [x] layout: styled text runs with line wrapping, margins, lists (package `layout`)
       - [x] draw the runs in the ui (regular and bold Inter)
-   - [ ] more layout
+   - [x] more layout
       - [x] box model: margin, padding, width, max-width, `margin: auto` centering, background colors
       - [x] `text-align`, borders, `vw`/`vh` units
-      - [ ] images
+      - [x] images
          - [x] layout: size from CSS/attributes/natural size, inline placement, placeholder, links
-         - [ ] load, decode and draw
+         - [x] load (resource queue in the loader), decode (raylib: PNG, JPG, GIF, BMP, QOI) and draw
 
 Stage 5 - Threads
 - [x] Run http requests in own thread (package `loader`: worker thread, also parses)
