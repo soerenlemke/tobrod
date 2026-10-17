@@ -107,6 +107,10 @@ apply_box_declaration :: proc(style: ^Style, property, value: string) {
 		if length, ok := parse_length(value, true); ok {
 			style.width = length
 		}
+	case "height":
+		if length, ok := parse_length(value, true); ok {
+			style.height = length
+		}
 	case "max-width":
 		if value == "none" {
 			style.max_width = AUTO

@@ -71,6 +71,8 @@ Stage 4 — HTML & CSS Parsing
       - [x] box model: margin, padding, width, max-width, `margin: auto` centering, background colors
       - [x] `text-align`, borders, `vw`/`vh` units
       - [ ] images
+         - [x] layout: size from CSS/attributes/natural size, inline placement, placeholder, links
+         - [ ] load, decode and draw
 
 Stage 5 - Threads
 - [x] Run http requests in own thread (package `loader`: worker thread, also parses)

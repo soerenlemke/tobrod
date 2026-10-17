@@ -3,6 +3,7 @@ package layout
 import "core:fmt"
 import "core:mem"
 import "core:mem/virtual"
+import "core:strconv"
 import "core:strings"
 import "../dom"
 
@@ -35,13 +36,27 @@ Box :: struct {
 	border_color:        [dom.Edge]dom.Color,
 }
 
-// Owns all boxes, runs and their strings; destroy frees everything at once.
-// Draw order: background, then boxes in order (parents before children), then runs.
+// An <img>: where it goes and how big it is. The ui draws the decoded image
+// there, or a placeholder while it is not loaded (yet).
+Image_Item :: struct {
+	src:                 string, // as written in the page, also the key for Image_Sizes
+	x, y, width, height: f32,
+	link:                string, // href of the surrounding <a>, "" if none
+}
+
+// Natural sizes of the images that are already loaded, by src as written in
+// the page. Images not in the map get their size from the page or a placeholder.
+Image_Sizes :: map[string][2]f32
+
+// Owns all boxes, runs, images and their strings; destroy frees everything at once.
+// Draw order: background, then boxes in order (parents before children), then
+// images and runs.
 Layout :: struct {
 	arena:      virtual.Arena,
 	background: dom.Color, // page background from <html> or <body> ("canvas")
 	boxes:      [dynamic]Box,
 	runs:       [dynamic]Text_Run,
+	images:     [dynamic]Image_Item,
 	viewport:   [2]f32, // the size this layout was made for (width, height of the page view)
 	height:     f32,    // total content height
 }
@@ -51,11 +66,12 @@ PAGE_BACKGROUND :: dom.Color{255, 255, 255, 255}
 Measure_Text :: #type proc(text: string, font_size: f32, bold: bool) -> f32
 
 LINE_HEIGHT_FACTOR :: f32(1.25) // line height relative to the font size ("normal")
+IMAGE_PLACEHOLDER_SIZE :: f32(16) // for an image whose size is not known (yet)
 BOLD_WEIGHT :: 600              // from this font-weight on we draw bold
 
 // viewport is the visible page area: its width is the page width, both
 // together resolve vw/vh.
-build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text) -> ^Layout {
+build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text, image_sizes: Image_Sizes = nil) -> ^Layout {
 	l := new(Layout)
 	l.viewport = viewport
 	width := viewport.x
@@ -66,6 +82,7 @@ build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text) -> ^L
 	allocator := virtual.arena_allocator(&l.arena)
 	l.runs.allocator = allocator
 	l.boxes.allocator = allocator
+	l.images.allocator = allocator
 	l.background = PAGE_BACKGROUND
 
 	// the page margin is no special case anymore: it is the default margin of body
@@ -76,8 +93,10 @@ build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text) -> ^L
 		left      = 0,
 		right     = width,
 		viewport  = viewport,
+		image_sizes = image_sizes,
 	}
 	b.line.allocator = allocator
+	b.line_images.allocator = allocator
 	b.block_tops.allocator = allocator
 
 	layout_node(&b, doc.root)
@@ -94,6 +113,11 @@ destroy :: proc(l: ^Layout) {
 // The link under a point of the page (layout coordinates), "" if there is none.
 // The whole line box of a run counts, so clicks between the lines still hit.
 link_at :: proc(l: ^Layout, x, y: f32) -> (link: string, ok: bool) {
+	for image in l.images {
+		if image.link != "" && x >= image.x && x <= image.x + image.width && y >= image.y && y <= image.y + image.height {
+			return image.link, true
+		}
+	}
 	for run in l.runs {
 		if run.link == "" {
 			continue
@@ -125,6 +149,8 @@ Builder :: struct {
 	canvas_from_html: bool,              // <html> set the page background, <body> must not override it
 	viewport:       [2]f32,
 	text_align:     dom.Text_Align,      // of the block the current line belongs to
+	line_images:    [dynamic]Image_Item, // images of the current line, y is set in finish_line
+	image_sizes:    Image_Sizes,
 }
 
 // The top edge of an open block. It is only known once the collapsed margin
@@ -176,6 +202,11 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 		if href, ok := dom.attribute(node, "href"); ok {
 			b.link = strings.clone(href, b.allocator)
 		}
+	}
+
+	if node.tag == "img" && style.display != .None {
+		layout_image(b, node)
+		return
 	}
 
 	if style.display == .Inline {
@@ -355,7 +386,7 @@ layout_pre_text :: proc(b: ^Builder, text: string, style: dom.Style) {
 @(private)
 request_space :: proc(b: ^Builder, style: dom.Style) {
 	// no space at the start of a line
-	if len(b.line) == 0 {
+	if line_empty(b) {
 		return
 	}
 	b.pending_space = true
@@ -377,17 +408,17 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 	}
 
 	// wrap; a word wider than the line stays alone on its line
-	if len(b.line) > 0 && b.x + space_width + width > b.right {
+	if !line_empty(b) && b.x + space_width + width > b.right {
 		finish_line(b)
 		space_width = 0
 	}
-	if len(b.line) == 0 {
+	if line_empty(b) {
 		start_line(b)
 		space_width = 0
 	}
 
 	// same style as the previous run: extend it instead of starting a new one
-	if len(b.line) > 0 {
+	if b.can_extend && len(b.line) > 0 {
 		last := &b.line[len(b.line) - 1]
 		if b.can_extend && same_style(last^, style) && last.link == b.link {
 			separator := " " if space_width > 0 else ""
@@ -416,7 +447,7 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 // Preserved spaces (in <pre>) only move the cursor; dropped at a wrap.
 @(private)
 place_spaces :: proc(b: ^Builder, spaces: string, style: dom.Style) {
-	if len(b.line) == 0 {
+	if line_empty(b) {
 		start_line(b)
 	}
 	b.x += b.measure(spaces, style.font_size, style.font_weight >= BOLD_WEIGHT)
@@ -451,7 +482,7 @@ add_marker :: proc(b: ^Builder, node: ^dom.Node) {
 // A <br> or a newline in <pre>: ends the line; on an empty line it adds an empty one.
 @(private)
 line_break :: proc(b: ^Builder, style: dom.Style) {
-	if len(b.line) == 0 {
+	if line_empty(b) {
 		start_line(b)
 		b.y += style.font_size * LINE_HEIGHT_FACTOR
 		b.x = b.left
@@ -463,7 +494,7 @@ line_break :: proc(b: ^Builder, style: dom.Style) {
 // First content on a line: the collapsed margin above becomes real space now.
 @(private)
 start_line :: proc(b: ^Builder) {
-	if len(b.line) > 0 {
+	if !line_empty(b) {
 		return
 	}
 	flush_margin(b)
@@ -488,12 +519,16 @@ flush_margin :: proc(b: ^Builder) {
 // Fixes the vertical position of all runs of the line and moves y down.
 @(private)
 finish_line :: proc(b: ^Builder) {
-	if len(b.line) == 0 {
+	if line_empty(b) {
 		return
 	}
+	// as high as the largest font or image on it
 	line_height: f32 = 0
 	for run in b.line {
 		line_height = max(line_height, run.font_size * LINE_HEIGHT_FACTOR)
+	}
+	for image in b.line_images {
+		line_height = max(line_height, image.height)
 	}
 
 	// text-align: move the line by the free space (or half of it). List markers
@@ -505,14 +540,20 @@ finish_line :: proc(b: ^Builder) {
 				line_end = max(line_end, run.x + run.width)
 			}
 		}
-		shift := b.right - line_end
+		for image in b.line_images {
+			line_end = max(line_end, image.x + image.width)
+		}
+		shift := max(b.right - line_end, 0)
 		if b.text_align == .Center {
 			shift /= 2
 		}
 		for &run in b.line {
 			if run.x >= b.left {
-				run.x += max(shift, 0)
+				run.x += shift
 			}
+		}
+		for &image in b.line_images {
+			image.x += shift
 		}
 	}
 
@@ -522,10 +563,110 @@ finish_line :: proc(b: ^Builder) {
 		run.y = b.y + (line_height - own_height) + (own_height - run.font_size) / 2
 		append(&b.layout.runs, run)
 	}
+	// images sit on the bottom of the line, like text
+	for &image in b.line_images {
+		image.y = b.y + line_height - image.height
+		append(&b.layout.images, image)
+	}
 	clear(&b.line)
+	clear(&b.line_images)
 	b.y += line_height
 	b.x = b.left
 	b.pending_space = false
+}
+
+@(private)
+line_empty :: proc(b: ^Builder) -> bool {
+	return len(b.line) == 0 && len(b.line_images) == 0
+}
+
+// An image is an inline box with a fixed size: it is placed in the line like
+// a (big) word, wraps like one, and makes the line as high as itself.
+@(private)
+layout_image :: proc(b: ^Builder, node: ^dom.Node) {
+	src, _ := dom.attribute(node, "src")
+	width, height := image_size(b, node, src)
+
+	space_width: f32 = 0
+	if b.pending_space {
+		space_width = b.measure(" ", b.space_style.font_size, b.space_style.font_weight >= BOLD_WEIGHT)
+	}
+	if !line_empty(b) && b.x + space_width + width > b.right {
+		finish_line(b)
+		space_width = 0
+	}
+	if line_empty(b) {
+		start_line(b)
+		space_width = 0
+	}
+
+	append(&b.line_images, Image_Item {
+		src    = strings.clone(src, b.allocator),
+		x      = b.x + space_width,
+		width  = width,
+		height = height,
+		link   = b.link,
+	})
+	b.x += space_width + width
+	b.pending_space = false
+	b.can_extend = false // text after the image starts a new run
+}
+
+// The size of an image, like a browser picks it:
+// 1. CSS width/height, 2. the width/height attributes, 3. the natural size of
+// the loaded image. If only one side is given, the other keeps the aspect
+// ratio of the image. Unknown sides get the placeholder size. max-width
+// shrinks the image, keeping its proportions (often max-width: 100%).
+@(private)
+image_size :: proc(b: ^Builder, node: ^dom.Node, src: string) -> (width, height: f32) {
+	style := node.style
+	available := b.right - b.left
+
+	w, h: Maybe(f32)
+	if style.width.unit != .Auto {
+		w = dom.resolve_length(style.width, style.font_size, available, b.viewport)
+	} else if v, ok := attribute_px(node, "width"); ok {
+		w = v
+	}
+	// percentages of a height would need the height of the containing block
+	if style.height.unit != .Auto && style.height.unit != .Percent {
+		h = dom.resolve_length(style.height, style.font_size, available, b.viewport)
+	} else if v, ok := attribute_px(node, "height"); ok {
+		h = v
+	}
+
+	natural, loaded := b.image_sizes[src]
+	if loaded && natural.x > 0 && natural.y > 0 {
+		ratio := natural.y / natural.x
+		switch {
+		case w == nil && h == nil:
+			w, h = natural.x, natural.y
+		case h == nil:
+			h = w.? * ratio
+		case w == nil:
+			w = h.? / ratio
+		}
+	}
+	width = w.? or_else IMAGE_PLACEHOLDER_SIZE
+	height = h.? or_else IMAGE_PLACEHOLDER_SIZE
+
+	if style.max_width.unit != .Auto {
+		max_width := dom.resolve_length(style.max_width, style.font_size, available, b.viewport)
+		if width > max_width && width > 0 {
+			height *= max_width / width
+			width = max_width
+		}
+	}
+	return max(width, 0), max(height, 0)
+}
+
+// width="200" -> 200. Percentages and junk are ignored.
+@(private)
+attribute_px :: proc(node: ^dom.Node, name: string) -> (value: f32, ok: bool) {
+	text := dom.attribute(node, name) or_return
+	text = strings.trim_suffix(strings.trim_space(text), "px")
+	value = strconv.parse_f32(text) or_return
+	return value, value >= 0
 }
 
 // Adjacent vertical margins collapse: the larger one wins instead of adding up.

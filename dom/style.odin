@@ -17,6 +17,7 @@ Style :: struct {
 	margin:      Edges,
 	padding:     Edges,
 	width:       Length, // .Auto = fill the available width
+	height:      Length, // only used for images so far
 	max_width:   Length, // .Auto = none
 	background:  Color,  // alpha 0 = transparent
 	border:      Borders,
@@ -43,6 +44,7 @@ ROOT_STYLE :: Style {
 	font_size   = ROOT_FONT_SIZE,
 	font_weight = 400,
 	width       = AUTO,
+	height      = AUTO,
 	max_width   = AUTO,
 	border      = INITIAL_BORDERS,
 }
@@ -65,6 +67,7 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		font_weight = parent.font_weight,
 		text_align  = parent.text_align,
 		width       = AUTO,
+		height      = AUTO,
 		max_width   = AUTO,
 		border      = INITIAL_BORDERS,
 	}
@@ -180,7 +183,7 @@ STYLE_PROPERTIES :: [?]string {
 	"display", "color", "font-size", "font-weight", "text-align",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
-	"width", "max-width",
+	"width", "height", "max-width",
 	"background", "background-color",
 	"border", "border-width", "border-style", "border-color",
 	"border-top", "border-right", "border-bottom", "border-left",
