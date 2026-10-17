@@ -1,5 +1,6 @@
 package dom
 
+import "core:strings"
 import "core:testing"
 
 @(test)
@@ -270,11 +271,17 @@ test_external_stylesheets :: proc(t: ^testing.T) {
 		requested: [dynamic]string,
 	}
 	fake: Fake
-	defer delete(fake.requested)
+	defer {
+		for href in fake.requested {
+			delete(href)
+		}
+		delete(fake.requested)
+	}
 
 	load := proc(ctx: rawptr, href: string) -> (css: string, ok: bool) {
 		fake := cast(^Fake)ctx
-		append(&fake.requested, href)
+		// href points into lexbor's memory, which is gone after parse: keep a copy
+		append(&fake.requested, strings.clone(href))
 		switch href {
 		case "a.css":
 			return "p { color: red } div { display: none }", true
