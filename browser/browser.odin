@@ -1,8 +1,10 @@
 package browser
 
+import "../dom"
 import "../http"
 import "../ui"
 import "core:fmt"
+import "core:strings"
 
 Browser :: struct {
 	window:      ui.MainWindow,
@@ -57,6 +59,20 @@ load_page :: proc(b: ^Browser, url: string) {
 	response, err := http.get(&b.http_client, url)
 	if http_err, ok := err.?; ok {
 		ui.page_view_set_content(&b.window.page_view, fmt.tprintf("Error: %v", http_err.message))
+		return
+	}
+
+	content_type, _ := http.header_value(response.header, "Content-Type")
+	if strings.has_prefix(content_type, "text/html") {
+		doc, parse_err := dom.parse(response.body)
+		if e, ok := parse_err.?; ok {
+			ui.page_view_set_content(&b.window.page_view, fmt.tprintf("Error: %v", e.message))
+			return
+		}
+		defer dom.destroy(doc)
+
+		// page_view_set_content copies, so the temp allocator is fine here
+		ui.page_view_set_content(&b.window.page_view, dom.to_display_text(doc, context.temp_allocator))
 		return
 	}
 
