@@ -43,10 +43,13 @@ register_callbacks :: proc(b: ^Browser) {
 		browser := cast(^Browser)ctx
 		response, err := http.get(&browser.http_client, url)
 		if http_err, ok := err.?; ok {
-			browser.window.page_view.content = fmt.tprintf("Error: %v", http_err.message)
+			ui.page_view_set_content(
+				&browser.window.page_view,
+				fmt.tprintf("Error: %v", http_err.message),
+			)
 			return
 		}
 
-		browser.window.page_view.content = response.body
+		ui.page_view_set_content(&browser.window.page_view, response.body)
 	}
 }

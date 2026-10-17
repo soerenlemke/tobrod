@@ -1,6 +1,5 @@
 package ui
 
-import "base:runtime"
 import "core:strings"
 import rl "vendor:raylib"
 
@@ -74,12 +73,9 @@ address_bar_handle_input :: proc(ui: ^MainWindow, bar: ^AddressBar) {
 		strings.write_rune(&bar.text, key)
 	}
 
-	if rl.IsKeyPressed(.BACKSPACE) {
-		s := strings.to_string(bar.text)
-		if len(s) > 0 {
-			strings.builder_reset(&bar.text)
-			strings.write_string(&bar.text, s[:len(s) - 1])
-		}
+	// pop a whole rune, not a byte, so multi-byte UTF-8 chars (e.g. umlauts) stay valid
+	if rl.IsKeyPressed(.BACKSPACE) && strings.builder_len(bar.text) > 0 {
+		strings.pop_rune(&bar.text)
 	}
 
 	if rl.IsKeyPressed(.ENTER) {

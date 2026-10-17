@@ -23,6 +23,19 @@ page_view_init :: proc(window_width, window_height: i32) -> PageView {
 	}
 }
 
+// The page view owns its content: the passed text is copied, so callers can
+// hand over temp-allocated or otherwise short-lived strings.
+page_view_set_content :: proc(pv: ^PageView, text: string) {
+	delete(pv.content)
+	pv.content = strings.clone(text)
+	pv.scroll_y = 0
+}
+
+page_view_destroy :: proc(pv: ^PageView) {
+	delete(pv.content)
+	pv.content = ""
+}
+
 page_view_render :: proc(pv: ^PageView) {
 	rl.BeginScissorMode(i32(pv.rect.x), i32(pv.rect.y), i32(pv.rect.width), i32(pv.rect.height))
 	defer rl.EndScissorMode()
