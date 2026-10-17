@@ -48,8 +48,13 @@ destroy :: proc(ui: ^MainWindow) {
 	rl.CloseWindow()
 }
 
-run :: proc(ui: ^MainWindow) {
+// With a non-empty screenshot_path, the window is captured after a few frames
+// and run returns instead of waiting for the user to close it.
+run :: proc(ui: ^MainWindow, screenshot_path := "") -> Maybe(Error) {
+	frame := 0
 	for !rl.WindowShouldClose() {
+		frame += 1
+
 		if rl.IsWindowResized() {
 			w := rl.GetScreenWidth()
 			h := rl.GetScreenHeight()
@@ -69,10 +74,18 @@ run :: proc(ui: ^MainWindow) {
 		page_view_render(&ui.page_view)
 		address_bar_render(&ui.address_bar)
 
+		if screenshot_path != "" && frame >= SCREENSHOT_AFTER_FRAMES {
+			err := take_screenshot(screenshot_path)
+			rl.EndDrawing()
+			free_all(context.temp_allocator)
+			return err
+		}
+
 		rl.EndDrawing()
 
 		// cleaning up the temp allocated stuff each frame
 		// e.g. wrap text is currently using the temp allocator
 		free_all(context.temp_allocator)
 	}
+	return nil
 }

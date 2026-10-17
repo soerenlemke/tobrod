@@ -22,6 +22,11 @@ address_bar_init :: proc(window_width: i32) -> AddressBar {
 	return bar
 }
 
+address_bar_set_text :: proc(bar: ^AddressBar, text: string) {
+	strings.builder_reset(&bar.text)
+	strings.write_string(&bar.text, text)
+}
+
 address_bar_render :: proc(bar: ^AddressBar) {
 	rl.DrawRectangleRec(bar.rect, bar.bg_color)
 
