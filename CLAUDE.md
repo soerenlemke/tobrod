@@ -113,8 +113,8 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 **ui**
 - `MainWindow` besitzt `AddressBar`, `PageView` und den Submit-Callback.
 - `AddressBar`: Text in einem `strings.Builder`; Eingabefeld ist ein fest positioniertes Rect (x = 80, 80 px links/rechts für spätere Buttons reserviert). Fokusfarbe Blau `{66,133,244}`.
-- `PageView`: `rect` unterhalb der Adressleiste, `content` (roher Text, gehört der PageView, nur über `page_view_set_content` setzen), `scroll_y`, `content_height`. `wrap_text` bricht wortweise mit `rl.MeasureTextEx` um und arbeitet komplett im Temp-Allocator. Rendering mit Scissor-Mode. Scrollen wird auf `[0, content_height - rect.height]` begrenzt.
-- `font` ist eine Package-globale Variable (geladen mit Größe 32, gezeichnet mit `FONT_SIZE` 16).
+- `PageView`: `rect` unterhalb der Adressleiste, `content` (roher Text, gehört der PageView, nur über `page_view_set_content` setzen), `scroll_y`, `content_height`. `wrap_text` teilt an Zeilenumbrüchen und bricht jede Zeile wortweise mit `rl.MeasureTextEx` um und arbeitet komplett im Temp-Allocator. Rendering mit Scissor-Mode. Scrollen wird auf `[0, content_height - rect.height]` begrenzt.
+- `font` ist eine Package-globale Variable (geladen mit Größe 32, gezeichnet mit `FONT_SIZE` 16). Geladen werden die Codepoints aus `font_codepoints` (ASCII, Latin-1, typografische Zeichen).
 
 **dom** ([dom/](dom/))
 - `parse(html) -> (^Document, Maybe(Parse_Error))`: parst mit lexbor, kopiert rekursiv in eigene `Node`s und zerstört das lexbor-Dokument sofort. Danach zeigt nichts mehr in lexbors Speicher.
@@ -157,8 +157,8 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 10. ~~lexbor auf Windows~~ – behoben: wird von `setup.ps1` aus dem Submodul `vendor/lexbor-src` statisch gebaut. Weil Odin standardmäßig die statische CRT (`libcmt`) linkt, setzt das Binding wie `vendor:raylib` `/NODEFAULTLIB:libcmt` (sonst scheitert `odin test vendor/lexbor` an `__imp__dsign`).
 11. URL-Eingabe ohne Schema (`example.com`) wird nicht automatisch zu `http(s)://` ergänzt (steht als TODO in der Roadmap).
 12. Linux ist bisher weder dokumentiert noch getestet.
-13. **Nicht-ASCII-Zeichen werden als `?` gezeichnet** (z. B. `testdata/utf8.txt`): `fonts_init` lädt nur die 95 ASCII-Glyphen. Lösung: Codepoints beim Laden mitgeben (z. B. Latin-1) oder Glyphen bei Bedarf nachladen.
-14. **Zeilenumbrüche im Inhalt gehen verloren** (z. B. `testdata/long.txt`): `wrap_text` zerlegt mit `strings.fields`, das auch `\n` als Trenner behandelt. Erst an Zeilenumbrüchen splitten, dann jede Zeile umbrechen.
+13. ~~Nicht-ASCII-Zeichen werden als `?` gezeichnet~~ – behoben: `fonts_init` lädt ASCII, Latin-1 und ein paar typografische Zeichen (`– „“ … €`). Andere Schriften (z. B. Kyrillisch, CJK) erscheinen weiterhin als `?`; dafür bräuchte es Glyphen bei Bedarf.
+14. ~~Zeilenumbrüche im Inhalt gehen verloren~~ – behoben: `wrap_text` teilt erst an Zeilenumbrüchen (`\n`, `\r\n`) und bricht dann jede Zeile mit `wrap_line` um; leere Zeilen bleiben erhalten.
 
 ## Roadmap (Kurzfassung, Details im README)
 
