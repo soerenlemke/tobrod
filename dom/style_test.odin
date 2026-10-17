@@ -440,7 +440,7 @@ test_css_report :: proc(t: ^testing.T) {
 	report := css_report_init()
 	defer css_report_destroy(&report)
 	doc, err := parse(`<html><head><style>
-		p { line-height: 1.5; color: red; display: grid }
+		p { letter-spacing: 1px; color: red; display: grid }
 		.s { position: sticky; width: calc(100% - 2em) }
 	</style></head><body><p>a</p><p class="s">b</p><div style="white-space: nowrap"></div></body></html>`, report = &report)
 	if e, ok := err.?; ok {
@@ -448,7 +448,7 @@ test_css_report :: proc(t: ^testing.T) {
 	}
 	defer destroy(doc)
 
-	testing.expect_value(t, report.properties["line-height"], 2)
+	testing.expect_value(t, report.properties["letter-spacing"], 2)
 	testing.expect_value(t, report.properties["white-space"], 1)
 	testing.expect(t, !("color" in report.properties), "color is supported")
 	testing.expect_value(t, report.values["display: grid"], 2)
@@ -515,4 +515,39 @@ test_text_decoration :: proc(t: ^testing.T) {
 	testing.expect_value(t, p.style.decoration, Decoration{{.Underline}, Color{255, 0, 0, 255}})
 	// the longhand replaces the UA line-through of del
 	testing.expect_value(t, del.style.decoration.lines, Decoration_Lines{.Overline, .Line_Through})
+}
+
+@(test)
+test_line_height :: proc(t: ^testing.T) {
+	doc, err := parse(`<html><head><style>
+		.factor { line-height: 1.5 }
+		.factor p { font-size: 20px }
+		.em { font-size: 10px; line-height: 2em }
+		.em p { font-size: 20px }
+		.percent { line-height: 150% }
+	</style></head><body>
+		<div class="factor"><p>a</p></div>
+		<div class="em"><p>b</p></div>
+		<div class="percent">c</div>
+		<div>d</div>
+	</body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	divs := make([dynamic]^Node, context.temp_allocator)
+	for child in find_element(doc.root, "body").children {
+		if child.kind == .Element {
+			append(&divs, child)
+		}
+	}
+	if len(divs) != 4 do return
+	// a number is inherited as a number: 1.5 x the child's own 20px
+	testing.expect_value(t, line_height_px(find_element(divs[0], "p").style), 30)
+	// em is turned into px where it is declared (2 x 10px) and inherited as px
+	testing.expect_value(t, line_height_px(divs[1].style), 20)
+	testing.expect_value(t, line_height_px(find_element(divs[1], "p").style), 20)
+	testing.expect_value(t, line_height_px(divs[2].style), 24)
+	testing.expect_value(t, line_height_px(divs[3].style), 20) // normal: 1.25 x 16
 }

@@ -1,6 +1,60 @@
 package dom
 
+import "core:strconv"
 import "core:strings"
+
+// line-height: the height of the line box of a piece of text. A number is
+// inherited as a number (each child multiplies it with its own font size);
+// lengths and percentages are turned into px where they are declared and
+// inherited as px - like in CSS. normal is 1.25 x the font size, a bit more
+// than Inter's own 1.21.
+
+NORMAL_LINE_HEIGHT :: f32(1.25)
+
+Line_Height :: struct {
+	unit:  enum {
+		Normal, // the zero value: NORMAL_LINE_HEIGHT x the font size
+		Factor,
+		Px,
+	},
+	value: f32,
+}
+
+// The line height in px for text in this style.
+line_height_px :: proc(style: Style) -> f32 {
+	switch style.line_height.unit {
+	case .Factor:
+		return style.line_height.value * style.font_size
+	case .Px:
+		return style.line_height.value
+	case .Normal:
+	}
+	return NORMAL_LINE_HEIGHT * style.font_size
+}
+
+// "normal", "1.5", "24px", "1.5em", "150%"; font_size is the element's own.
+@(private)
+parse_line_height :: proc(value: string, font_size: f32) -> (Line_Height, bool) {
+	if value == "normal" {
+		return {}, true
+	}
+	if n, ok := strconv.parse_f32(value); ok {
+		return {.Factor, max(n, 0)}, true
+	}
+	length, ok := parse_length(value, false)
+	if !ok {
+		return {}, false
+	}
+	#partial switch length.unit {
+	case .Px:
+		return {.Px, max(length.value, 0)}, true
+	case .Em:
+		return {.Px, max(length.value * font_size, 0)}, true
+	case .Percent:
+		return {.Px, max(length.value / 100 * font_size, 0)}, true
+	}
+	return {}, false // vw/vh: not supported here
+}
 
 // Text decoration: lines drawn under, over or through the text.
 //
