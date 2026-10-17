@@ -99,6 +99,13 @@ layout_flex :: proc(b: ^Builder, node: ^dom.Node) {
 	box_index := reserve_box(b, style, border)
 
 	y := top + inset[.Top]
+	// absolute children are no items; their static position is the start of
+	// the content box
+	for child in node.children {
+		if child.kind == .Element && child.style.position == .Absolute && child.style.display != .None {
+			wait_for_containing_block(b, child, {content_left, y})
+		}
+	}
 	if column {
 		y = layout_flex_column(b, node, items[:], content_left, width, y, main_gap)
 	} else {

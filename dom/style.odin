@@ -16,6 +16,7 @@ Style :: struct {
 	list_style:  List_Style, // inherited from ul/ol to the li
 	position:    Position,   // not inherited
 	offset:      Edges,      // top, right, bottom, left (the "inset" properties); .Auto by default
+	clip:        Maybe(Edges), // clip: rect(top, right, bottom, left) of absolute elements, auto = that edge of the box
 	float:       Float,      // not inherited
 	clear:       Clear,      // not inherited
 	vertical_align:  Vertical_Align, // table cells only
@@ -343,7 +344,7 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 // font-size comes before the box properties, because em in margins refers to it.
 STYLE_PROPERTIES :: [?]string {
 	"display", "color", "font-size", "font-weight", "text-align",
-	"visibility", "position", "inset", "top", "right", "bottom", "left", "float", "clear", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
+	"visibility", "position", "inset", "top", "right", "bottom", "left", "clip", "float", "clear", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
 	"width", "height", "min-height", "max-height", "max-width",

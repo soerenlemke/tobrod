@@ -123,6 +123,12 @@ apply_box_declaration :: proc(style: ^Style, property, value: string) {
 		if length, ok := parse_length(value, true); ok {
 			style.offset[edge_of(property)] = length
 		}
+	case "clip":
+		if value == "auto" || value == "initial" {
+			style.clip = nil
+		} else if edges, ok := parse_clip_rect(value); ok {
+			style.clip = edges
+		}
 	case "min-height":
 		if value == "auto" {
 			style.min_height = {} // like 0 for blocks
@@ -223,6 +229,16 @@ background_color_of :: proc(value: string, current: Color) -> (color: Color, ok:
 		}
 	}
 	return {}, false
+}
+
+// rect(top, right, bottom, left), with commas or (old syntax) spaces.
+@(private)
+parse_clip_rect :: proc(value: string) -> (edges: Edges, ok: bool) {
+	if !strings.has_prefix(value, "rect(") || !strings.has_suffix(value, ")") {
+		return
+	}
+	inner, _ := strings.replace_all(value[len("rect("):len(value) - 1], ",", " ", context.temp_allocator)
+	return parse_edges(inner, true)
 }
 
 @(private)

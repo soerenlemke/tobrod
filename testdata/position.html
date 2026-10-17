@@ -12,6 +12,12 @@
     .up { position: relative; top: -0.4em; color: #dc2626 }
     .badge { position: relative; left: 8px; background: #dcfce7; color: #166534 }
     .nudge { position: relative; inset: auto auto 6px 16px; padding: 8px; background: #fecaca }
+    .frame { position: relative; height: 120px; border: 2px solid #6b7280; background: #f9fafb; margin-top: 16px }
+    .corner { position: absolute; padding: 4px 8px; background: #c7d2fe; border: 1px solid #4f46e5 }
+    .tl { top: 8px; left: 8px }
+    .br { bottom: 8px; right: 8px }
+    .stretch { position: absolute; top: 40px; bottom: 40px; left: 30%; right: 30%; background: #fde68a; padding: 4px }
+    .tag { position: absolute; background: #fecaca; padding: 0 4px }
   </style>
 </head>
 <body>
@@ -24,6 +30,17 @@
     <p>Inline: some text with a <span class="up">raised word</span> in it, and a
        <span class="badge">badge moved 8px right</span> that overlaps the text after it.</p>
     <div class="nudge">inset: auto auto 6px 16px – up 6px (bottom) and right 16px (left)</div>
+  </div>
+  <div class="card">
+    <h2>position: absolute</h2>
+    <p>The frame below is relative, so it is the containing block of the boxes inside.</p>
+    <div class="frame">
+      <div class="corner tl">top: 8px; left: 8px</div>
+      <div class="corner br">bottom: 8px; right: 8px</div>
+      <div class="stretch">top/bottom 40px, left/right 30%: stretched</div>
+    </div>
+    <p>Without offsets an element stays at its static position:
+       here<span class="tag">tag</span> – it overlaps the text instead of making room.</p>
   </div>
 </body>
 </html>
