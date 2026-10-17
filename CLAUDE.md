@@ -22,6 +22,7 @@ odin check .               # nur Typecheck, schnell
 odin test vendor/lexbor    # lexbor-Bindings
 odin test dom              # eigener DOM-Baum
 odin test http             # Header-Parsing, URL-Auflösung
+odin test browser          # History
 odin test layout           # Layout (mit Fake-Textmessung, ohne Fenster)
 ```
 
@@ -60,7 +61,8 @@ odin build . && mkdir -p screenshots
 
 ```
 main.odin               Einstiegspunkt: CLI-Optionen (--url, --screenshot) → browser.init → register_callbacks → navigate → run
-browser/browser.odin    Package browser: verbindet UI und HTTP-Client (Orchestrierung)
+browser/browser.odin    Package browser: verbindet UI und HTTP-Client (Orchestrierung, Navigation)
+browser/history.odin    History: besuchte URLs + Index (push, back, forward, replace_current)
 http/client.odin        Package http: synchroner GET über libcurl easy-API
 http/header.odin        header_value: Header aus der rohen Antwort lesen
 http/url.odin           resolve_url (relative Links über curls URL-API), is_loadable_url
@@ -75,6 +77,7 @@ layout/layout.odin      Package layout: DOM mit Styles → positionierte Text-Ru
 ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
   main_window.odin        MainWindow, init/destroy, Haupt-Loop (run)
   address_bar.odin        Adressleiste: Eingabe, Fokus, Enter → Callback
+  nav_buttons.odin        Zurück/Vor/Neu laden: mit Formen gezeichnet, Klick + Tastenkürzel → Callback
   page_view.odin          Seitenansicht: besitzt Dokument + gecachtes Layout, zeichnet Text-Runs, Scrollen
   fonts.odin              globaler Font (fonts_init/fonts_close)
   constants.odin          UI-Konstanten (Höhen, Fontgröße, Scroll-Speed)
@@ -96,16 +99,18 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 
 1. `main` baut `ui.WindowSettings` (1024×768, „Browser“) und ruft `browser.init`.
 2. `browser.init` initialisiert zuerst `ui.init` (raylib-Fenster, resizable, Font, AddressBar, PageView), dann `http.init` (curl-Handle + zwei `strings.Builder`). Schlägt HTTP fehl, wird die UI wieder abgebaut.
-3. `browser.register_callbacks` setzt `on_url_submit` und `on_link_click` (jeweils mit `_ctx` = Pointer auf den `Browser`) im `MainWindow`. Das ist der Mechanismus, mit dem die UI nach oben kommuniziert, ohne `browser`/`http` zu importieren.
+3. `browser.register_callbacks` setzt `on_url_submit`, `on_link_click` und `on_navigate` (jeweils mit `_ctx` = Pointer auf den `Browser`) im `MainWindow`. Das ist der Mechanismus, mit dem die UI nach oben kommuniziert, ohne `browser`/`http` zu importieren.
 4. `browser.run` → `ui.run`: klassischer raylib-Loop pro Frame:
    - Resize → `address_bar_handle_resize`, `page_view_handle_resize`
-   - `address_bar_handle_input` (Klick-Fokus, Zeichen, Backspace, Enter, Escape)
+   - `nav_buttons_handle_input` (Klick auf Zurück/Vor/Neu laden, Alt+←/→, F5/Strg+R → `on_navigate`)
+   - `address_bar_handle_input` (Klick-Fokus nur aufs Eingabefeld, Zeichen, Backspace, Enter, Escape)
    - `page_view_handle_mouse` (Hand-Cursor über Links, Linksklick → `on_link_click`)
    - Mausrad → `page_view_handle_scroll`
-   - `BeginDrawing` → `page_view_render`, dann `address_bar_render` (Adressleiste liegt oben drüber) → `EndDrawing`
+   - `BeginDrawing` → `page_view_render`, dann `address_bar_render` und `nav_buttons_render` (liegen oben drüber) → `EndDrawing`
    - `free_all(context.temp_allocator)` am Frame-Ende
-5. Enter in der Adressleiste → Callback → `load_page`: merkt sich die URL (`current_url`), `http.get` (blockierend, folgt Redirects). Nach einem Redirect werden `current_url` und Adressleiste auf `response.url` gesetzt. Bei `Content-Type: text/html` → `dom.parse` → `page_view_set_document` (PageView übernimmt das Dokument), sonst `page_view_set_content` (Body bzw. Fehlertext → `dom.from_plain_text`). Beim Rendern baut die PageView bei Bedarf das Layout (`layout.build`) und zeichnet die Runs.
-6. Klick auf einen Link → `on_link_click(href)` → `http.resolve_url(current_url, href)` → nur `http(s)` wird geladen (`navigate`), `mailto:` usw. werden ignoriert.
+5. Enter in der Adressleiste, Linkklick oder `--url` → `navigate` → `history_push` → `open_current` (Adressleiste setzen, `load_page`, Button-Zustand per `ui.set_navigation_state`). `load_page`: `http.get` (blockierend, folgt Redirects); nach einem Redirect ersetzt `history_replace_current` den Eintrag durch `response.url` und die Adressleiste zeigt sie. Bei `Content-Type: text/html` → `dom.parse` → `page_view_set_document` (PageView übernimmt das Dokument), sonst `page_view_set_content` (Body bzw. Fehlertext → `dom.from_plain_text`). Beim Rendern baut die PageView bei Bedarf das Layout (`layout.build`) und zeichnet die Runs.
+6. Klick auf einen Link → `on_link_click(href)` → `http.resolve_url(aktueller History-Eintrag, href)` → nur `http(s)` wird geladen (`navigate`), `mailto:` usw. werden ignoriert.
+7. Zurück/Vor → `history_back`/`history_forward` + `open_current` (kein neuer Eintrag); Neu laden → `open_current`.
 
 ### Abhängigkeitsrichtung
 
@@ -123,9 +128,14 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - Rückgabe `Http_Response{header, body}` – die Strings **zeigen in die Builder des Clients**, sind also nur bis zum nächsten `get` gültig.
 - Fehler: `Maybe(Http_Error)` mit curl-Code und `easy_strerror`-Text.
 
+**browser**
+- `History` (`entries` gehören der History, `index` = aktueller Eintrag, -1 wenn leer). `history_push` verwirft die Vor-Einträge; `history_push`/`history_replace_current` klonen erst und geben dann frei, weil der übergebene String in die History zeigen kann. Der aktuelle Eintrag ist die Basis für relative Links (kein separates `current_url`).
+- `navigate` klont die URL in den Temp-Allocator, weil sie in den Text der Adressleiste zeigen kann, den `open_current` überschreibt.
+
 **ui**
-- `MainWindow` besitzt `AddressBar`, `PageView`, den Submit- und den Link-Callback. `page_view_handle_mouse` kopiert den Link vor dem Callback in den Temp-Allocator, weil das Laden der neuen Seite das Layout (und damit den String) zerstört.
-- `AddressBar`: Text in einem `strings.Builder`; Eingabefeld ist ein fest positioniertes Rect (x = 80, 80 px links/rechts für spätere Buttons reserviert). Fokusfarbe Blau `{66,133,244}`.
+- `MainWindow` besitzt `AddressBar`, `NavButtons`, `PageView` und die Callbacks (Submit, Link, Navigation). `page_view_handle_mouse` kopiert den Link vor dem Callback in den Temp-Allocator, weil das Laden der neuen Seite das Layout (und damit den String) zerstört.
+- `AddressBar`: Text in einem `strings.Builder`; Eingabefeld (`address_bar_input_rect`) beginnt rechts der Navigations-Buttons und reicht bis 8 px vor den rechten Rand. Nur ein Klick ins Eingabefeld fokussiert.
+- `NavButtons`: `can_back`/`can_forward` (gesetzt vom Browser über `set_navigation_state`), Buttons à 24 px; Icons mit `DrawLineEx`/`DrawRing`/`DrawTriangle` gezeichnet (Inter hat kein ↻). raylib lässt Dreiecke mit Ecken im Uhrzeigersinn weg (Backface Culling) → `draw_triangle_any_order`. Deaktivierte Buttons grau, Hover hellgrau hinterlegt. Fokusfarbe Blau `{66,133,244}`.
 - `PageView`: `rect` unterhalb der Adressleiste, `document` (gehört der PageView: `page_view_set_document` übernimmt es, `page_view_set_content` verpackt Text per `dom.from_plain_text`), `page_layout` (gecacht, `page_view_ensure_layout` baut nur neu, wenn sich die Breite ändert), `scroll_y`, `content_height` (= Layout-Höhe). `page_view_render` zeichnet nur Runs im sichtbaren Bereich (Scissor-Mode). `measure_text` ist die `Measure_Text`-Proc für das Layout (raylib). Fette Runs werden mit `font_bold` gezeichnet und gemessen (`font_for(bold)`). Scrollen wird auf `[0, content_height - rect.height]` begrenzt (`clamp_scroll`).
 - `font` und `font_bold` sind Package-globale Variablen (`fonts_init` lädt beide, Pfade in `FONT_REGULAR_PATH`/`FONT_BOLD_PATH`), jeweils einmal mit `FONT_LOAD_SIZE` (64) gerastert und beim Zeichnen auf die jeweilige Größe skaliert; Mipmaps + trilinearer Filter halten kleinen Text glatt. Geladen werden die Codepoints aus `font_codepoints` (ASCII, Latin-1, typografische Zeichen).
 
@@ -180,7 +190,7 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 5. `http.init` prüft nicht, ob `curl.easy_init()` `nil` liefert; `curl_global_init` wird nicht explizit aufgerufen (wichtig, sobald Threads dazukommen).
 6. ~~`ui.destroy` gibt den `strings.Builder` der Adressleiste nicht frei~~ – behoben.
 7. `address_bar_render` allokiert pro Frame eine cstring auf dem Heap (könnte Temp-Allocator nutzen).
-8. Fokus-Klick prüft die ganze Adressleiste statt nur das Eingabefeld.
+8. ~~Fokus-Klick prüft die ganze Adressleiste statt nur das Eingabefeld~~ – behoben (`address_bar_input_rect`).
 9. ~~Textumbruch läuft jeden Frame neu~~ – behoben: Das Layout wird gecacht und nur bei Breiten- oder Inhaltsänderung neu gebaut.
 10. ~~lexbor auf Windows~~ – behoben: wird von `setup.ps1` aus dem Submodul `vendor/lexbor-src` statisch gebaut. Weil Odin standardmäßig die statische CRT (`libcmt`) linkt, setzt das Binding wie `vendor:raylib` `/NODEFAULTLIB:libcmt` (sonst scheitert `odin test vendor/lexbor` an `__imp__dsign`).
 11. URL-Eingabe ohne Schema (`example.com`) wird nicht automatisch zu `http(s)://` ergänzt (steht als TODO in der Roadmap).
@@ -191,7 +201,7 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 ## Roadmap (Kurzfassung, Details im README)
 
 - Stage 1 HTTP-Client – erledigt
-- Stage 2 Fenster & UI – Fenster und Adressleiste stehen; offen: Schema-Ergänzung, Tabs, Navigation (zurück/vor/neu laden)
+- Stage 2 Fenster & UI – Fenster, Adressleiste, klickbare Links und Navigation (zurück/vor/neu laden) stehen; offen: Schema-Ergänzung, Tabs
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
 - Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt positionierte Text-Runs, die UI zeichnet sie mit Größe, Fett (Inter Bold) und Farbe. Links sind klickbar (relative URLs über curl). Offen: Hintergründe/Boxen, Flexbox & Co.
 - Stage 5 Threads – HTTP in eigenen Thread, Ergebnis-Übergabe an die UI, Thread-Sicherheit des Clients

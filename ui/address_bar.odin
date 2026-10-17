@@ -35,12 +35,7 @@ address_bar_render :: proc(bar: ^AddressBar) {
 	rl.DrawRectangleRec(bottom_line, bar.border_color)
 
 	// input field
-	input_rect := rl.Rectangle {
-		x      = 80, // space for icons/buttons on the left
-		y      = 6,
-		width  = bar.rect.width - 160, // space for reload etc. on the right
-		height = 24,
-	}
+	input_rect := address_bar_input_rect(bar)
 	rl.DrawRectangleRec(input_rect, rl.WHITE)
 
 	// focus border
@@ -60,13 +55,25 @@ address_bar_render :: proc(bar: ^AddressBar) {
 	}
 }
 
+// The text field: right of the navigation buttons, up to the right edge.
+address_bar_input_rect :: proc(bar: ^AddressBar) -> rl.Rectangle {
+	left := NAV_BUTTONS_LEFT + NAV_BUTTONS_WIDTH + 8
+	return rl.Rectangle {
+		x      = left,
+		y      = 6,
+		width  = max(bar.rect.width - left - 8, 0),
+		height = 24,
+	}
+}
+
 address_bar_handle_resize :: proc(bar: ^AddressBar, window_width, window_height: i32) {
 	bar.rect.width = f32(window_width)
 }
 
 address_bar_handle_input :: proc(ui: ^MainWindow, bar: ^AddressBar) {
+	// only the text field takes focus, not the buttons next to it
 	if rl.IsMouseButtonPressed(.LEFT) {
-		bar.focused = rl.CheckCollisionPointRec(rl.GetMousePosition(), bar.rect)
+		bar.focused = rl.CheckCollisionPointRec(rl.GetMousePosition(), address_bar_input_rect(bar))
 	}
 
 	if !bar.focused do return

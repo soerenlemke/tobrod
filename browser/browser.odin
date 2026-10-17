@@ -9,11 +9,12 @@ import "core:strings"
 Browser :: struct {
 	window:      ui.MainWindow,
 	http_client: http.Client,
-	current_url: string, // owned; the base for relative links
+	history:     History, // the current entry is the base for relative links
 }
 
 init :: proc(settings: ui.WindowSettings) -> (Browser, Maybe(ui.Error)) {
 	b: Browser
+	b.history = history_init()
 
 	main_window, ui_err := ui.init(settings)
 	if ui_err, ok := ui_err.?; ok {
@@ -34,7 +35,7 @@ init :: proc(settings: ui.WindowSettings) -> (Browser, Maybe(ui.Error)) {
 destroy :: proc(b: ^Browser) {
 	ui.destroy(&b.window)
 	http.destroy(&b.http_client)
-	delete(b.current_url)
+	history_destroy(&b.history)
 }
 
 // With a non-empty screenshot_path the window is captured to that file and run returns.
@@ -46,39 +47,70 @@ register_callbacks :: proc(b: ^Browser) {
 	b.window.on_url_submit_ctx = b
 	b.window.on_url_submit = proc(url: string, ctx: rawptr) {
 		browser := cast(^Browser)ctx
-		load_page(browser, url)
+		navigate(browser, url)
 	}
 
 	b.window.on_link_click_ctx = b
 	b.window.on_link_click = proc(href: string, ctx: rawptr) {
 		browser := cast(^Browser)ctx
-		url, ok := http.resolve_url(browser.current_url, href, context.temp_allocator)
+		base, _ := history_current(&browser.history)
+		url, ok := http.resolve_url(base, href, context.temp_allocator)
 		if !ok || !http.is_loadable_url(url) {
 			return // e.g. mailto: or a broken href
 		}
 		navigate(browser, url)
 	}
+
+	b.window.on_navigate_ctx = b
+	b.window.on_navigate = proc(action: ui.Nav_Action, ctx: rawptr) {
+		browser := cast(^Browser)ctx
+		switch action {
+		case .Back:
+			if _, ok := history_back(&browser.history); ok {
+				open_current(browser)
+			}
+		case .Forward:
+			if _, ok := history_forward(&browser.history); ok {
+				open_current(browser)
+			}
+		case .Reload:
+			open_current(browser)
+		}
+	}
 }
 
-// Load a URL as if it had been typed into the address bar.
+// Opens a new page: typed into the address bar, a clicked link or --url.
 navigate :: proc(b: ^Browser, url: string) {
+	// url may point into the address bar's text, which open_current overwrites
+	url := strings.clone(url, context.temp_allocator)
+	history_push(&b.history, url)
+	open_current(b)
+}
+
+// Shows and loads the current history entry.
+@(private)
+open_current :: proc(b: ^Browser) {
+	url, ok := history_current(&b.history)
+	if !ok {
+		return
+	}
 	ui.address_bar_set_text(&b.window.address_bar, url)
 	load_page(b, url)
+	ui.set_navigation_state(&b.window, history_can_back(&b.history), history_can_forward(&b.history))
 }
 
 @(private)
 load_page :: proc(b: ^Browser, url: string) {
-	set_current_url(b, url)
-
 	response, err := http.get(&b.http_client, url)
 	if http_err, ok := err.?; ok {
 		ui.page_view_set_content(&b.window.page_view, fmt.tprintf("Error: %v", http_err.message))
 		return
 	}
 
-	// after redirects we are somewhere else: show that and resolve links against it
-	if response.url != "" && response.url != b.current_url {
-		set_current_url(b, response.url)
+	// after redirects we are somewhere else: remember and show that,
+	// links on the page are relative to it (url may be freed after this)
+	if response.url != "" && response.url != url {
+		history_replace_current(&b.history, response.url)
 		ui.address_bar_set_text(&b.window.address_bar, response.url)
 	}
 
@@ -95,12 +127,4 @@ load_page :: proc(b: ^Browser, url: string) {
 	}
 
 	ui.page_view_set_content(&b.window.page_view, response.body)
-}
-
-@(private)
-set_current_url :: proc(b: ^Browser, url: string) {
-	// clone first: url may point into the old current_url
-	new_url := strings.clone(url)
-	delete(b.current_url)
-	b.current_url = new_url
 }
