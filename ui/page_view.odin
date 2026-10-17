@@ -1,5 +1,6 @@
 package ui
 
+import "core:math"
 import "core:strings"
 import rl "vendor:raylib"
 import "../dom"
@@ -169,6 +170,33 @@ draw_display_list :: proc(pv: ^PageView, boxes: []layout.Box, images: []layout.I
 		pos := rl.Vector2{pv.rect.x + run.x, pv.rect.y + top}
 		color := rl.Color(run.color)
 		rl.DrawTextEx(font_for(run.bold), text_c, pos, run.font_size, 0, color)
+		draw_decoration(run, pos)
+	}
+}
+
+// Underline, overline and line-through of a run whose top left is at pos.
+// The heights are fractions of the font size that fit Inter: its baseline is
+// at about 0.8 of the size, the middle of lowercase letters at about 0.53.
+@(private)
+draw_decoration :: proc(run: layout.Text_Run, pos: rl.Vector2) {
+	d := run.decoration
+	if d.lines == {} {
+		return
+	}
+	thickness := max(1, math.round(run.font_size / 14))
+	color := rl.Color(d.color)
+	x, width := pos.x - run.decoration_lead, run.width + run.decoration_lead
+	line :: proc(x, width, y, thickness: f32, color: rl.Color) {
+		rl.DrawRectangleRec({x, math.round(y), width, thickness}, color)
+	}
+	if .Underline in d.lines {
+		line(x, width, pos.y + run.font_size * 0.9, thickness, color)
+	}
+	if .Overline in d.lines {
+		line(x, width, pos.y + run.font_size * 0.04, thickness, color)
+	}
+	if .Line_Through in d.lines {
+		line(x, width, pos.y + run.font_size * 0.53, thickness, color)
 	}
 }
 

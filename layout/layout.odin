@@ -27,6 +27,8 @@ Text_Run :: struct {
 	link:      string, // href of the surrounding <a>, as written in the page; "" if none
 	hidden:    bool,   // visibility: hidden - takes up space, but is dropped in finish_line
 	clip:      Clip,
+	decoration: dom.Decoration, // underline etc., drawn by the ui with the text
+	decoration_lead: f32,       // the lines also cover this much space before the run
 }
 
 // A block box: background (alpha 0 = none) and borders. x/y/width/height is
@@ -642,6 +644,7 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 		fit_line(b, inline_left + width, line_height) // below a float if it doesn't fit next to it
 		space_width = 0
 	}
+	only_space := space_width // without the padding etc. of inline elements
 	space_width += take_inline_left(b)
 
 	// same style as the previous run: extend it instead of starting a new one
@@ -667,6 +670,10 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 		color     = style.color,
 		link      = b.link,
 		hidden    = style.visibility == .Hidden,
+		decoration = style.decoration,
+		// a space that is itself decorated (inside the same link) is drawn
+		// with the line, like "with a" -> "bold" in <a>with a <b>bold</b></a>
+		decoration_lead = only_space if b.pending_space && b.space_style.decoration == style.decoration else 0,
 	})
 	b.x += space_width + width
 	b.pending_space = false
@@ -969,7 +976,8 @@ add_margin :: proc(b: ^Builder, margin: f32) {
 
 @(private)
 same_style :: proc(run: Text_Run, style: dom.Style) -> bool {
-	return run.font_size == style.font_size && run.bold == (style.font_weight >= BOLD_WEIGHT) && run.color == style.color
+	return run.font_size == style.font_size && run.bold == (style.font_weight >= BOLD_WEIGHT) && run.color == style.color &&
+		run.decoration == style.decoration
 }
 
 @(private)

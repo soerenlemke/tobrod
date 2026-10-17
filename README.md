@@ -21,7 +21,7 @@ It is a toy: it renders many real pages surprisingly well (try a Wikipedia artic
 - **HTML**: parsed by lexbor into tobrod's own DOM tree; plain text documents are shown like in Chrome
 - **CSS**: `<style>`, `style=""` and external stylesheets, `@media` queries, custom properties (`var()`), inheritance and the user agent defaults
 - **Layout**: block and inline layout with margin collapsing, the box model (margin, padding, borders, width / max-width, height / min-height / max-height, `margin: auto`), `overflow: hidden`, `position: relative`, `absolute` and `fixed`, backgrounds (also of inline elements like `code` or `mark`, one box per line), `text-align`, lists, images, tables, floats and flexbox
-- **Rendering**: text in regular and bold [Inter](https://github.com/rsms/inter) with sizes and colors, boxes, borders, images (PNG, JPG, GIF, BMP, QOI)
+- **Rendering**: text in regular and bold [Inter](https://github.com/rsms/inter) with sizes, colors and `text-decoration`, boxes, borders, images (PNG, JPG, GIF, BMP, QOI)
 
 See the [roadmap](#roadmap) for the details and [known limitations](#known-limitations) for what's missing.
 
