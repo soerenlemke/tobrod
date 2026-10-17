@@ -34,6 +34,7 @@ MainWindow :: struct {
 set_loading :: proc(ui: ^MainWindow, loading: bool) {
 	ui.loading = loading
 	ui.nav_buttons.loading = loading
+	ui.page_view.loading = loading // image placeholders only while loading
 }
 
 // The browser tells the ui which navigation buttons are usable.

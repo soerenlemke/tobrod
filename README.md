@@ -112,7 +112,7 @@ The detailed developer notes (in German) are in [CLAUDE.md](CLAUDE.md).
 ## Known limitations
 
 - no JavaScript yet
-- no SVG or WebP images, no video playback (the poster image is shown)
+- no SVG or WebP images (their place stays empty, like a broken image; no `alt` text yet), no video playback (the poster image is shown)
 - fonts: only Latin characters (Latin-1 and a few more); other scripts show `?`
 - layout: no CSS grid, no percentage heights in the flow, no `z-index`, `position: fixed/sticky` not supported (fixed elements are hidden), no `rowspan`
 - `@media` queries are evaluated once, for the window size at load time
