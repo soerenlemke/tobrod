@@ -64,7 +64,7 @@ odin run .
 
 ## Usage
 
-Type a URL into the address bar and press Enter. Command line options:
+Type a URL into the address bar and press Enter; the scheme can be left out (`example.com`). Command line options:
 
 | Option | |
 |---|---|
@@ -132,7 +132,7 @@ Stage 2 — Window & UI
 - [x] Address bar
 - [x] Clickable links
 - [x] Back, forward, reload with a session history; keyboard shortcuts
-- [ ] Complete URLs without a scheme (`example.com` → `https://example.com`)
+- [x] Complete URLs without a scheme (`example.com` → `https://example.com`, `localhost:8000` → `http://…`)
 - [ ] Tabs
 
 Stage 3 — Text rendering

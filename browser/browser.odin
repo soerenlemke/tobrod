@@ -65,9 +65,9 @@ run :: proc(b: ^Browser, screenshot_path := "", screenshot_scroll: f32 = 0) -> M
 
 register_callbacks :: proc(b: ^Browser) {
 	b.window.on_url_submit_ctx = b
-	b.window.on_url_submit = proc(url: string, ctx: rawptr) {
+	b.window.on_url_submit = proc(input: string, ctx: rawptr) {
 		browser := cast(^Browser)ctx
-		navigate(browser, url)
+		navigate_typed(browser, input)
 	}
 
 	b.window.on_link_click_ctx = b
@@ -107,7 +107,17 @@ register_callbacks :: proc(b: ^Browser) {
 	}
 }
 
-// Opens a new page: typed into the address bar, a clicked link or --url.
+// Opens what was typed into the address bar (or given with --url):
+// "example.com" is completed to "https://example.com".
+navigate_typed :: proc(b: ^Browser, input: string) {
+	url := http.complete_url(input, context.temp_allocator)
+	if url == "" {
+		return
+	}
+	navigate(b, url)
+}
+
+// Opens a new page: a completed address or a clicked link.
 navigate :: proc(b: ^Browser, url: string) {
 	// url may point into the address bar's text, which open_current overwrites
 	url := strings.clone(url, context.temp_allocator)
