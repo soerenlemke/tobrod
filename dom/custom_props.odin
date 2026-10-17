@@ -13,6 +13,10 @@ import lxb "../vendor/lexbor"
 // for those cases: a var() declaration wins when its specificity is at least as
 // high (on a tie it is usually the later one: `color: #000; color: var(--x)`).
 //
+// The same goes for any other value lexbor can't parse into a typed value
+// ("undef"), e.g. `clear: both`, which lexbor doesn't know: we give our own
+// parsers a chance at the raw text.
+//
 // Custom properties are inherited. An element that declares none shares the
 // map of its parent; one that does gets a copy with its own values on top.
 
@@ -22,7 +26,7 @@ Custom_Props :: map[string]string
 @(private)
 Declared :: struct {
 	customs:    map[string]Spec_Value, // --name -> raw value
-	var_values: map[string]Spec_Value, // property -> raw value containing var()
+	raw_values: map[string]Spec_Value, // property -> raw value lexbor couldn't parse (often with var())
 	plain_spec: map[string]u32,        // property -> highest specificity of normal declarations
 }
 
@@ -37,7 +41,7 @@ Spec_Value :: struct {
 walk_declarations :: proc(element: ^lxb.Dom_Element) -> Declared {
 	d := Declared {
 		customs    = make(map[string]Spec_Value, allocator = context.temp_allocator),
-		var_values = make(map[string]Spec_Value, allocator = context.temp_allocator),
+		raw_values = make(map[string]Spec_Value, allocator = context.temp_allocator),
 		plain_spec = make(map[string]u32, allocator = context.temp_allocator),
 	}
 	Walk_Ctx :: struct {
@@ -62,11 +66,8 @@ walk_declarations :: proc(element: ^lxb.Dom_Element) -> Declared {
 			return lxb.STATUS_OK
 		}
 		if declaration.type == UNDEF_PROPERTY {
-			value := serialize_value(declaration)
-			if contains_var(value) {
-				if old, ok := d.var_values[name]; !ok || spec >= old.spec {
-					d.var_values[name] = {value, spec}
-				}
+			if old, ok := d.raw_values[name]; !ok || spec >= old.spec {
+				d.raw_values[name] = {serialize_value(declaration), spec}
 			}
 			return lxb.STATUS_OK
 		}
@@ -127,14 +128,19 @@ element_custom_props :: proc(inherited: ^Custom_Props, declared: ^Declared) -> ^
 	return props
 }
 
-// The var() declarations that beat the normal ones, with var() substituted:
-// property -> value, ready for apply_declaration.
+// The raw declarations that beat the typed ones, with var() substituted:
+// property -> value, to apply on top of lexbor's typed value (so a raw value
+// our parsers reject leaves the typed one in place).
 @(private)
-winning_var_declarations :: proc(declared: ^Declared, props: ^Custom_Props) -> map[string]string {
+winning_raw_declarations :: proc(declared: ^Declared, props: ^Custom_Props) -> map[string]string {
 	result := make(map[string]string, allocator = context.temp_allocator)
-	for name, sv in declared.var_values {
+	for name, sv in declared.raw_values {
 		if sv.spec < declared.plain_spec[name] {
 			continue // a normal declaration with higher specificity wins
+		}
+		if !contains_var(sv.value) {
+			result[name] = strings.to_lower(strings.trim_space(sv.value), context.temp_allocator)
+			continue
 		}
 		if value, ok := substitute_vars(sv.value, props); ok {
 			// our value parsers expect lexbor's lowercase serialization

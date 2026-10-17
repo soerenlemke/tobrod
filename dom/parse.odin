@@ -177,14 +177,21 @@ compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inh
 	// custom properties and declarations with var(), see custom_props.odin
 	declared := walk_declarations(element)
 	props = element_custom_props(inherited_props, &declared)
-	var_values := winning_var_declarations(&declared, props)
+	raw_values := winning_raw_declarations(&declared, props)
 
 	for property in STYLE_PROPERTIES {
-		if value, ok := var_values[property]; ok {
-			apply_declaration(&style, property, value, parent)
-		} else if value, ok := lxb.element_style(element, property, context.temp_allocator); ok {
+		if value, ok := lxb.element_style(element, property, context.temp_allocator); ok {
 			apply_declaration(&style, property, value, parent)
 		}
+		// a raw value that won (var() or something lexbor can't parse) on top;
+		// if our parsers reject it too, the typed value above stays
+		if value, ok := raw_values[property]; ok {
+			apply_declaration(&style, property, value, parent)
+		}
+	}
+	// a floated element is always block-level (CSS "blockification")
+	if style.float != .None && (style.display == .Inline || style.display == .Table_Cell || style.display == .Table_Row) {
+		style.display = .Block
 	}
 	return
 }

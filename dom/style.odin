@@ -15,6 +15,8 @@ Style :: struct {
 	visibility:  Visibility, // inherited, but a child can be visible again
 	list_style:  List_Style, // inherited from ul/ol to the li
 	position:    Position,   // not inherited
+	float:       Float,      // not inherited
+	clear:       Clear,      // not inherited
 	vertical_align:  Vertical_Align, // table cells only
 	border_collapse: bool,           // tables: no spacing between the cells (inherited)
 	caption_bottom:  bool,           // caption-side: bottom (inherited)
@@ -48,6 +50,19 @@ List_Style :: enum {
 	Square,
 	Decimal,
 	None,
+}
+
+Float :: enum {
+	None,
+	Left,
+	Right,
+}
+
+Clear :: enum {
+	None,
+	Left,
+	Right,
+	Both,
 }
 
 // Absolute and fixed elements are taken out of the flow; we don't place them
@@ -246,6 +261,26 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 		case "inherit":
 			style.position = parent.position
 		}
+	case "float":
+		switch value {
+		case "left", "inline-start":
+			style.float = .Left
+		case "right", "inline-end":
+			style.float = .Right
+		case "none", "initial", "unset":
+			style.float = .None
+		}
+	case "clear":
+		switch value {
+		case "left", "inline-start":
+			style.clear = .Left
+		case "right", "inline-end":
+			style.clear = .Right
+		case "both":
+			style.clear = .Both
+		case "none", "initial", "unset":
+			style.clear = .None
+		}
 	case "vertical-align":
 		switch value {
 		case "top", "text-top", "baseline", "initial", "unset":
@@ -294,7 +329,7 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 // font-size comes before the box properties, because em in margins refers to it.
 STYLE_PROPERTIES :: [?]string {
 	"display", "color", "font-size", "font-weight", "text-align",
-	"visibility", "position", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
+	"visibility", "position", "float", "clear", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
 	"width", "height", "max-width",
