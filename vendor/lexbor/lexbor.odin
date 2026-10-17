@@ -1,8 +1,10 @@
 package lexbor
 
 when ODIN_OS == .Windows {
-	// TODO: build lexbor from source on Windows (like curl) and link the static lib here
-	#panic("lexbor is not set up for Windows yet")
+	// built from the vendor/lexbor-src submodule by setup.ps1 with the dynamic CRT (/MD).
+	// Odin links the static CRT (libcmt) by default, so drop it – same trick as vendor:raylib.
+	@(extra_linker_flags = "/NODEFAULTLIB:libcmt")
+	foreign import lib "../lexbor-src/build/Release/lexbor_static.lib"
 } else {
 	foreign import lib "system:lexbor"
 }

@@ -1,3 +1,6 @@
 [submodule "vendor/curl-src"]
 	path = vendor/curl-src
 	url = https://github.com/curl/curl.git
+[submodule "vendor/lexbor-src"]
+	path = vendor/lexbor-src
+	url = https://github.com/lexbor/lexbor.git

@@ -24,7 +24,7 @@ odin test vendor/lexbor    # Lexbor-Smoke-Test
 
 **Immer aus dem Repo-Root starten**: Der Font wird über den relativen Pfad `assets/fonts/Inter_18pt-Regular.ttf` geladen ([ui/main_window.odin](ui/main_window.odin)).
 
-Stand 2026-10-17 auf macOS: `odin check .`, `odin build .` und `odin test vendor/lexbor` laufen erfolgreich durch.
+Stand 2026-10-17 auf macOS und Windows (Odin `dev-2026-05`, nach `setup.ps1`): `odin check .`, `odin build .` und `odin test vendor/lexbor` laufen erfolgreich durch.
 
 ### Visuelle Tests (Testmodus)
 
@@ -49,9 +49,9 @@ odin build . && mkdir -p screenshots
 |---|---|---|---|
 | libcurl | `brew install curl mbedtls`, gelinkt als `system:curl` + mbedtls + zlib + `SystemConfiguration.framework` | statisch aus Submodul `vendor/curl-src` (curl-8_14_0) gebaut via [setup.ps1](setup.ps1), Schannel für TLS, `/MD`-CRT | `system:curl` + mbedtls + zlib (ungetestet) |
 | raylib | `vendor:raylib` (mit Odin ausgeliefert) | dito | dito |
-| lexbor | `brew install lexbor`, `system:lexbor` | **noch nicht verdrahtet** (`#panic` beim Build) | `system:lexbor` (ungetestet) |
+| lexbor | `brew install lexbor`, `system:lexbor` | statisch aus Submodul `vendor/lexbor-src` (v3.0.1) gebaut via [setup.ps1](setup.ps1), `/MD`-CRT, `/NODEFAULTLIB:libcmt` | `system:lexbor` (ungetestet) |
 
-**Warum curl selbst gebaut wird (Windows):** Odins `vendor:curl` bringt eine Lib mit, deren CRT-Einstellung mit `vendor:raylib` kollidiert. Deshalb liegt eine Kopie der Odin-curl-Bindings unter [vendor/curl/](vendor/curl/) (Package `vendor_curl`), die auf Windows gegen `vendor/curl-src/build/lib/Release/libcurl.lib` linkt. `setup.ps1` braucht CMake und die VS Build Tools (Generator `"Visual Studio 18 2026"`). Build-Artefakte (`vendor/curl-src/build/`, `vendor/curl/lib/`, `*.exe`, `*.dll`) sind in `.gitignore`.
+**Warum curl selbst gebaut wird (Windows):** Odins `vendor:curl` bringt eine Lib mit, deren CRT-Einstellung mit `vendor:raylib` kollidiert. Deshalb liegt eine Kopie der Odin-curl-Bindings unter [vendor/curl/](vendor/curl/) (Package `vendor_curl`), die auf Windows gegen `vendor/curl-src/build/lib/Release/libcurl.lib` linkt. `setup.ps1` braucht CMake und die VS Build Tools (Generator `"Visual Studio 18 2026"`). Build-Artefakte (`vendor/curl-src/build/`, `vendor/lexbor-src/build/`, `vendor/curl/lib/`, `*.exe`, `*.dll`) sind in `.gitignore`.
 
 ## Projektstruktur
 
@@ -68,10 +68,11 @@ ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
   screenshot.odin         Fenster als PNG speichern (Testmodus)
 vendor/curl/            eigene Kopie der Odin-curl-Bindings (Package vendor_curl) + C-Header
 vendor/curl-src/        git-Submodul: curl-Quellcode (nur für den Windows-Build)
+vendor/lexbor-src/      git-Submodul: lexbor-Quellcode v3.0.1 (nur für den Windows-Build)
 vendor/lexbor/          minimale lexbor-Bindings + Test
 assets/fonts/           Inter 18pt Regular (OFL-Lizenz)
 testdata/               lokale Fixtures für den Testmodus
-setup.ps1               Windows-Setup (curl bauen)
+setup.ps1               Windows-Setup (curl und lexbor bauen)
 ```
 
 Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
@@ -139,7 +140,7 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 7. `address_bar_render` allokiert pro Frame eine cstring auf dem Heap (könnte Temp-Allocator nutzen).
 8. Fokus-Klick prüft die ganze Adressleiste statt nur das Eingabefeld.
 9. `wrap_text` läuft jeden Frame neu über den ganzen Text und misst jeden Kandidaten → bei großen Seiten langsam. `content_height` wird erst beim Rendern berechnet. Kandidat für Caching bei Content- oder Breitenänderung.
-10. **lexbor auf Windows**: Die Signatur von `lxb_html_document_destroy` ist korrigiert (`^Html_Document`), und Linux linkt `system:lexbor`. Auf Windows bricht der Build mit einem `#panic` ab, bis lexbor dort (wie curl) aus dem Quellcode gebaut wird.
+10. ~~lexbor auf Windows~~ – behoben: wird von `setup.ps1` aus dem Submodul `vendor/lexbor-src` statisch gebaut. Weil Odin standardmäßig die statische CRT (`libcmt`) linkt, setzt das Binding wie `vendor:raylib` `/NODEFAULTLIB:libcmt` (sonst scheitert `odin test vendor/lexbor` an `__imp__dsign`).
 11. URL-Eingabe ohne Schema (`example.com`) wird nicht automatisch zu `http(s)://` ergänzt (steht als TODO in der Roadmap).
 12. Linux ist bisher weder dokumentiert noch getestet.
 13. **Nicht-ASCII-Zeichen werden als `?` gezeichnet** (z. B. `testdata/utf8.txt`): `fonts_init` lädt nur die 95 ASCII-Glyphen. Lösung: Codepoints beim Laden mitgeben (z. B. Latin-1) oder Glyphen bei Bedarf nachladen.

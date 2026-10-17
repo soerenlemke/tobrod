@@ -11,7 +11,7 @@ tobrod - a toy browser in Odin
 
 Requires CMake and Visual Studio Build Tools (for the MSVC linker/compiler) to be installed beforehand.
 
-Run `.\setup.ps1` before building. This builds curl from source (statically, with a CRT setting compatible with `vendor:raylib` — Odin's bundled `vendor:curl` conflicts with raylib on Windows, see git history for details).
+Run `.\setup.ps1` before building. This builds curl and lexbor from source (statically, with a CRT setting compatible with `vendor:raylib` — Odin's bundled `vendor:curl` conflicts with raylib on Windows, see git history for details). Requires CMake and the Visual Studio Build Tools.
 
 ## Setup MacOS
 
