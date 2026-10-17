@@ -96,3 +96,16 @@ foreign lib {
 	// alive as long as the document uses it
 	lxb_html_document_stylesheet_attach_noi :: proc(document: ^Html_Document, sst: ^Css_Stylesheet) -> Status ---
 }
+
+// Walking all declarations of an element (lexbor/style/dom/interfaces/element.h).
+// lexbor calls the callback once per declaration that applies to the element.
+// is_weak: the declaration lost the cascade against another one for the same
+// property. spec is the specificity (with !important and style="" in the top bits).
+Style_Walk_Cb :: #type proc "c" (element: ^Dom_Element, declaration: ^Css_Rule_Declaration, ctx: rawptr, spec: u32, is_weak: bool) -> Status
+
+@(default_calling_convention = "c")
+foreign lib {
+	lxb_dom_element_style_walk :: proc(element: ^Dom_Element, cb: Style_Walk_Cb, ctx: rawptr, with_weak: bool) -> Status ---
+	// from lexbor/css/property.h; writes the property name, e.g. "color" or "--main"
+	lxb_css_property_serialize_name :: proc(style: rawptr, type: uintptr, cb: Serialize_Cb, ctx: rawptr) -> Status ---
+}
