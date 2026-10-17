@@ -80,3 +80,19 @@ test_css_variables_in_parse :: proc(t: ^testing.T) {
 	testing.expect_value(t, ps[5].style.color, text)                          // custom property referring to another
 	testing.expect_value(t, ps[6].style.color, Color{255, 0, 0, 255})         // custom property from style=""
 }
+
+@(test)
+test_values_lexbor_cannot_parse :: proc(t: ^testing.T) {
+	// lexbor stores `clear: both` as an unknown value; we parse the raw text.
+	// An invalid raw value must not wipe out a valid earlier one.
+	doc, err := parse(`<html><head><style>
+		h2 { clear: both }
+		p { color: red; color: notacolor }
+	</style></head><body><h2>h</h2><p>p</p></body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+	testing.expect_value(t, find_element(doc.root, "h2").style.clear, Clear.Both)
+	testing.expect_value(t, find_element(doc.root, "p").style.color, Color{255, 0, 0, 255})
+}

@@ -369,6 +369,12 @@ widen_span :: proc(cols: []f32, needed, spacing: f32) {
 // a trial layout into a throwaway arena, only its extent is kept.
 @(private)
 measure_contents :: proc(b: ^Builder, node: ^dom.Node, width: f32) -> f32 {
+	return measure(b, node, width, nil)
+}
+
+// A trial layout of root (or, without root, of the children of node).
+@(private)
+measure :: proc(b: ^Builder, node: ^dom.Node, width: f32, root: ^dom.Node) -> f32 {
 	scratch: Layout
 	if virtual.arena_init_growing(&scratch.arena) != nil {
 		return 0
@@ -385,47 +391,38 @@ measure_contents :: proc(b: ^Builder, node: ^dom.Node, width: f32) -> f32 {
 		measure     = b.measure,
 		left        = 0,
 		right       = width,
+		line_right  = width,
 		viewport    = b.viewport,
 		image_sizes = b.image_sizes,
 		measuring   = true,
+		unfloat     = root,
 	}
 	trial.line.allocator = allocator
 	trial.line_images.allocator = allocator
 	trial.block_tops.allocator = allocator
+	trial.floats.allocator = allocator
 
-	for child in node.children {
-		layout_node(&trial, child)
+	if root != nil {
+		layout_node(&trial, root)
+	} else {
+		for child in node.children {
+			layout_node(&trial, child)
+		}
 	}
 	finish_line(&trial)
-	return trial.extent
+	extent := trial.extent
+	for f in trial.floats {
+		extent = max(extent, f.x + f.width)
+	}
+	return extent
 }
 
 // Lays out the children of a cell (or caption) between left and right,
 // starting at top; returns where the content ends. A cell is its own block
-// formatting context: no margin collapses out of it.
+// formatting context: no margin collapses out of it, floats stay inside.
 @(private)
 layout_cell_contents :: proc(b: ^Builder, node: ^dom.Node, left, right, top: f32) -> (bottom: f32) {
-	old_left, old_right, old_x, old_y := b.left, b.right, b.x, b.y
-	old_align, old_margin, old_marker := b.text_align, b.pending_margin, b.pending_marker
-	defer {
-		b.left, b.right, b.x, b.y = old_left, old_right, old_x, old_y
-		b.text_align, b.pending_margin, b.pending_marker = old_align, old_margin, old_marker
-	}
-
-	b.left, b.right, b.x, b.y = left, max(right, left), left, top
-	b.text_align = node.style.text_align
-	b.pending_margin = 0
-	b.pending_marker = nil
-	// a resolved entry: flush_margin must not resolve the blocks around the table
-	append(&b.block_tops, Block_Top{top, true})
-	defer pop(&b.block_tops)
-
-	for child in node.children {
-		layout_node(b, child)
-	}
-	finish_line(b)
-	flush_margin(b) // the last child's bottom margin stays inside the cell
-	return b.y
+	return layout_in_own_context(b, node, left, right, top)
 }
 
 // Moves what one cell added to the display list down (vertical-align). Only
@@ -477,4 +474,5 @@ fill_box :: proc(b: ^Builder, index: int, style: dom.Style, border: [dom.Edge]f3
 		box.border_color[edge] = dom.border_color(style.border[edge], style.color)
 	}
 	b.layout.boxes[index] = box
+	b.extent = max(b.extent, x + width) // a table measures as wide as its box
 }

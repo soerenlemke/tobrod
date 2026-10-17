@@ -99,11 +99,15 @@ build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text, image
 	}
 	b.line.allocator = allocator
 	b.line_images.allocator = allocator
+	b.floats.allocator = allocator
 	b.block_tops.allocator = allocator
 
 	layout_node(&b, doc.root)
 	finish_line(&b)
 	l.height = b.y + b.pending_margin
+	for f in b.floats {
+		l.height = max(l.height, f.y + f.height) // the page grows with its floats
+	}
 	return l
 }
 
@@ -156,6 +160,11 @@ Builder :: struct {
 	image_sizes:    Image_Sizes,
 	extent:         f32, // rightmost edge of text and images so far (for measuring, see table.odin)
 	measuring:      bool, // a trial layout to measure content width: no text-align
+	line_left:      f32,  // the space of the current line: between the floats (see float.odin)
+	line_right:     f32,
+	floats:         [dynamic]Float_Box, // of the current block formatting context
+	last_float_top: f32,  // a float is never placed above an earlier one
+	unfloat:        ^dom.Node, // the float whose own box is being laid out right now
 }
 
 // The top edge of an open block. It is only known once the collapsed margin
@@ -205,6 +214,10 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	// out of the normal flow: placing them is not supported yet, so they are
 	// skipped (often they are dropdowns or visually hidden helper text anyway)
 	if style.position == .Absolute || style.position == .Fixed {
+		return
+	}
+	if style.float != .None && node != b.unfloat {
+		layout_float(b, node)
 		return
 	}
 	if node.tag == "br" {
@@ -294,6 +307,13 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	// a border separates this block from its children, so then the margin is
 	// applied now.
 	add_margin(b, margin[.Top])
+	if style.clear != .None {
+		// below the floats (the margin above is then applied right away)
+		if y := clear_y(b, style.clear); y > b.y + b.pending_margin {
+			flush_margin(b)
+			b.y = y
+		}
+	}
 	append(&b.block_tops, Block_Top{})
 	if inset[.Top] > 0 {
 		flush_margin(b)
@@ -436,12 +456,14 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 	}
 
 	// wrap; a word wider than the line stays alone on its line
-	if !line_empty(b) && b.x + space_width + width > b.right {
+	if !line_empty(b) && b.x + space_width + width > b.line_right {
 		finish_line(b)
 		space_width = 0
 	}
 	if line_empty(b) {
-		start_line(b)
+		line_height := style.font_size * LINE_HEIGHT_FACTOR
+		start_line(b, line_height)
+		fit_line(b, width, line_height) // below a float if it doesn't fit next to it
 		space_width = 0
 	}
 
@@ -477,7 +499,7 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 @(private)
 place_spaces :: proc(b: ^Builder, spaces: string, style: dom.Style) {
 	if line_empty(b) {
-		start_line(b)
+		start_line(b, style.font_size * LINE_HEIGHT_FACTOR)
 	}
 	b.x += b.measure(spaces, style.font_size, style.font_weight >= BOLD_WEIGHT)
 	b.pending_space = false
@@ -527,7 +549,7 @@ place_marker :: proc(b: ^Builder, marker: Pending_Marker) {
 @(private)
 line_break :: proc(b: ^Builder, style: dom.Style) {
 	if line_empty(b) {
-		start_line(b)
+		start_line(b, style.font_size * LINE_HEIGHT_FACTOR)
 		b.y += style.font_size * LINE_HEIGHT_FACTOR
 		b.x = b.left
 		return
@@ -535,14 +557,16 @@ line_break :: proc(b: ^Builder, style: dom.Style) {
 	finish_line(b)
 }
 
-// First content on a line: the collapsed margin above becomes real space now.
+// First content on a line: the collapsed margin above becomes real space now,
+// and the line gets the space next to the floats at its height.
 @(private)
-start_line :: proc(b: ^Builder) {
+start_line :: proc(b: ^Builder, height: f32) {
 	if !line_empty(b) {
 		return
 	}
 	flush_margin(b)
-	b.x = b.left
+	b.line_left, b.line_right = line_bounds(b, b.y, height)
+	b.x = b.line_left
 	b.can_extend = false
 	if marker, ok := b.pending_marker.?; ok {
 		b.pending_marker = nil
@@ -584,7 +608,7 @@ finish_line :: proc(b: ^Builder) {
 	// (not while measuring: centering in an "infinitely" wide trial layout
 	// would move the content far to the right and make it look huge)
 	if b.text_align != .Left && !b.measuring {
-		line_end := b.left
+		line_end := b.line_left
 		for run in b.line {
 			if run.x >= b.left {
 				line_end = max(line_end, run.x + run.width)
@@ -593,7 +617,7 @@ finish_line :: proc(b: ^Builder) {
 		for image in b.line_images {
 			line_end = max(line_end, image.x + image.width)
 		}
-		shift := max(b.right - line_end, 0)
+		shift := max(b.line_right - line_end, 0)
 		if b.text_align == .Center {
 			shift /= 2
 		}
@@ -647,12 +671,13 @@ layout_image :: proc(b: ^Builder, node: ^dom.Node) {
 	if b.pending_space {
 		space_width = b.measure(" ", b.space_style.font_size, b.space_style.font_weight >= BOLD_WEIGHT)
 	}
-	if !line_empty(b) && b.x + space_width + width > b.right {
+	if !line_empty(b) && b.x + space_width + width > b.line_right {
 		finish_line(b)
 		space_width = 0
 	}
 	if line_empty(b) {
-		start_line(b)
+		start_line(b, height)
+		fit_line(b, width, height)
 		space_width = 0
 	}
 

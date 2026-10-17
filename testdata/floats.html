@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>tobrod float test</title>
+  <style>
+    body { max-width: 50em; margin: 16px auto }
+    .infobox { float: right; width: 18em; margin: 0 0 12px 16px; border: 1px solid #a2a9b1; background: #f8f9fa; padding: 6px }
+    .infobox th { text-align: left; padding-right: 8px }
+    .thumb { float: left; margin: 4px 16px 8px 0; border: 1px solid #c8ccd1; padding: 3px; background: #f8f9fa; font-size: 0.875em }
+    h2 { clear: both; border-bottom: 1px solid #a2a9b1 }
+  </style>
+</head>
+<body>
+  <h1>Floats</h1>
+  <table class="infobox">
+    <tr><th colspan="2" style="text-align: center">tobrod</th></tr>
+    <tr><td colspan="2" style="text-align: center"><img src="images/logo.png" width="64" height="64"></td></tr>
+    <tr><th>Written in</th><td>Odin</td></tr>
+    <tr><th>License</th><td>MIT</td></tr>
+  </table>
+  <p>This paragraph flows around the infobox floated to the right. Its lines are shorter while they are next to the infobox and use the full width again below it. Text keeps wrapping word by word, so the right edge of each line ends before the float starts. Some more words to make the paragraph long enough to reach below the infobox and show the full width again.</p>
+  <div class="thumb"><img src="images/photo.jpg" width="160"><br>A photo floated left</div>
+  <p>This paragraph starts next to the photo floated to the left, so its lines begin right of it. Floats are taken out of the normal flow: the paragraph box itself still spans the whole width, only its lines get shorter. That is exactly how browsers do it.</p>
+  <h2>A heading with clear: both</h2>
+  <p>The heading above is below all floats because of clear: both.</p>
+</body>
+</html>
