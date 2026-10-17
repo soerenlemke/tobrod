@@ -24,6 +24,16 @@ MainWindow :: struct {
 	on_link_click_ctx: rawptr,
 	on_navigate:       proc(action: Nav_Action, ctx: rawptr),
 	on_navigate_ctx:   rawptr,
+	// called at the start of every frame, e.g. to pick up loaded pages
+	on_frame:          proc(ctx: rawptr),
+	on_frame_ctx:      rawptr,
+	loading:           bool,
+}
+
+// While loading, reload turns into stop and the loading bar runs.
+set_loading :: proc(ui: ^MainWindow, loading: bool) {
+	ui.loading = loading
+	ui.nav_buttons.loading = loading
 }
 
 // The browser tells the ui which navigation buttons are usable.
@@ -41,6 +51,8 @@ init :: proc(window_settings: WindowSettings) -> (MainWindow, Maybe(Error)) {
 
 	rl.SetConfigFlags({.WINDOW_RESIZABLE})
 	rl.InitWindow(window_settings.init_width, window_settings.init_height, name_cstring)
+	// raylib closes the window on Escape by default; we use Escape to stop loading
+	rl.SetExitKey(.KEY_NULL)
 
 	if err, has_err := fonts_init().?; has_err {
 		rl.CloseWindow()
@@ -60,12 +72,17 @@ destroy :: proc(ui: ^MainWindow) {
 	rl.CloseWindow()
 }
 
-// With a non-empty screenshot_path, the window is captured after a few frames
-// and run returns instead of waiting for the user to close it.
+// With a non-empty screenshot_path, the window is captured once the page has
+// loaded (and a few frames have passed) and run returns instead of waiting
+// for the user to close it.
 run :: proc(ui: ^MainWindow, screenshot_path := "") -> Maybe(Error) {
 	frame := 0
 	for !rl.WindowShouldClose() {
 		frame += 1
+
+		if ui.on_frame != nil {
+			ui.on_frame(ui.on_frame_ctx)
+		}
 
 		if rl.IsWindowResized() {
 			w := rl.GetScreenWidth()
@@ -88,8 +105,12 @@ run :: proc(ui: ^MainWindow, screenshot_path := "") -> Maybe(Error) {
 		page_view_render(&ui.page_view)
 		address_bar_render(&ui.address_bar)
 		nav_buttons_render(&ui.nav_buttons)
+		if ui.loading {
+			loading_bar_render(ui.address_bar.rect.width)
+		}
 
-		if screenshot_path != "" && frame >= SCREENSHOT_AFTER_FRAMES {
+		// wait until the page has arrived, otherwise we'd capture an empty window
+		if screenshot_path != "" && frame >= SCREENSHOT_AFTER_FRAMES && !ui.loading {
 			err := take_screenshot(screenshot_path)
 			rl.EndDrawing()
 			free_all(context.temp_allocator)

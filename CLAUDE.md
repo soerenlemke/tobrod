@@ -36,7 +36,7 @@ Stand 2026-10-17 auf macOS und Windows (Odin `dev-2026-05`, nach `setup.ps1`): `
 `tobrod` hat zwei Kommandozeilen-Optionen (geparst mit `core:flags`, Unix-Stil):
 
 - `--url <url>` lädt die URL direkt beim Start (wie Eingabe in der Adressleiste + Enter).
-- `--screenshot <pfad>` rendert ein paar Frames (`SCREENSHOT_AFTER_FRAMES`), speichert das Fenster als PNG und beendet sich. Exit-Code 1, wenn das Bild nicht geschrieben werden kann.
+- `--screenshot <pfad>` wartet, bis die Seite geladen ist (und mindestens `SCREENSHOT_AFTER_FRAMES` Frames), speichert das Fenster als PNG und beendet sich. Ladebalken/Stopp-Button sind deshalb auf Screenshots nie zu sehen. Exit-Code 1, wenn das Bild nicht geschrieben werden kann.
 
 Lokale Fixtures liegen in [testdata/](testdata/) (`hello.txt`, `utf8.txt`, `long.txt`, `index.html`, `styles.html` – Überschriften, Fett, Farben, Größen, Listen, `pre`, `br`):
 
@@ -79,7 +79,8 @@ layout/layout.odin      Package layout: DOM mit Styles → positionierte Text-Ru
 ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
   main_window.odin        MainWindow, init/destroy, Haupt-Loop (run)
   address_bar.odin        Adressleiste: Eingabe, Fokus, Enter → Callback
-  nav_buttons.odin        Zurück/Vor/Neu laden: mit Formen gezeichnet, Klick + Tastenkürzel → Callback
+  nav_buttons.odin        Zurück/Vor/Neu laden bzw. Stopp: mit Formen gezeichnet, Klick + Tastenkürzel → Callback
+  loading_bar.odin        animierter Ladebalken unter der Adressleiste
   page_view.odin          Seitenansicht: besitzt Dokument + gecachtes Layout, zeichnet Text-Runs, Scrollen
   fonts.odin              globaler Font (fonts_init/fonts_close)
   constants.odin          UI-Konstanten (Höhen, Fontgröße, Scroll-Speed)
@@ -99,24 +100,26 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 
 ### Ablauf
 
-1. `main` baut `ui.WindowSettings` (1024×768, „Browser“) und ruft `browser.init`.
-2. `browser.init` initialisiert zuerst `ui.init` (raylib-Fenster, resizable, Font, AddressBar, PageView), dann `http.init` (curl-Handle + zwei `strings.Builder`). Schlägt HTTP fehl, wird die UI wieder abgebaut.
-3. `browser.register_callbacks` setzt `on_url_submit`, `on_link_click` und `on_navigate` (jeweils mit `_ctx` = Pointer auf den `Browser`) im `MainWindow`. Das ist der Mechanismus, mit dem die UI nach oben kommuniziert, ohne `browser`/`http` zu importieren.
+1. `main` baut `ui.WindowSettings` (1024×768, „Browser“) und ruft `browser.init`; der `Browser` liegt auf dem **Heap** (`^Browser`), weil UI-Callbacks und der Worker-Thread Pointer darauf halten – eine zurückgegebene Struct-Kopie würde sie ungültig machen.
+2. `browser.init`: zuerst `http.global_init` (vor jedem Thread), dann `ui.init` (raylib-Fenster, resizable, Escape schließt das Fenster **nicht** (`SetExitKey(.KEY_NULL)`), Fonts, AddressBar, PageView), dann `loader.init` (Worker-Thread mit eigenem curl-Handle). Bei Fehlern wird das bereits Erstellte wieder abgebaut. `destroy` beendet zuerst den Loader.
+3. `browser.register_callbacks` setzt `on_url_submit`, `on_link_click`, `on_navigate` und `on_frame` (jeweils mit `_ctx` = Pointer auf den `Browser`) im `MainWindow`. Das ist der Mechanismus, mit dem die UI nach oben kommuniziert, ohne `browser`/`http` zu importieren.
 4. `browser.run` → `ui.run`: klassischer raylib-Loop pro Frame:
+   - `on_frame` → `browser.receive_pages` (holt fertige Seiten vom Loader, nie blockierend)
    - Resize → `address_bar_handle_resize`, `page_view_handle_resize`
-   - `nav_buttons_handle_input` (Klick auf Zurück/Vor/Neu laden, Alt+←/→, F5/Strg+R → `on_navigate`)
+   - `nav_buttons_handle_input` (Klick auf Zurück/Vor/Neu laden/Stopp, Alt+←/→, F5/Strg+R, Escape beim Laden → `on_navigate`)
    - `address_bar_handle_input` (Klick-Fokus nur aufs Eingabefeld, Zeichen, Backspace, Enter, Escape)
    - `page_view_handle_mouse` (Hand-Cursor über Links, Linksklick → `on_link_click`)
    - Mausrad → `page_view_handle_scroll`
-   - `BeginDrawing` → `page_view_render`, dann `address_bar_render` und `nav_buttons_render` (liegen oben drüber) → `EndDrawing`
+   - `BeginDrawing` → `page_view_render`, dann `address_bar_render`, `nav_buttons_render` und beim Laden `loading_bar_render` (liegen oben drüber) → `EndDrawing`
    - `free_all(context.temp_allocator)` am Frame-Ende
-5. Enter in der Adressleiste, Linkklick oder `--url` → `navigate` → `history_push` → `open_current` (Adressleiste setzen, `load_page`, Button-Zustand per `ui.set_navigation_state`). `load_page`: `http.get` (blockierend, folgt Redirects); nach einem Redirect ersetzt `history_replace_current` den Eintrag durch `response.url` und die Adressleiste zeigt sie. Bei `Content-Type: text/html` → `dom.parse` → `page_view_set_document` (PageView übernimmt das Dokument), sonst `page_view_set_content` (Body bzw. Fehlertext → `dom.from_plain_text`). Beim Rendern baut die PageView bei Bedarf das Layout (`layout.build`) und zeichnet die Runs.
+5. Enter in der Adressleiste, Linkklick oder `--url` → `navigate` → `history_push` → `open_current`: Adressleiste und Button-Zustand setzen, `loader.load(url)` → `loading_id` merken, `ui.set_loading(true)`. **Es wird nicht gewartet**, das Fenster bleibt bedienbar.
+   Pro Frame holt `receive_pages` Ergebnisse ab: Ergebnisse mit einer anderen ID als `loading_id` (veraltet) werden verworfen. Sonst `set_loading(false)`; bei Redirect `history_replace_current` + Adressleiste; Fehler → `page_view_set_content("Error: …")`, sonst `page_view_set_document` (Dokument wurde im Worker geparst). Beim Rendern baut die PageView bei Bedarf das Layout und zeichnet die Runs.
 6. Klick auf einen Link → `on_link_click(href)` → `http.resolve_url(aktueller History-Eintrag, href)` → nur `http(s)` wird geladen (`navigate`), `mailto:` usw. werden ignoriert.
-7. Zurück/Vor → `history_back`/`history_forward` + `open_current` (kein neuer Eintrag); Neu laden → `open_current`.
+7. Zurück/Vor → `history_back`/`history_forward` + `open_current` (kein neuer Eintrag); Neu laden → `open_current`; Stopp → `loader.cancel`, `loading_id = 0`, `set_loading(false)`.
 
 ### Abhängigkeitsrichtung
 
-`main` → `browser` → (`ui`, `http`, `dom`); `http` → `vendor/curl`; `ui` → `layout` → `dom` → `vendor/lexbor`; `loader` → (`http`, `dom`) (noch von niemandem importiert). `ui` kennt weder `browser` noch `http`. Diese Richtung beibehalten; neue Kommunikation von UI nach oben über Callbacks mit `rawptr`-Context.
+`main` → `browser` → (`ui`, `http`, `dom`); `http` → `vendor/curl`; `ui` → `layout` → `dom` → `vendor/lexbor`; `browser` → `loader` → (`http`, `dom`). `ui` kennt weder `browser` noch `http`. Diese Richtung beibehalten; neue Kommunikation von UI nach oben über Callbacks mit `rawptr`-Context.
 
 ### Package-Details
 
@@ -137,9 +140,10 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - `navigate` klont die URL in den Temp-Allocator, weil sie in den Text der Adressleiste zeigen kann, den `open_current` überschreibt.
 
 **ui**
-- `MainWindow` besitzt `AddressBar`, `NavButtons`, `PageView` und die Callbacks (Submit, Link, Navigation). `page_view_handle_mouse` kopiert den Link vor dem Callback in den Temp-Allocator, weil das Laden der neuen Seite das Layout (und damit den String) zerstört.
+- `MainWindow` besitzt `AddressBar`, `NavButtons`, `PageView`, `loading` und die Callbacks (Submit, Link, Navigation, Frame).
+- Ladebalken (`loading_bar.odin`): unbestimmter Fortschritt, ein Segment (30 % Breite) läuft in 1,2 s von links nach rechts, berechnet aus `rl.GetTime()`. Funktioniert nur, weil die Hauptschleife während des Ladens weiterläuft. `page_view_handle_mouse` kopiert den Link vor dem Callback in den Temp-Allocator, weil das Laden der neuen Seite das Layout (und damit den String) zerstört.
 - `AddressBar`: Text in einem `strings.Builder`; Eingabefeld (`address_bar_input_rect`) beginnt rechts der Navigations-Buttons und reicht bis 8 px vor den rechten Rand. Nur ein Klick ins Eingabefeld fokussiert.
-- `NavButtons`: `can_back`/`can_forward` (gesetzt vom Browser über `set_navigation_state`), Buttons à 24 px; Icons mit `DrawLineEx`/`DrawRing`/`DrawTriangle` gezeichnet (Inter hat kein ↻). raylib lässt Dreiecke mit Ecken im Uhrzeigersinn weg (Backface Culling) → `draw_triangle_any_order`. Deaktivierte Buttons grau, Hover hellgrau hinterlegt. Fokusfarbe Blau `{66,133,244}`.
+- `NavButtons`: `can_back`/`can_forward` (gesetzt vom Browser über `set_navigation_state`), `loading` (über `set_loading`: dann zeigt der dritte Button Stopp ✕ statt Reload, `Nav_Action.Stop` teilt sich den Platz mit `.Reload`), Buttons à 24 px; Icons mit `DrawLineEx`/`DrawRing`/`DrawTriangle` gezeichnet (Inter hat kein ↻). raylib lässt Dreiecke mit Ecken im Uhrzeigersinn weg (Backface Culling) → `draw_triangle_any_order`. Deaktivierte Buttons grau, Hover hellgrau hinterlegt. Fokusfarbe Blau `{66,133,244}`.
 - `PageView`: `rect` unterhalb der Adressleiste, `document` (gehört der PageView: `page_view_set_document` übernimmt es, `page_view_set_content` verpackt Text per `dom.from_plain_text`), `page_layout` (gecacht, `page_view_ensure_layout` baut nur neu, wenn sich die Breite ändert), `scroll_y`, `content_height` (= Layout-Höhe). `page_view_render` zeichnet nur Runs im sichtbaren Bereich (Scissor-Mode). `measure_text` ist die `Measure_Text`-Proc für das Layout (raylib). Fette Runs werden mit `font_bold` gezeichnet und gemessen (`font_for(bold)`). Scrollen wird auf `[0, content_height - rect.height]` begrenzt (`clamp_scroll`).
 - `font` und `font_bold` sind Package-globale Variablen (`fonts_init` lädt beide, Pfade in `FONT_REGULAR_PATH`/`FONT_BOLD_PATH`), jeweils einmal mit `FONT_LOAD_SIZE` (64) gerastert und beim Zeichnen auf die jeweilige Größe skaliert; Mipmaps + trilinearer Filter halten kleinen Text glatt. Geladen werden die Codepoints aus `font_codepoints` (ASCII, Latin-1, typografische Zeichen).
 
@@ -155,6 +159,7 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - lexbor serialisiert normalisiert (lowercase, `#F00` → `#f00`, Kommas vereinheitlicht), lässt relative Einheiten (`em`, `%`, `smaller`, `bolder`) aber stehen – die rechnen wir gegen den Eltern-Style um. Unterstützt: Farben benannt (Teilmenge), Hex, `rgb()`/`rgba()`, `transparent`, `currentcolor` (kein `hsl()`); Größen `px`, `em`, `rem`, `%`, `pt`, Schlüsselwörter; Gewichte `normal`/`bold`/Zahl/`bolder`/`lighter`. Nicht unterstützte Layout-Modi fallen bei `display` auf ihr äußeres Verhalten zurück.
 
 **loader** ([loader/loader.odin](loader/loader.odin))
+- Wird vom `browser` benutzt (Feld `page_loader`: ein Feld namens `loader` würde den Package-Namen verdecken → „declaration cycle“).
 - Ein Worker-Thread mit **eigenem** `http.Client` (ein curl-Handle darf nie von zwei Threads gleichzeitig benutzt werden). `load(url) -> Request_Id` übergibt einen Auftrag, `poll() -> (Result, ok)` holt fertige Ergebnisse ab (nie blockierend, gedacht für einmal pro Frame), `cancel()` bricht ab, `destroy` beendet den Worker (bricht einen laufenden Download ab, hängt also nicht).
 - Es gibt höchstens **einen** wartenden Auftrag: `load` ersetzt ihn und bricht den laufenden ab. Abgebrochene Aufträge liefern kein Ergebnis. Über die `Request_Id` erkennt der Aufrufer veraltete Ergebnisse.
 - Der Worker parst auch (`dom.parse` bzw. `dom.from_plain_text`), `Result` enthält ein fertiges Dokument oder einen Fehlertext und gehört dem Empfänger (`result_destroy`).
@@ -198,8 +203,8 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 1. ~~Dangling-String bei HTTP-Fehlern~~ / ~~Body-Lebensdauer~~ – behoben: `PageView` besitzt sein Dokument (`page_view_set_document`/`page_view_set_content`), freigegeben in `page_view_destroy` bzw. beim nächsten Setzen.
 2. *(in 1 zusammengefasst)*
 3. ~~Backspace entfernt ein Byte statt einer Rune~~ – behoben mit `strings.pop_rune`.
-4. **HTTP blockiert den UI-Thread** bis zu 30 s (Timeout). Lösung ist Stage 5.
-5. ~~`http.init` prüft nicht auf `nil`, kein `curl_global_init`~~ – behoben im Package `http` (`init`, `global_init`); der Aufruf von `global_init` in `main`/`browser` folgt mit der Verdrahtung des Loaders.
+4. ~~HTTP blockiert den UI-Thread~~ – behoben (Stage 5): Laden und Parsen laufen im Worker-Thread (`loader`).
+5. ~~`http.init` prüft nicht auf `nil`, kein `curl_global_init`~~ – behoben: `http.init` prüft, `browser.init` ruft `http.global_init` vor dem Start des Worker-Threads.
 6. ~~`ui.destroy` gibt den `strings.Builder` der Adressleiste nicht frei~~ – behoben.
 7. `address_bar_render` allokiert pro Frame eine cstring auf dem Heap (könnte Temp-Allocator nutzen).
 8. ~~Fokus-Klick prüft die ganze Adressleiste statt nur das Eingabefeld~~ – behoben (`address_bar_input_rect`).
@@ -216,5 +221,5 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 - Stage 2 Fenster & UI – Fenster, Adressleiste, klickbare Links und Navigation (zurück/vor/neu laden) stehen; offen: Schema-Ergänzung, Tabs
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
 - Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt positionierte Text-Runs, die UI zeichnet sie mit Größe, Fett (Inter Bold) und Farbe. Links sind klickbar (relative URLs über curl). Offen: Hintergründe/Boxen, Flexbox & Co.
-- Stage 5 Threads – HTTP in eigenen Thread, Ergebnis-Übergabe an die UI, Thread-Sicherheit des Clients
+- Stage 5 Threads – erledigt: Laden + Parsen im Worker-Thread (`loader`), Ergebnisse per Queue, eigener curl-Handle pro Thread, Abbrechen; Ladebalken + Stopp-Button
 - Stage 6 JavaScript – QuickJS anbinden

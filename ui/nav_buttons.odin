@@ -11,11 +11,13 @@ Nav_Action :: enum {
 	Back,
 	Forward,
 	Reload,
+	Stop, // takes the place of Reload while a page is loading
 }
 
 NavButtons :: struct {
 	can_back:    bool,
 	can_forward: bool,
+	loading:     bool,
 }
 
 NAV_BUTTON_SIZE :: f32(24)
@@ -30,8 +32,15 @@ ICON_DISABLED_COLOR :: rl.Color{190, 190, 190, 255}
 @(private = "file")
 HOVER_COLOR :: rl.Color{220, 220, 220, 255}
 
+// The buttons currently shown, left to right.
+@(private = "file")
+visible_buttons :: proc(nav: ^NavButtons) -> [3]Nav_Action {
+	return {.Back, .Forward, .Stop if nav.loading else .Reload}
+}
+
 nav_button_rect :: proc(action: Nav_Action) -> rl.Rectangle {
-	x := NAV_BUTTONS_LEFT + f32(int(action)) * (NAV_BUTTON_SIZE + NAV_BUTTON_GAP)
+	slot := min(int(action), int(Nav_Action.Reload)) // Stop shares the slot of Reload
+	x := NAV_BUTTONS_LEFT + f32(slot) * (NAV_BUTTON_SIZE + NAV_BUTTON_GAP)
 	y := (ADDRESS_BAR_HEIGHT - NAV_BUTTON_SIZE) / 2
 	return {x, y, NAV_BUTTON_SIZE, NAV_BUTTON_SIZE}
 }
@@ -43,14 +52,14 @@ nav_button_enabled :: proc(nav: ^NavButtons, action: Nav_Action) -> bool {
 		return nav.can_back
 	case .Forward:
 		return nav.can_forward
-	case .Reload:
+	case .Reload, .Stop:
 		return true
 	}
 	return false
 }
 
-// Clicks on the buttons and keyboard shortcuts:
-// Alt+Left / Alt+Right like in every browser, F5 or Ctrl+R to reload.
+// Clicks on the buttons and keyboard shortcuts: Alt+Left / Alt+Right like in
+// every browser, F5 or Ctrl+R to reload, Escape to stop loading.
 nav_buttons_handle_input :: proc(ui: ^MainWindow, nav: ^NavButtons) {
 	if ui.on_navigate == nil {
 		return
@@ -58,7 +67,7 @@ nav_buttons_handle_input :: proc(ui: ^MainWindow, nav: ^NavButtons) {
 
 	if rl.IsMouseButtonPressed(.LEFT) {
 		mouse := rl.GetMousePosition()
-		for action in Nav_Action {
+		for action in visible_buttons(nav) {
 			if nav_button_enabled(nav, action) && rl.CheckCollisionPointRec(mouse, nav_button_rect(action)) {
 				ui.on_navigate(action, ui.on_navigate_ctx)
 				return
@@ -75,12 +84,15 @@ nav_buttons_handle_input :: proc(ui: ^MainWindow, nav: ^NavButtons) {
 		ui.on_navigate(.Forward, ui.on_navigate_ctx)
 	case rl.IsKeyPressed(.F5) || (ctrl && rl.IsKeyPressed(.R)):
 		ui.on_navigate(.Reload, ui.on_navigate_ctx)
+	case nav.loading && rl.IsKeyPressed(.ESCAPE) && !ui.address_bar.focused:
+		// with a focused address bar, Escape only leaves the text field
+		ui.on_navigate(.Stop, ui.on_navigate_ctx)
 	}
 }
 
 nav_buttons_render :: proc(nav: ^NavButtons) {
 	mouse := rl.GetMousePosition()
-	for action in Nav_Action {
+	for action in visible_buttons(nav) {
 		rect := nav_button_rect(action)
 		enabled := nav_button_enabled(nav, action)
 		if enabled && rl.CheckCollisionPointRec(mouse, rect) {
@@ -96,6 +108,8 @@ nav_buttons_render :: proc(nav: ^NavButtons) {
 			draw_arrow(center, 1, color)
 		case .Reload:
 			draw_reload(center, color)
+		case .Stop:
+			draw_cross(center, color)
 		}
 	}
 }
@@ -108,6 +122,15 @@ draw_arrow :: proc(center: rl.Vector2, direction: f32, color: rl.Color) {
 	rl.DrawLineEx(center - {6 * direction, 0}, tip, thickness, color)
 	rl.DrawLineEx(tip, tip + {-5 * direction, -5}, thickness, color)
 	rl.DrawLineEx(tip, tip + {-5 * direction, 5}, thickness, color)
+}
+
+// Stop: a cross like ✕.
+@(private = "file")
+draw_cross :: proc(center: rl.Vector2, color: rl.Color) {
+	thickness :: 2
+	d :: f32(5)
+	rl.DrawLineEx(center + {-d, -d}, center + {d, d}, thickness, color)
+	rl.DrawLineEx(center + {-d, d}, center + {d, -d}, thickness, color)
 }
 
 // Circular arrow: an open ring with an arrow head at its end.
