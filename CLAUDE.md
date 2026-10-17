@@ -24,6 +24,7 @@ odin test dom              # eigener DOM-Baum
 odin test http             # Header-Parsing, URL-Auflösung
 odin test browser          # History
 odin test loader           # Worker-Thread, mit eigenem lokalen Test-HTTP-Server (~5 s)
+odin test ui               # Bildformat-Erkennung
 odin test layout           # Layout (mit Fake-Textmessung, ohne Fenster)
 ```
 
@@ -38,7 +39,7 @@ Stand 2026-10-17 auf macOS und Windows (Odin `dev-2026-05`, nach `setup.ps1`): `
 - `--url <url>` lädt die URL direkt beim Start (wie Eingabe in der Adressleiste + Enter).
 - `--screenshot <pfad>` wartet, bis die Seite geladen ist (und mindestens `SCREENSHOT_AFTER_FRAMES` Frames), speichert das Fenster als PNG und beendet sich. Ladebalken/Stopp-Button sind deshalb auf Screenshots nie zu sehen. Exit-Code 1, wenn das Bild nicht geschrieben werden kann.
 
-Lokale Fixtures liegen in [testdata/](testdata/) (`hello.txt`, `utf8.txt`, `long.txt`, `index.html`, `styles.html` – Überschriften, Fett, Farben, Größen, Listen, `pre`, `br`; `boxes.html` – Box-Modell: zentrierte Karten, Padding, Hintergründe, Rahmen, `<hr>`, `text-align`, `width: 50%`; `images.html` – Bildgrößen und -platzierung, die Bilddateien unter `images/` folgen mit dem Laden):
+Lokale Fixtures liegen in [testdata/](testdata/) (`hello.txt`, `utf8.txt`, `long.txt`, `index.html`, `styles.html` – Überschriften, Fett, Farben, Größen, Listen, `pre`, `br`; `boxes.html` – Box-Modell: zentrierte Karten, Padding, Hintergründe, Rahmen, `<hr>`, `text-align`, `width: 50%`; `images.html` – Bildgrößen, -platzierung und -laden; die Bilder unter `testdata/images/` sind selbst erzeugt (PIL), also ohne fremde Lizenz):
 
 ```sh
 python3 -m http.server 8765 --bind 127.0.0.1 --directory testdata   # in eigenem Terminal
@@ -76,13 +77,14 @@ dom/                    Package dom: eigener DOM-Baum (Parsen über lexbor, dann
   box_style.odin          Box-Modell: Length/Edges, UA-Margins/Paddings (default_box), Kurzschreibweisen zerlegen
   border_style.odin       Rahmen: Border/Borders, border-Kurzschreibweisen (Teile in beliebiger Reihenfolge)
   plain_text.odin         from_plain_text: Text → Dokument html/body/pre (wie Chrome bei text/plain)
-loader/loader.odin      Package loader: lädt + parst Seiten in einem Worker-Thread (load/poll/cancel)
+loader/loader.odin      Package loader: lädt + parst Seiten und lädt Ressourcen (Bilder) in einem Worker-Thread
 layout/layout.odin      Package layout: DOM mit Styles → Hintergrund-Boxen + positionierte Text-Runs (Display List)
 ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
   main_window.odin        MainWindow, init/destroy, Haupt-Loop (run)
   address_bar.odin        Adressleiste: Eingabe, Fokus, Enter → Callback
   nav_buttons.odin        Zurück/Vor/Neu laden bzw. Stopp: mit Formen gezeichnet, Klick + Tastenkürzel → Callback
   loading_bar.odin        animierter Ladebalken unter der Adressleiste
+  page_images.odin        Bilder der Seite: dekodieren (raylib) → Texturen + natürliche Größen
   page_view.odin          Seitenansicht: besitzt Dokument + gecachtes Layout, zeichnet Text-Runs, Scrollen
   fonts.odin              globaler Font (fonts_init/fonts_close)
   constants.odin          UI-Konstanten (Höhen, Fontgröße, Scroll-Speed)
@@ -131,6 +133,7 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - `resolve_url(base, ref)` nutzt curls URL-API (`curl_url_set` auf eine gesetzte URL löst relativ auf, RFC 3986). Die Binding von `url_get` war fehlerhaft (`-> ^Ucode`), korrigiert auf `-> Ucode` mit `part: ^cstring`; das Ergebnis mit `curl.free` freigeben.
 - `global_init`/`global_cleanup`: einmal pro Programm, **bevor** Threads curl benutzen (`curl_global_init` ist nicht thread-sicher). `init` prüft `easy_init` auf `nil` und liefert `Maybe(Http_Error)`. Ein `Client` gehört immer genau einem Thread.
 - `get(c, url, abort = nil)`: Mit `abort` (Pointer auf ein `bool`, atomar gesetzt von einem anderen Thread) bricht der Fortschritts-Callback (`XFERINFOFUNCTION`, mind. ~1×/s aufgerufen) den Transfer ab → Fehler `.E_ABORTED_BY_CALLBACK`.
+- Jeder Request sendet `USER_AGENT` (`tobrod/0.1 (toy browser; +https://github.com/soerenlemke/tobrod)`); manche Seiten (z. B. Wikipedia) lehnen Requests ohne User-Agent ab.
 - `get` folgt Redirects (`FOLLOWLOCATION`, max. `MAX_REDIRECTS` = 10); `Http_Response.url` ist die End-URL (`CURLINFO_EFFECTIVE_URL`, gehört curl, gültig bis zum nächsten `get`).
 - `get` resettet beide Builder, setzt URL/Callbacks/Timeout (`STANDARD_READ_TIMEOUT` = 30 s) und führt `easy_perform` aus.
 - `write_callback` ist `proc "c"` und setzt `context = runtime.default_context()`, bevor in den Builder geschrieben wird.
@@ -139,6 +142,8 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 
 **browser**
 - `History` (`entries` gehören der History, `index` = aktueller Eintrag, -1 wenn leer). `history_push` verwirft die Vor-Einträge; `history_push`/`history_replace_current` klonen erst und geben dann frei, weil der übergebene String in die History zeigen kann. Der aktuelle Eintrag ist die Basis für relative Links (kein separates `current_url`).
+- Bilder: Nach dem Anzeigen einer Seite sammelt `request_images` alle `<img src>` (jeden `src` einmal), löst sie gegen die Seiten-URL auf und übergibt sie dem Loader; `image_requests` merkt sich Request-ID → `src` (wie in der Seite, der Schlüssel fürs Layout). Fertige Bilder gehen an `ui.page_view_add_image`, Fehler werden still verworfen (Platzhalter bleibt). Eine neue Navigation oder Stopp vergisst die offenen Bild-Aufträge.
+- Wie im Browser gilt eine Seite erst als geladen, wenn auch ihre Bilder da sind (`load`-Event): `update_loading_state` lässt Ladebalken/Stopp-Button an, solange Seite oder Bilder ausstehen. Dadurch wartet auch der Screenshot-Modus auf die Bilder.
 - `navigate` klont die URL in den Temp-Allocator, weil sie in den Text der Adressleiste zeigen kann, den `open_current` überschreibt.
 
 **ui**
@@ -146,7 +151,8 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - Ladebalken (`loading_bar.odin`): unbestimmter Fortschritt, ein Segment (30 % Breite) läuft in 1,2 s von links nach rechts, berechnet aus `rl.GetTime()`. Funktioniert nur, weil die Hauptschleife während des Ladens weiterläuft. `page_view_handle_mouse` kopiert den Link vor dem Callback in den Temp-Allocator, weil das Laden der neuen Seite das Layout (und damit den String) zerstört.
 - `AddressBar`: Text in einem `strings.Builder`; Eingabefeld (`address_bar_input_rect`) beginnt rechts der Navigations-Buttons und reicht bis 8 px vor den rechten Rand. Nur ein Klick ins Eingabefeld fokussiert.
 - `NavButtons`: `can_back`/`can_forward` (gesetzt vom Browser über `set_navigation_state`), `loading` (über `set_loading`: dann zeigt der dritte Button Stopp ✕ statt Reload, `Nav_Action.Stop` teilt sich den Platz mit `.Reload`), Buttons à 24 px; Icons mit `DrawLineEx`/`DrawRing`/`DrawTriangle` gezeichnet (Inter hat kein ↻). raylib lässt Dreiecke mit Ecken im Uhrzeigersinn weg (Backface Culling) → `draw_triangle_any_order`. Deaktivierte Buttons grau, Hover hellgrau hinterlegt. Fokusfarbe Blau `{66,133,244}`.
-- `PageView` zeichnet in der Reihenfolge der Display List: Seitenhintergrund (`page_layout.background`), Boxen (Hintergrund, dann die vier Rahmen als Rechtecke), Bilder (vorerst immer als grauer Platzhalter, `draw_image_placeholder`), Text (jeweils nur Sichtbares). Das Layout wird neu gebaut, wenn sich Breite **oder** Höhe ändert (wegen `vh`). `rect` unterhalb der Adressleiste, `document` (gehört der PageView: `page_view_set_document` übernimmt es, `page_view_set_content` verpackt Text per `dom.from_plain_text`), `page_layout` (gecacht, `page_view_ensure_layout` baut nur neu, wenn sich die Breite ändert), `scroll_y`, `content_height` (= Layout-Höhe). `page_view_render` zeichnet nur Runs im sichtbaren Bereich (Scissor-Mode). `measure_text` ist die `Measure_Text`-Proc für das Layout (raylib). Fette Runs werden mit `font_bold` gezeichnet und gemessen (`font_for(bold)`). Scrollen wird auf `[0, content_height - rect.height]` begrenzt (`clamp_scroll`).
+- `PageView` zeichnet in der Reihenfolge der Display List: Seitenhintergrund (`page_layout.background`), Boxen (Hintergrund, dann die vier Rahmen als Rechtecke), Bilder (Textur skaliert auf die Layout-Größe per `DrawTexturePro`, sonst grauer Platzhalter `draw_image_placeholder`), Text (jeweils nur Sichtbares).
+- Bilder (`page_images.odin`): `page_view_add_image` dekodiert mit `rl.LoadImageFromMemory` (Format über Content-Type bzw. URL-Endung, `image_file_type`: PNG, JPG, GIF (erstes Bild), BMP, QOI; kein SVG/WebP) auf dem UI-Thread, weil Texturen nur dort erzeugt werden dürfen, lädt sie als Textur (bilinearer Filter), trägt die natürliche Größe in `image_sizes` ein und verwirft das Layout, damit es mit der echten Größe neu gebaut wird. `images`/`image_sizes` hängen am Dokument und werden mit ihm freigegeben (Schlüssel geteilt). Das Layout wird neu gebaut, wenn sich Breite **oder** Höhe ändert (wegen `vh`). `rect` unterhalb der Adressleiste, `document` (gehört der PageView: `page_view_set_document` übernimmt es, `page_view_set_content` verpackt Text per `dom.from_plain_text`), `page_layout` (gecacht, `page_view_ensure_layout` baut nur neu, wenn sich die Breite ändert), `scroll_y`, `content_height` (= Layout-Höhe). `page_view_render` zeichnet nur Runs im sichtbaren Bereich (Scissor-Mode). `measure_text` ist die `Measure_Text`-Proc für das Layout (raylib). Fette Runs werden mit `font_bold` gezeichnet und gemessen (`font_for(bold)`). Scrollen wird auf `[0, content_height - rect.height]` begrenzt (`clamp_scroll`).
 - `font` und `font_bold` sind Package-globale Variablen (`fonts_init` lädt beide, Pfade in `FONT_REGULAR_PATH`/`FONT_BOLD_PATH`), jeweils einmal mit `FONT_LOAD_SIZE` (64) gerastert und beim Zeichnen auf die jeweilige Größe skaliert; Mipmaps + trilinearer Filter halten kleinen Text glatt. Geladen werden die Codepoints aus `font_codepoints` (ASCII, Latin-1, typografische Zeichen).
 
 **dom** ([dom/](dom/))
@@ -168,7 +174,7 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 **loader** ([loader/loader.odin](loader/loader.odin))
 - Wird vom `browser` benutzt (Feld `page_loader`: ein Feld namens `loader` würde den Package-Namen verdecken → „declaration cycle“).
 - Ein Worker-Thread mit **eigenem** `http.Client` (ein curl-Handle darf nie von zwei Threads gleichzeitig benutzt werden). `load(url) -> Request_Id` übergibt einen Auftrag, `poll() -> (Result, ok)` holt fertige Ergebnisse ab (nie blockierend, gedacht für einmal pro Frame), `cancel()` bricht ab, `destroy` beendet den Worker (bricht einen laufenden Download ab, hängt also nicht).
-- Es gibt höchstens **einen** wartenden Auftrag: `load` ersetzt ihn und bricht den laufenden ab. Abgebrochene Aufträge liefern kein Ergebnis. Über die `Request_Id` erkennt der Aufrufer veraltete Ergebnisse.
+- Zwei Arten von Aufträgen (`Request_Kind`): `.Page` (`load`, wird geparst) und `.Resource` (`load_resource`, liefert rohe Bytes in `Result.data` + `content_type`). Seiten haben Vorrang. Es gibt höchstens **eine** wartende Seite: `load` ersetzt sie, **verwirft alle wartenden Ressourcen** (sie gehörten zur alten Seite) und bricht den laufenden Auftrag ab. Ressourcen warten in einer Queue (`resources`) und werden nacheinander geladen. `cancel` verwirft alles. Abgebrochene Aufträge liefern kein Ergebnis. Über die `Request_Id` erkennt der Aufrufer veraltete Ergebnisse.
 - Der Worker parst auch (`dom.parse` bzw. `dom.from_plain_text`), `Result` enthält ein fertiges Dokument oder einen Fehlertext und gehört dem Empfänger (`result_destroy`).
 - Synchronisation: `pending`, `results`, `quit` nur unter `mutex`; der Worker schläft auf `cond` (Condition Variable). `abort` wird ohne Mutex vom curl-Fortschritts-Callback gelesen, daher nur atomar (`sync.atomic_load/store`); zurückgesetzt wird es unter dem Mutex, wenn der Worker einen Auftrag übernimmt.
 - Speicher: Alles, was zwischen Threads wandert, nutzt den beim `init` übergebenen Allocator (der Worker setzt ihn als `context.allocator`, hat aber seinen eigenen Temp-Allocator und leert ihn nach jedem Auftrag). Odins Tracking-Allocator (Tests) hat einen Mutex, ist also thread-sicher.
@@ -235,6 +241,6 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 - Stage 1 HTTP-Client – erledigt
 - Stage 2 Fenster & UI – Fenster, Adressleiste, klickbare Links und Navigation (zurück/vor/neu laden) stehen; offen: Schema-Ergänzung, Tabs
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
-- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt positionierte Text-Runs, die UI zeichnet sie mit Größe, Fett (Inter Bold) und Farbe. Links sind klickbar (relative URLs über curl). Box-Modell (margin, padding, width, max-width, auto-Zentrierung, Hintergründe, Rahmen), `text-align`, `vw`/`vh`, Bilder im Layout (Größe, Platzhalter). Offen: Bilder laden und zeichnen, Inline-Hintergründe, Flexbox & Co.
+- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt positionierte Text-Runs, die UI zeichnet sie mit Größe, Fett (Inter Bold) und Farbe. Links sind klickbar (relative URLs über curl). Box-Modell (margin, padding, width, max-width, auto-Zentrierung, Hintergründe, Rahmen), `text-align`, `vw`/`vh`, Bilder (PNG/JPG/GIF/BMP/QOI, laden im Hintergrund, Platzhalter). Offen: SVG/WebP, Inline-Hintergründe, Flexbox & Co., Positionierung.
 - Stage 5 Threads – erledigt: Laden + Parsen im Worker-Thread (`loader`), Ergebnisse per Queue, eigener curl-Handle pro Thread, Abbrechen; Ladebalken + Stopp-Button
 - Stage 6 JavaScript – QuickJS anbinden

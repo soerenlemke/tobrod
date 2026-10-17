@@ -8,6 +8,9 @@ import "../vendor/curl"
 
 STANDARD_READ_TIMEOUT :: 30
 MAX_REDIRECTS :: 10
+// Sent with every request. Some sites (e.g. Wikipedia) reject requests
+// without one; a name and a link to the project is the polite thing to send.
+USER_AGENT :: "tobrod/0.1 (toy browser; +https://github.com/soerenlemke/tobrod)"
 
 Http_Error :: struct {
 	code:    curl.code,
@@ -84,6 +87,7 @@ get :: proc(c: ^Client, url: string, abort: ^bool = nil) -> (Http_Response, Mayb
 	curl.easy_setopt(c.handle, .TIMEOUT, STANDARD_READ_TIMEOUT)
 	curl.easy_setopt(c.handle, .FOLLOWLOCATION, 1)
 	curl.easy_setopt(c.handle, .MAXREDIRS, MAX_REDIRECTS)
+	curl.easy_setopt(c.handle, .USERAGENT, cstring(USER_AGENT))
 
 	// curl calls the progress callback regularly (at least once a second, even
 	// while waiting), which is our chance to cancel

@@ -12,6 +12,8 @@ PageView :: struct {
 	page_layout:    ^layout.Layout, // cached, rebuilt only when the width changes
 	scroll_y:       f32,
 	content_height: f32,
+	images:         map[string]rl.Texture2D, // decoded images of the document, see page_images.odin
+	image_sizes:    layout.Image_Sizes,      // their natural sizes, for the layout
 }
 
 page_view_init :: proc(window_width, window_height: i32) -> PageView {
@@ -46,14 +48,23 @@ page_view_set_content :: proc(pv: ^PageView, text: string) {
 
 page_view_destroy :: proc(pv: ^PageView) {
 	page_view_clear(pv)
+	delete(pv.images)
+	delete(pv.image_sizes)
 }
 
+// Drops the cached layout; the next render builds a new one.
 @(private)
-page_view_clear :: proc(pv: ^PageView) {
+page_view_invalidate_layout :: proc(pv: ^PageView) {
 	if pv.page_layout != nil {
 		layout.destroy(pv.page_layout)
 		pv.page_layout = nil
 	}
+}
+
+@(private)
+page_view_clear :: proc(pv: ^PageView) {
+	page_view_invalidate_layout(pv)
+	page_view_clear_images(pv)
 	if pv.document != nil {
 		dom.destroy(pv.document)
 		pv.document = nil
@@ -75,7 +86,7 @@ page_view_ensure_layout :: proc(pv: ^PageView) {
 	if pv.page_layout != nil {
 		layout.destroy(pv.page_layout)
 	}
-	pv.page_layout = layout.build(pv.document, viewport, measure_text)
+	pv.page_layout = layout.build(pv.document, viewport, measure_text, pv.image_sizes)
 	pv.content_height = pv.page_layout.height
 	clamp_scroll(pv)
 }
@@ -111,13 +122,20 @@ page_view_render :: proc(pv: ^PageView) {
 		rl.DrawRectangleRec({x + box.width - br, y + bt, br, box.height - bt - bb}, rl.Color(box.border_color[.Right]))
 	}
 
-	// images: decoding comes in a later step, until then all are placeholders
+	// images: the decoded texture scaled to the layout size, or a placeholder
+	// while it is loading (or if it could not be loaded)
 	for image in pv.page_layout.images {
 		top := image.y - pv.scroll_y
 		if top + image.height < 0 || top > pv.rect.height {
 			continue
 		}
-		draw_image_placeholder({pv.rect.x + image.x, pv.rect.y + top, image.width, image.height})
+		dest := rl.Rectangle{pv.rect.x + image.x, pv.rect.y + top, image.width, image.height}
+		if texture, ok := pv.images[image.src]; ok {
+			source := rl.Rectangle{0, 0, f32(texture.width), f32(texture.height)}
+			rl.DrawTexturePro(texture, source, dest, {0, 0}, 0, rl.WHITE)
+		} else {
+			draw_image_placeholder(dest)
+		}
 	}
 
 	for run in pv.page_layout.runs {
@@ -134,7 +152,7 @@ page_view_render :: proc(pv: ^PageView) {
 	}
 }
 
-// A light grey box with a border where an image will be (or failed to load).
+// A light grey box with a border where an image will be (or could not be loaded).
 @(private)
 draw_image_placeholder :: proc(rect: rl.Rectangle) {
 	rl.DrawRectangleRec(rect, rl.Color{235, 235, 235, 255})
