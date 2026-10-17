@@ -99,11 +99,19 @@ layout_flex :: proc(b: ^Builder, node: ^dom.Node) {
 	box_index := reserve_box(b, style, border)
 
 	y := top + inset[.Top]
-	// absolute children are no items; their static position is the start of
-	// the content box
+	// absolute and fixed children are no items; their static position is the
+	// start of the content box
 	for child in node.children {
-		if child.kind == .Element && child.style.position == .Absolute && child.style.display != .None {
+		if child.kind != .Element || child.style.display == .None {
+			continue
+		}
+		#partial switch child.style.position {
+		case .Absolute:
 			wait_for_containing_block(b, child, {content_left, y})
+		case .Fixed:
+			if !b.measuring {
+				append(&b.fixed_waiting, Waiting_Absolute{child, {content_left, y}})
+			}
 		}
 	}
 	if column {

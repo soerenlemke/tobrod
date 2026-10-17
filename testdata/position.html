@@ -4,7 +4,11 @@
   <meta charset="utf-8">
   <title>Positioning</title>
   <style>
-    body { font-family: sans-serif; background: #f0f1f5; margin: 0; padding: 16px }
+    body { font-family: sans-serif; background: #f0f1f5; margin: 0; padding: 56px 16px 16px }
+    .header { position: fixed; top: 0; left: 0; right: 0; height: 40px; background: #1f2937; color: white; padding: 0 16px }
+    .header b { position: absolute; top: 10px }
+    .to-top { position: fixed; right: 16px; bottom: 16px; background: #2563eb; color: white; padding: 6px 12px }
+    .tall { height: 600px; background: #e0e7ff; padding: 8px }
     .card { background: white; max-width: 36em; margin: 0 auto 16px; padding: 16px 24px }
     .ghost { background: #e5e7eb; border: 1px dashed #9ca3af; padding: 8px }
     .moved { position: relative; top: 12px; left: 40px; background: #bfdbfe; border: 1px solid #3b82f6; padding: 8px }
@@ -21,6 +25,7 @@
   </style>
 </head>
 <body>
+  <div class="header"><b>Fixed header – stays at the top while scrolling</b></div>
   <div class="card">
     <h2>position: relative</h2>
     <div class="moved">moved 40px right and 12px down (top: 12px; left: 40px)</div>
@@ -42,5 +47,10 @@
     <p>Without offsets an element stays at its static position:
        here<span class="tag">tag</span> – it overlaps the text instead of making room.</p>
   </div>
+  <div class="card">
+    <h2>position: fixed</h2>
+    <div class="tall">A tall block, so the page scrolls. The header and the button stay where they are.</div>
+  </div>
+  <a class="to-top" href="#">fixed: back to top</a>
 </body>
 </html>

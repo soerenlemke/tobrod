@@ -2,7 +2,7 @@ package layout
 
 import "../dom"
 
-// Positioning (position: relative / absolute).
+// Positioning (position: relative / absolute / fixed).
 //
 // relative: the element is laid out normally and then moved by its offsets
 // (see layout_element), nothing else moves.
@@ -19,6 +19,10 @@ import "../dom"
 //   shrink-to-fit like a float; with top and bottom and no height it is
 //   stretched vertically, too; percentages of height work here
 // - it is laid out as its own block formatting context
+//
+// fixed: like absolute, but the containing block is always the viewport, and
+// they don't scroll. They are placed after everything else into their own
+// layer (Layout.fixed, in viewport coordinates), see place_fixed.
 //
 // Positioned elements are drawn on top of the normal flow. An empty clip rect
 // hides an absolute element (clipped_away).
@@ -73,7 +77,21 @@ register_absolute :: proc(b: ^Builder, node: ^dom.Node) {
 	if b.measuring || len(b.containing) == 0 {
 		return // out of the flow: doesn't count for the width of the content
 	}
-	pos: [2]f32
+	wait_for_containing_block(b, node, static_position(b, node))
+}
+
+// Remembers a fixed element; place_fixed lays it out at the end.
+@(private)
+register_fixed :: proc(b: ^Builder, node: ^dom.Node) {
+	if b.measuring {
+		return
+	}
+	append(&b.fixed_waiting, Waiting_Absolute{node, static_position(b, node)})
+}
+
+// Where an out-of-flow element would be in the normal flow.
+@(private)
+static_position :: proc(b: ^Builder, node: ^dom.Node) -> (pos: [2]f32) {
 	if node.style.display == .Inline {
 		pos = {b.x, b.y if !line_empty(b) else b.y + b.pending_margin}
 		if b.pending_space && !line_empty(b) {
@@ -87,7 +105,34 @@ register_absolute :: proc(b: ^Builder, node: ^dom.Node) {
 			pos.y = b.y + current_line_height(b)
 		}
 	}
-	wait_for_containing_block(b, node, pos)
+	return
+}
+
+// Lays out the fixed elements against the viewport into their own layer.
+// The page is not scrolled then, so a static position on the page is also
+// one in the viewport.
+@(private)
+place_fixed :: proc(b: ^Builder) {
+	if len(b.fixed_waiting) == 0 {
+		return
+	}
+	l := b.layout
+	page_boxes, page_runs, page_images := l.boxes, l.runs, l.images
+	page_positioned, page_overflow := b.positioned, b.overflow
+	l.boxes = make([dynamic]Box, b.allocator)
+	l.runs = make([dynamic]Text_Run, b.allocator)
+	l.images = make([dynamic]Image_Item, b.allocator)
+	b.positioned = make([dynamic][2]int, b.allocator)
+
+	viewport := Placed_Box{width = b.viewport.x, height = b.viewport.y}
+	for w in b.fixed_waiting {
+		layout_absolute(b, w, viewport)
+	}
+	draw_positioned_last(b)
+
+	l.fixed = {l.boxes, l.runs, l.images}
+	l.boxes, l.runs, l.images = page_boxes, page_runs, page_images
+	b.positioned, b.overflow = page_positioned, page_overflow
 }
 
 @(private)
