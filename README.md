@@ -64,7 +64,7 @@ Stage 4 — HTML & CSS Parsing
 - [x] External stylesheets (`<link rel="stylesheet">`, render-blocking)
 - [x] `@media` queries (evaluated for the viewport at load time)
 - [x] `visibility`, `list-style`, `position: absolute/fixed` (taken out of the flow, not placed yet)
-- [ ] CSS custom properties (`var()`)
+- [x] CSS custom properties (`var()`, inherited, fallbacks, own cascade decision via specificity)
 - [ ] Use computed styles in our DOM and when rendering
    - [x] `display` (UA defaults + CSS, `display: none` hides elements)
    - [x] inheritance and defaults for other properties (color, font-size, font-weight)

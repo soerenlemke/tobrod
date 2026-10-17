@@ -105,14 +105,16 @@ parse :: proc(html: string, stylesheets: Stylesheet_Loader = {}, media := DEFAUL
 	doc.root.kind = .Document
 	doc.root.children.allocator = allocator
 	doc.root.style = ROOT_STYLE
-	copy_children(lxb_doc, lxb.document_node(lxb_doc), doc.root, allocator)
+	root_props := make(Custom_Props, allocator = context.temp_allocator)
+	copy_children(lxb_doc, lxb.document_node(lxb_doc), doc.root, &root_props, allocator)
 	return doc, nil
 }
 
 // Recursive copy. Fine for a toy browser; very deeply nested pages
 // could exhaust the stack.
 @(private)
-copy_children :: proc(lxb_doc: ^lxb.Html_Document, from: ^lxb.Dom_Node, to: ^Node, allocator: mem.Allocator) {
+// props: the custom properties (CSS variables) inherited from the parent.
+copy_children :: proc(lxb_doc: ^lxb.Html_Document, from: ^lxb.Dom_Node, to: ^Node, props: ^Custom_Props, allocator: mem.Allocator) {
 	for child := lxb.lxb_dom_node_first_child_noi(from); child != nil; child = lxb.lxb_dom_node_next_noi(child) {
 		node: ^Node
 		#partial switch lxb.lxb_dom_node_type_noi(child) {
@@ -121,8 +123,9 @@ copy_children :: proc(lxb_doc: ^lxb.Html_Document, from: ^lxb.Dom_Node, to: ^Nod
 			element := lxb.element_from_node(child)
 			node.tag = strings.clone(lxb.element_name(element), allocator)
 			node.attributes = copy_attributes(element, allocator)
-			node.style = compute_style(node, element, to.style)
-			copy_children(lxb_doc, child, node, allocator)
+			own_props: ^Custom_Props
+			node.style, own_props = compute_style(node, element, to.style, props)
+			copy_children(lxb_doc, child, node, own_props, allocator)
 		case .Text:
 			node = new_node(.Text, to, allocator)
 			node.text = lxb.node_text_content(lxb_doc, child, allocator)
@@ -167,16 +170,23 @@ copy_attributes :: proc(element: ^lxb.Dom_Element, allocator: mem.Allocator) -> 
 // Inherited values and tag defaults, overridden by whatever the CSS cascade
 // decided. Parents are computed before their children, so parent is final.
 @(private)
-compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style) -> Style {
+compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inherited_props: ^Custom_Props) -> (style: Style, props: ^Custom_Props) {
 	_, hidden := attribute(node, "hidden")
-	style := default_style(node.tag, hidden, parent)
+	style = default_style(node.tag, hidden, parent)
+
+	// custom properties and declarations with var(), see custom_props.odin
+	declared := walk_declarations(element)
+	props = element_custom_props(inherited_props, &declared)
+	var_values := winning_var_declarations(&declared, props)
 
 	for property in STYLE_PROPERTIES {
-		if value, ok := lxb.element_style(element, property, context.temp_allocator); ok {
+		if value, ok := var_values[property]; ok {
+			apply_declaration(&style, property, value, parent)
+		} else if value, ok := lxb.element_style(element, property, context.temp_allocator); ok {
 			apply_declaration(&style, property, value, parent)
 		}
 	}
-	return style
+	return
 }
 
 // Collects the hrefs of <link rel="stylesheet"> in document order. Print-only
