@@ -57,6 +57,8 @@ Stage 4 — HTML & CSS Parsing
 - [x] CSS parsing and CSSOM construction (via lexbor's css/style modules)
 - [x] Selector matching and cascade (via lexbor: specificity, `!important`, inline styles)
 - [ ] Use computed styles in our DOM and when rendering
+   - [x] `display` (UA defaults + CSS, `display: none` hides elements)
+   - [ ] inheritance and defaults for other properties (color, font-size, font-weight)
 
 Stage 5 - Threads
 - [ ] Run http requests in own thread

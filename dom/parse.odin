@@ -14,6 +14,14 @@ parse :: proc(html: string) -> (doc: ^Document, err: Maybe(Parse_Error)) {
 	}
 	defer lxb.lxb_html_document_destroy(lxb_doc)
 
+	// Must happen before parsing: lexbor then reads <style> and style=""
+	// while parsing and runs the cascade for us.
+	if status := lxb.lxb_style_init(lxb_doc); status != lxb.STATUS_OK {
+		return nil, Parse_Error{"lexbor: could not init CSS"}
+	}
+	// defers run in reverse order, so this runs before the document is destroyed
+	defer lxb.lxb_style_destroy(lxb_doc)
+
 	if status := lxb.lxb_html_document_parse(lxb_doc, raw_data(html), uint(len(html))); status != lxb.STATUS_OK {
 		return nil, Parse_Error{"lexbor: parsing failed"}
 	}
@@ -44,6 +52,7 @@ copy_children :: proc(lxb_doc: ^lxb.Html_Document, from: ^lxb.Dom_Node, to: ^Nod
 			element := lxb.element_from_node(child)
 			node.tag = strings.clone(lxb.element_name(element), allocator)
 			node.attributes = copy_attributes(element, allocator)
+			node.style = compute_style(node, element)
 			copy_children(lxb_doc, child, node, allocator)
 		case .Text:
 			node = new_node(.Text, to, allocator)
@@ -84,4 +93,18 @@ copy_attributes :: proc(element: ^lxb.Dom_Element, allocator: mem.Allocator) -> 
 		i += 1
 	}
 	return attributes
+}
+
+// Default style for the tag, overridden by whatever the CSS cascade decided.
+@(private)
+compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element) -> Style {
+	_, hidden := attribute(node, "hidden")
+	style := default_style(node.tag, hidden)
+
+	if value, ok := lxb.element_style(element, "display", context.temp_allocator); ok {
+		if display, known := parse_display(value); known {
+			style.display = display
+		}
+	}
+	return style
 }

@@ -66,6 +66,7 @@ dom/                    Package dom: eigener DOM-Baum (Parsen über lexbor, dann
   dom.odin                Node, Document, destroy, attribute
   parse.odin              parse: lexbor-Baum → eigener Baum
   print.odin              tree_to_string (Debug/Tests)
+  style.odin              Style/Display, default_style (UA-Stylesheet), parse_display
   text.odin               to_display_text: DOM → lesbarer Text für die PageView
 ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
   main_window.odin        MainWindow, init/destroy, Haupt-Loop (run)
@@ -122,10 +123,11 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 
 **dom** ([dom/](dom/))
 - `parse(html) -> (^Document, Maybe(Parse_Error))`: parst mit lexbor, kopiert rekursiv in eigene `Node`s und zerstört das lexbor-Dokument sofort. Danach zeigt nichts mehr in lexbors Speicher.
-- `Node`: `kind` (`Document`/`Element`/`Text`/`Comment`), `parent`, `children` (`[dynamic]^Node`), `tag` (lowercase), `attributes` (`[]Attribute`, Quellreihenfolge), `text`. Doctype und Processing Instructions werden weggelassen.
+- `Node`: `kind` (`Document`/`Element`/`Text`/`Comment`), `parent`, `children` (`[dynamic]^Node`), `tag` (lowercase), `attributes` (`[]Attribute`, Quellreihenfolge), `text`, `style` (nur Elemente). Doctype und Processing Instructions werden weggelassen.
 - Speicher: Ein `virtual.Arena` pro `Document`, alle Nodes und Strings liegen darin; `destroy` gibt alles auf einmal frei.
 - lexbor ergänzt fehlendes `<html>`/`<head>`/`<body>` wie ein echter Browser.
-- `to_display_text` ist noch kein Layout, nur Text mit Browser-Grundregeln: `head`/`script`/`style`/`template` unsichtbar, Whitespace-Collapsing (außer in `<pre>`), Block-Elemente auf neuer Zeile (`p`, `h1`–`h6`, Listen u. a. mit Leerzeile), `<br>` als Umbruch, `• ` vor `<li>`. Umbrüche werden nur vor dem nächsten Text geschrieben (`pending_breaks`), so stapeln sie sich nicht.
+- Styles: `parse` ruft `lxb_style_init` vor dem Parsen auf. Pro Element: `default_style(tag, hidden)` (unser vereinfachtes UA-Stylesheet: Block-Tags, `li` = `List_Item`, `head`/`script`/`style`/… und `hidden` = `None`), dann überschreibt der Kaskaden-Wert von lexbor (`element_style(el, "display")` → `parse_display`). Nicht unterstützte Layout-Modi fallen auf ihr äußeres Verhalten zurück (`flex`/`grid`/`table` → Block, `inline-block` → Inline).
+- `to_display_text` ist noch kein Layout, nur Text mit Browser-Grundregeln: `display: none` wird übersprungen, Whitespace-Collapsing (außer in `<pre>`), `Block`/`List_Item` auf neuer Zeile (`p`, `h1`–`h6`, Listen u. a. mit Leerzeile als Ersatz für Margins, `has_vertical_margin`), `<br>` als Umbruch, `• ` vor `List_Item`. Umbrüche werden nur vor dem nächsten Text geschrieben (`pending_breaks`), so stapeln sie sich nicht.
 
 **vendor/lexbor** ([vendor/lexbor/lexbor.odin](vendor/lexbor/lexbor.odin))
 - Opake Typen `Html_Document` und `Dom_Node`, `Status`/`STATUS_OK`, `Dom_Node_Type`; Funktionen `lxb_html_document_create/parse/destroy`, `lxb_html_document_body_element_noi` und die Traversal-Procs `lxb_dom_node_{first_child,last_child,next,prev,parent,type}_noi`. `document_node` castet ein Dokument zum Node (wie lexbors `lxb_dom_interface_node`). Genutzt werden die `_noi`-Varianten, weil die normalen Funktionen `static inline` sind.
@@ -135,7 +137,7 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - CSS ([vendor/lexbor/style.odin](vendor/lexbor/style.odin)): `lxb_style_init` vor dem Parsen, `lxb_style_destroy` vor `lxb_html_document_destroy`. Danach liest lexbor `<style>` und `style=""` selbst ein und macht die Kaskade (Selektoren, Spezifität, `!important`, Reihenfolge). `element_style(el, "color")` liefert den gewinnenden Wert als String (kopiert, Caller gibt frei) – nur Deklariertes, keine geerbten oder Default-Werte.
 - `Css_Rule_Declaration` bildet den **Anfang** von `lxb_css_rule_declaration_t` nach (`rule`, `type`, Wert-Pointer), damit `lxb_css_property_serialize` aufgerufen werden kann. Beim Update des Submoduls `css/rule.h` prüfen.
 - `foreign import lib` ist mit `@(export)` markiert, weil Foreign Imports sonst nur in ihrer Datei sichtbar sind.
-- Der eigene DOM-Baum ist im Package `dom`; `vendor/lexbor` wird nur von dort benutzt (CSS noch nicht).
+- Der eigene DOM-Baum ist im Package `dom`; `vendor/lexbor` wird nur von dort benutzt.
 
 ## Code-Konventionen
 
@@ -173,6 +175,6 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 - Stage 1 HTTP-Client – erledigt
 - Stage 2 Fenster & UI – Fenster und Adressleiste stehen; offen: Schema-Ergänzung, Tabs, Navigation (zurück/vor/neu laden)
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
-- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, HTML wird als Text angezeigt, CSS-Kaskade über lexbor gebunden; nächster Schritt: Styles in den eigenen DOM übernehmen und beim Rendern nutzen
+- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, HTML wird als Text angezeigt, CSS-Kaskade über lexbor gebunden; `display` wird übernommen und beim Anzeigen genutzt; nächster Schritt: Vererbung/Defaults für weitere Properties, dann echtes Layout (Schriftgröße, Fett, Farbe)
 - Stage 5 Threads – HTTP in eigenen Thread, Ergebnis-Übergabe an die UI, Thread-Sicherheit des Clients
 - Stage 6 JavaScript – QuickJS anbinden

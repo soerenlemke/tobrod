@@ -73,3 +73,49 @@ c</pre>
 	expected := "Title\n\nSome bold text.\nNext line\n\n• one\n• two\n\na  b\nc\n\nend"
 	testing.expect_value(t, text, expected)
 }
+
+@(test)
+test_display_from_css :: proc(t: ^testing.T) {
+	doc, err := parse(`<html><head><style>
+		.ad { display: none }
+		span.box { display: block }
+		ul.inline li { display: inline }
+		#shown { display: block }
+	</style></head><body>
+		<p>Text<span class="ad">AD</span> more</p>
+		<p>a<span class="box">boxed</span>b</p>
+		<p hidden>hidden by attribute</p>
+		<ul class="inline"><li>x</li> <li>y</li></ul>
+		<script id="shown">visible script</script>
+	</body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	text := to_display_text(doc)
+	defer delete(text)
+	expected := "Text more\n\na\nboxed\nb\n\nx y\n\nvisible script"
+	testing.expect_value(t, text, expected)
+}
+
+@(test)
+test_parse_display :: proc(t: ^testing.T) {
+	cases := []struct {
+		value:   string,
+		display: Display,
+		ok:      bool,
+	} {
+		{"none", .None, true},
+		{"block flow", .Block, true},
+		{"flex", .Block, true},
+		{"inline-block", .Inline, true},
+		{"list-item", .List_Item, true},
+		{"ruby", .Inline, false},
+	}
+	for c in cases {
+		display, ok := parse_display(c.value)
+		testing.expect_value(t, display, c.display)
+		testing.expect_value(t, ok, c.ok)
+	}
+}
