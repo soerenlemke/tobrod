@@ -15,10 +15,14 @@ fonts_init :: proc(font_path: string) -> Maybe(Error) {
 	codepoints := font_codepoints()
 	defer delete(codepoints)
 
-	font = rl.LoadFontEx(font_c, 32, raw_data(codepoints), i32(len(codepoints)))
+	font = rl.LoadFontEx(font_c, FONT_LOAD_SIZE, raw_data(codepoints), i32(len(codepoints)))
 	if font.texture.id == 0 {
 		return Error{message = "could not load font"}
 	}
+	// Text is mostly drawn smaller than it was rasterized. Mipmaps + trilinear
+	// filtering keep it smooth instead of blocky when scaled down.
+	rl.GenTextureMipmaps(&font.texture)
+	rl.SetTextureFilter(font.texture, .TRILINEAR)
 
 	return nil
 }

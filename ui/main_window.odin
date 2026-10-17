@@ -65,7 +65,7 @@ run :: proc(ui: ^MainWindow, screenshot_path := "") -> Maybe(Error) {
 		address_bar_handle_input(ui, &ui.address_bar)
 
 		if wheel := rl.GetMouseWheelMove(); wheel != 0 {
-			page_view_handle_scroll(&ui.page_view, wheel, ui.page_view.content_height)
+			page_view_handle_scroll(&ui.page_view, wheel)
 		}
 
 		rl.BeginDrawing()
@@ -84,7 +84,7 @@ run :: proc(ui: ^MainWindow, screenshot_path := "") -> Maybe(Error) {
 		rl.EndDrawing()
 
 		// cleaning up the temp allocated stuff each frame
-		// e.g. wrap text is currently using the temp allocator
+		// (cstrings for drawing, scratch memory of the layout)
 		free_all(context.temp_allocator)
 	}
 	return nil

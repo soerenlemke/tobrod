@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>tobrod style test</title>
+  <style>
+    .note { color: #888; font-size: 0.875em }
+    .warn { color: rgb(200, 60, 0); font-weight: bold }
+    .big { font-size: 1.5em }
+    .hidden { display: none }
+  </style>
+</head>
+<body>
+  <h1>Heading 1</h1>
+  <p>Normal text with <b>bold</b>, <strong>strong</strong>, a <a href="index.html">link</a>
+     and <span style="color: green">inline green</span>. Grüße, Ärger, € 42 – done.</p>
+  <h2>Heading 2</h2>
+  <p class="note">A smaller grey note (0.875em) that is long enough to wrap onto a second line
+     when the window is not very wide, to check line wrapping with a smaller font size.</p>
+  <p>Mixed sizes: normal <span class="big">big</span> normal again.</p>
+  <p class="warn">Warning in bold orange-red.</p>
+  <p class="hidden">This paragraph must not be visible.</p>
+  <h3>Lists</h3>
+  <ul>
+    <li>first item</li>
+    <li>second item with <b>bold</b></li>
+  </ul>
+  <ol>
+    <li>one</li>
+    <li>two</li>
+  </ol>
+  <pre>pre:  keeps   spaces
+and line breaks</pre>
+  <p>Line one<br>Line two after br</p>
+</body>
+</html>
