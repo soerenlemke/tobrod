@@ -1,6 +1,9 @@
 package lexbor
 
-when ODIN_OS == .Darwin {
+when ODIN_OS == .Windows {
+	// TODO: build lexbor from source on Windows (like curl) and link the static lib here
+	#panic("lexbor is not set up for Windows yet")
+} else {
 	foreign import lib "system:lexbor"
 }
 
@@ -17,5 +20,6 @@ STATUS_OK :: Status(0)
 foreign lib {
 	lxb_html_document_create :: proc() -> ^Html_Document ---
 	lxb_html_document_parse :: proc(document: ^Html_Document, html: [^]u8, html_len: uint) -> Status ---
-	lxb_html_document_destroy :: proc(document: ^Html_Document) -> Html_Document ---
+	// returns NULL on success (C: lxb_html_document_t *)
+	lxb_html_document_destroy :: proc(document: ^Html_Document) -> ^Html_Document ---
 }

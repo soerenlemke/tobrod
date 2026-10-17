@@ -32,7 +32,7 @@ Stand 2026-10-17 auf macOS: `odin check .`, `odin build .` und `odin test vendor
 |---|---|---|---|
 | libcurl | `brew install curl mbedtls`, gelinkt als `system:curl` + mbedtls + zlib + `SystemConfiguration.framework` | statisch aus Submodul `vendor/curl-src` (curl-8_14_0) gebaut via [setup.ps1](setup.ps1), Schannel für TLS, `/MD`-CRT | `system:curl` + mbedtls + zlib (ungetestet) |
 | raylib | `vendor:raylib` (mit Odin ausgeliefert) | dito | dito |
-| lexbor | `brew install lexbor`, `system:lexbor` | **noch nicht verdrahtet** | **noch nicht verdrahtet** |
+| lexbor | `brew install lexbor`, `system:lexbor` | **noch nicht verdrahtet** (`#panic` beim Build) | `system:lexbor` (ungetestet) |
 
 **Warum curl selbst gebaut wird (Windows):** Odins `vendor:curl` bringt eine Lib mit, deren CRT-Einstellung mit `vendor:raylib` kollidiert. Deshalb liegt eine Kopie der Odin-curl-Bindings unter [vendor/curl/](vendor/curl/) (Package `vendor_curl`), die auf Windows gegen `vendor/curl-src/build/lib/Release/libcurl.lib` linkt. `setup.ps1` braucht CMake und die VS Build Tools (Generator `"Visual Studio 18 2026"`). Build-Artefakte (`vendor/curl-src/build/`, `vendor/curl/lib/`, `*.exe`, `*.dll`) sind in `.gitignore`.
 
@@ -88,7 +88,7 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 **ui**
 - `MainWindow` besitzt `AddressBar`, `PageView` und den Submit-Callback.
 - `AddressBar`: Text in einem `strings.Builder`; Eingabefeld ist ein fest positioniertes Rect (x = 80, 80 px links/rechts für spätere Buttons reserviert). Fokusfarbe Blau `{66,133,244}`.
-- `PageView`: `rect` unterhalb der Adressleiste, `content` (roher Text), `scroll_y`, `content_height`. `wrap_text` bricht wortweise mit `rl.MeasureTextEx` um und arbeitet komplett im Temp-Allocator. Rendering mit Scissor-Mode. Scrollen wird auf `[0, content_height - rect.height]` begrenzt.
+- `PageView`: `rect` unterhalb der Adressleiste, `content` (roher Text, gehört der PageView, nur über `page_view_set_content` setzen), `scroll_y`, `content_height`. `wrap_text` bricht wortweise mit `rl.MeasureTextEx` um und arbeitet komplett im Temp-Allocator. Rendering mit Scissor-Mode. Scrollen wird auf `[0, content_height - rect.height]` begrenzt.
 - `font` ist eine Package-globale Variable (geladen mit Größe 32, gezeichnet mit `FONT_SIZE` 16).
 
 **vendor/lexbor** ([vendor/lexbor/lexbor.odin](vendor/lexbor/lexbor.odin))
@@ -111,16 +111,16 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 
 Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 
-1. **Dangling-String bei HTTP-Fehlern**: `register_callbacks` setzt `page_view.content = fmt.tprintf(...)`. Das liegt im Temp-Allocator, der am Ende jedes Frames per `free_all` geleert wird. Ab dem nächsten Frame zeigt `content` auf freigegebenen Speicher. Fix: Fehlertext mit dem normalen Allocator erzeugen und Ownership von `content` klären.
-2. **Body-Lebensdauer**: `content = response.body` zeigt in den Builder des HTTP-Clients. Funktioniert, solange nur ein `get` gleichzeitig läuft, wird aber spätestens mit Threads (Stage 5) zum Problem. Besser: `PageView` besitzt eine eigene Kopie.
-3. **Backspace entfernt ein Byte statt einer Rune** ([ui/address_bar.odin](ui/address_bar.odin)) → kaputtes UTF-8 bei Umlauten. Fix z. B. mit `utf8.decode_last_rune_in_string`.
+1. ~~Dangling-String bei HTTP-Fehlern~~ / ~~Body-Lebensdauer~~ – behoben: `PageView` besitzt seinen Inhalt, gesetzt wird er nur über `page_view_set_content` (kopiert und setzt Scroll zurück). Freigegeben wird er in `page_view_destroy`.
+2. *(in 1 zusammengefasst)*
+3. ~~Backspace entfernt ein Byte statt einer Rune~~ – behoben mit `strings.pop_rune`.
 4. **HTTP blockiert den UI-Thread** bis zu 30 s (Timeout). Lösung ist Stage 5.
 5. `http.init` prüft nicht, ob `curl.easy_init()` `nil` liefert; `curl_global_init` wird nicht explizit aufgerufen (wichtig, sobald Threads dazukommen).
-6. `ui.destroy` gibt den `strings.Builder` der Adressleiste nicht frei.
+6. ~~`ui.destroy` gibt den `strings.Builder` der Adressleiste nicht frei~~ – behoben.
 7. `address_bar_render` allokiert pro Frame eine cstring auf dem Heap (könnte Temp-Allocator nutzen).
 8. Fokus-Klick prüft die ganze Adressleiste statt nur das Eingabefeld.
 9. `wrap_text` läuft jeden Frame neu über den ganzen Text und misst jeden Kandidaten → bei großen Seiten langsam. `content_height` wird erst beim Rendern berechnet. Kandidat für Caching bei Content- oder Breitenänderung.
-10. **lexbor-Binding**: `lxb_html_document_destroy` gibt in C `lxb_html_document_t *` zurück, die Odin-Signatur deklariert `Html_Document` als Wert → sollte `^Html_Document` sein. Außerdem existiert `foreign import lib` nur für Darwin, d. h. auf Windows/Linux kompiliert das Package nicht, sobald es importiert wird.
+10. **lexbor auf Windows**: Die Signatur von `lxb_html_document_destroy` ist korrigiert (`^Html_Document`), und Linux linkt `system:lexbor`. Auf Windows bricht der Build mit einem `#panic` ab, bis lexbor dort (wie curl) aus dem Quellcode gebaut wird.
 11. URL-Eingabe ohne Schema (`example.com`) wird nicht automatisch zu `http(s)://` ergänzt (steht als TODO in der Roadmap).
 12. Linux ist bisher weder dokumentiert noch getestet.
 

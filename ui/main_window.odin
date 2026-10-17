@@ -42,6 +42,8 @@ init :: proc(window_settings: WindowSettings) -> (MainWindow, Maybe(Error)) {
 }
 
 destroy :: proc(ui: ^MainWindow) {
+	page_view_destroy(&ui.page_view)
+	strings.builder_destroy(&ui.address_bar.text)
 	fonts_close()
 	rl.CloseWindow()
 }
