@@ -286,21 +286,22 @@ Stylesheet_Fetch :: struct {
 
 // dom.Stylesheet_Loader callback: downloads one stylesheet on the worker thread.
 @(private)
-load_stylesheet :: proc(ctx: rawptr, href: string) -> (css: string, ok: bool) {
+load_stylesheet :: proc(ctx: rawptr, href, base: string) -> (css, url: string, ok: bool) {
 	fetcher := cast(^Stylesheet_Fetch)ctx
 	if fetcher.aborted {
-		return "", false
+		return "", "", false
 	}
-	url := http.resolve_url(fetcher.base, href, context.temp_allocator) or_return
-	if !http.is_loadable_url(url) {
-		return "", false
+	// relative to the importing stylesheet, or to the page
+	resolved := http.resolve_url(base if base != "" else fetcher.base, href, context.temp_allocator) or_return
+	if !http.is_loadable_url(resolved) {
+		return "", "", false
 	}
-	response, err := http.get(&fetcher.loader.client, url, &fetcher.loader.abort)
+	response, err := http.get(&fetcher.loader.client, resolved, &fetcher.loader.abort)
 	if e, failed := err.?; failed {
 		fetcher.aborted = e.code == .E_ABORTED_BY_CALLBACK
-		return "", false
+		return "", "", false
 	}
-	// points into the client's buffer: valid until the next request, which is
-	// after dom.parse has parsed this stylesheet
-	return response.body, true
+	// point into the client's buffers: valid until the next request, dom.parse
+	// copies what it needs before that
+	return response.body, response.url, true
 }

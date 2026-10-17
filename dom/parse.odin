@@ -6,12 +6,14 @@ import "core:strings"
 import lxb "../vendor/lexbor"
 
 // Fetches an external stylesheet for parse. href is written like in the page
-// (relative), resolving and loading it is up to the caller, so dom stays free
-// of networking. href is only valid during the call (it points into lexbor's
-// memory), copy it to keep it. The returned text only has to live until the
-// call returns.
+// or stylesheet (relative); base is the URL of the stylesheet it is in (for
+// @import), "" for the page itself. Resolving and loading is up to the
+// caller, so dom stays free of networking. href and base are only valid
+// during the call (href points into lexbor's memory), copy them to keep them.
+// Returns the CSS and the URL it came from (after redirects, the base for its
+// own @imports); both only have to live until the next call.
 Stylesheet_Loader :: struct {
-	load: proc(ctx: rawptr, href: string) -> (css: string, ok: bool),
+	load: proc(ctx: rawptr, href, base: string) -> (css, url: string, ok: bool),
 	ctx:  rawptr,
 }
 
@@ -42,57 +44,31 @@ parse :: proc(html: string, stylesheets: Stylesheet_Loader = {}, media := DEFAUL
 		return nil, Parse_Error{"lexbor: parsing failed"}
 	}
 
-	// external stylesheets, attached before the styles are read in copy_children
-	sheets: [dynamic]^lxb.Css_Stylesheet
-	css_parser: ^lxb.Css_Parser
-	defer {
-		// runs first (defers are reversed), like in lexbor's own example
-		for sheet in sheets {
-			lxb.lxb_css_stylesheet_destroy(sheet, true)
-		}
-		delete(sheets)
-		if css_parser != nil {
-			lxb.lxb_css_parser_destroy(css_parser, true)
-		}
-	}
-	add_sheet :: proc(lxb_doc: ^lxb.Html_Document, css_parser: ^^lxb.Css_Parser, sheets: ^[dynamic]^lxb.Css_Stylesheet, css: string) {
-		if css == "" {
-			return
-		}
-		if css_parser^ == nil {
-			css_parser^ = lxb.lxb_css_parser_create()
-			if lxb.lxb_css_parser_init(css_parser^, nil) != lxb.STATUS_OK {
-				return
-			}
-		}
-		sheet := lxb.lxb_css_stylesheet_create(nil)
-		if lxb.lxb_css_stylesheet_parse(sheet, css_parser^, raw_data(css), uint(len(css))) != lxb.STATUS_OK {
-			lxb.lxb_css_stylesheet_destroy(sheet, true)
-			return
-		}
-		lxb.lxb_html_document_stylesheet_attach_noi(lxb_doc, sheet)
-		append(sheets, sheet)
-	}
+	// stylesheets we attach to the document, before the styles are read in
+	// copy_children
+	sheets := Sheets{lxb_doc = lxb_doc, loader = stylesheets, media = media}
+	defer sheets_destroy(&sheets) // runs before the document is destroyed
 
 	// <style> elements: lexbor applied them while parsing, but without their
-	// @media blocks. Add the contents of the matching ones.
+	// @media blocks and @imports. Add the imported stylesheets (they end up
+	// after the element's own rules, not before) and the matching @media blocks.
 	style_texts := make([dynamic]string, context.temp_allocator)
 	find_style_elements(lxb_doc, lxb.document_node(lxb_doc), media, &style_texts)
 	for text in style_texts {
-		add_sheet(lxb_doc, &css_parser, &sheets, apply_media_queries(text, media, only_media = true, allocator = context.temp_allocator))
+		imports, rest := split_imports(text)
+		for imp in imports {
+			if media_query_list_matches(imp.media, media) {
+				sheets_load(&sheets, imp.href, "", 1)
+			}
+		}
+		sheets_add(&sheets, apply_media_queries(rest, media, only_media = true, allocator = context.temp_allocator))
 	}
 
 	// external stylesheets, in document order
-	if stylesheets.load != nil {
-		hrefs := make([dynamic]string, context.temp_allocator)
-		find_stylesheet_links(lxb.document_node(lxb_doc), media, &hrefs)
-		for href in hrefs {
-			css, ok := stylesheets.load(stylesheets.ctx, href)
-			if !ok {
-				continue // a missing stylesheet doesn't stop the page
-			}
-			add_sheet(lxb_doc, &css_parser, &sheets, apply_media_queries(css, media, allocator = context.temp_allocator))
-		}
+	hrefs := make([dynamic]string, context.temp_allocator)
+	find_stylesheet_links(lxb.document_node(lxb_doc), media, &hrefs)
+	for href in hrefs {
+		sheets_load(&sheets, href, "", 0)
 	}
 
 	doc = new(Document)
@@ -246,8 +222,8 @@ is_stylesheet_link :: proc(element: ^lxb.Dom_Element, env: Media_Env) -> bool {
 	return !has_media || media_query_list_matches(media, env)
 }
 
-// Collects the text of <style> elements that contain @media (the others are
-// fully handled by lexbor already). lexbor ignores the media attribute of
+// Collects the text of <style> elements that contain @media or @import (the
+// others are fully handled by lexbor already). lexbor ignores the media attribute of
 // <style>, so elements whose media doesn't match are taken out of the cascade.
 @(private)
 find_style_elements :: proc(lxb_doc: ^lxb.Html_Document, node: ^lxb.Dom_Node, env: Media_Env, texts: ^[dynamic]string) {
@@ -260,7 +236,8 @@ find_style_elements :: proc(lxb_doc: ^lxb.Html_Document, node: ^lxb.Dom_Node, en
 					continue
 				}
 				text := lxb.node_text_content(lxb_doc, child, context.temp_allocator)
-				if strings.contains(strings.to_lower(text, context.temp_allocator), "@media") {
+				lower := strings.to_lower(text, context.temp_allocator)
+				if strings.contains(lower, "@media") || strings.contains(lower, "@import") {
 					append(texts, text)
 				}
 				continue
@@ -268,4 +245,72 @@ find_style_elements :: proc(lxb_doc: ^lxb.Html_Document, node: ^lxb.Dom_Node, en
 			find_style_elements(lxb_doc, child, env, texts)
 		}
 	}
+}
+
+// The stylesheets parse attaches to the lexbor document: external ones, the
+// ones they @import, and the @media parts of <style> elements.
+@(private)
+Sheets :: struct {
+	lxb_doc: ^lxb.Html_Document,
+	parser:  ^lxb.Css_Parser,
+	list:    [dynamic]^lxb.Css_Stylesheet,
+	loader:  Stylesheet_Loader,
+	media:   Media_Env,
+}
+
+@(private)
+sheets_destroy :: proc(s: ^Sheets) {
+	// like in lexbor's own example: the stylesheets before the document
+	for sheet in s.list {
+		lxb.lxb_css_stylesheet_destroy(sheet, true)
+	}
+	delete(s.list)
+	if s.parser != nil {
+		lxb.lxb_css_parser_destroy(s.parser, true)
+	}
+}
+
+// Parses css and attaches it to the document (after everything before).
+@(private)
+sheets_add :: proc(s: ^Sheets, css: string) {
+	if css == "" {
+		return
+	}
+	if s.parser == nil {
+		s.parser = lxb.lxb_css_parser_create()
+		if lxb.lxb_css_parser_init(s.parser, nil) != lxb.STATUS_OK {
+			return
+		}
+	}
+	sheet := lxb.lxb_css_stylesheet_create(nil)
+	if lxb.lxb_css_stylesheet_parse(sheet, s.parser, raw_data(css), uint(len(css))) != lxb.STATUS_OK {
+		lxb.lxb_css_stylesheet_destroy(sheet, true)
+		return
+	}
+	lxb.lxb_html_document_stylesheet_attach_noi(s.lxb_doc, sheet)
+	append(&s.list, sheet)
+}
+
+// Loads an external stylesheet: first the stylesheets it @imports (their
+// rules come first in the cascade), then its own rules.
+@(private)
+sheets_load :: proc(s: ^Sheets, href, base: string, depth: int) {
+	if s.loader.load == nil || depth > MAX_IMPORT_DEPTH {
+		return
+	}
+	css, url, ok := s.loader.load(s.loader.ctx, href, base)
+	if !ok {
+		return // a missing stylesheet doesn't stop the page
+	}
+	// the loader's buffers are reused by the next request (an @import)
+	css = strings.clone(css, context.temp_allocator)
+	url = strings.clone(url, context.temp_allocator)
+
+	imports, rest := split_imports(css)
+	for imp in imports {
+		if media_query_list_matches(imp.media, s.media) {
+			sheets_load(s, imp.href, url, depth + 1)
+		}
+	}
+	sheets_add(s, apply_media_queries(rest, s.media, allocator = context.temp_allocator))
 }

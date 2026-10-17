@@ -156,17 +156,17 @@ print_table :: proc(rows: []Row) {
 	}
 }
 
-// dom.Stylesheet_Loader: like the loader's, relative to the page.
-load_stylesheet :: proc(ctx: rawptr, href: string) -> (css: string, ok: bool) {
+// dom.Stylesheet_Loader: like the loader's.
+load_stylesheet :: proc(ctx: rawptr, href, base: string) -> (css, url: string, ok: bool) {
 	fetch := cast(^Fetch)ctx
-	url := http.resolve_url(fetch.base, href, context.temp_allocator) or_return
-	if !http.is_loadable_url(url) {
-		return "", false
+	resolved := http.resolve_url(base if base != "" else fetch.base, href, context.temp_allocator) or_return
+	if !http.is_loadable_url(resolved) {
+		return "", "", false
 	}
-	response, err := http.get(fetch.client, url)
+	response, err := http.get(fetch.client, resolved)
 	if _, failed := err.?; failed {
-		return "", false
+		return "", "", false
 	}
-	// valid until the next request, which comes after dom.parse used it
-	return response.body, true
+	// valid until the next request; dom.parse copies what it needs
+	return response.body, response.url, true
 }

@@ -19,7 +19,7 @@ Ordered by how much they change what a page looks like, weighed against how big 
 ### Bugs
 
 - ~~**`<link media="...">` is not evaluated.**~~ Fixed: the `media` attribute of `<link>` and `<style>` is evaluated like an `@media` block. The Python docs used to load their `(prefers-color-scheme: dark)` stylesheet and turn dark.
-- **`@import` in stylesheets is not followed.** The Python docs load most of their rules with `@import url("basic.css")`, so their navigation bar becomes a bulleted list.
+- ~~**`@import` in stylesheets is not followed.**~~ Fixed. The Python docs load most of their rules with `@import url("basic.css")`; their navigation bar was a bulleted list.
 
 ### Text
 
@@ -36,19 +36,20 @@ Ordered by how much they change what a page looks like, weighed against how big 
 9. **`calc()`** in lengths (5 pages; margins, widths, heights): ignored, so the property keeps its default.
 10. **HTML attributes for presentation**: `bgcolor`, `width`, `align`, `valign`, `cellpadding` on tables (Hacker News is built with them), `<center>`, `<font color>`. They are not CSS, so the CSS report doesn't see them, but the comparison does.
 11. **CSS grid** (2 / 70): the page layout of Wikipedia (the table of contents on the left) and MDN.
-12. **`<details>`** without `open` should only show its `<summary>` (Lobsters shows every hidden menu).
-13. **`z-index`** (6 / 233), **`position: sticky`** (4 / 6), **`display: contents`**, **`-webkit-box`**.
+12. **Negative margins on floats**: the Python docs put their sidebar next to the content with `float: left; margin-left: -100%`; it ends up below the content.
+13. **`<details>`** without `open` should only show its `<summary>` (Lobsters shows every hidden menu).
+14. **`z-index`** (6 / 233), **`position: sticky`** (4 / 6), **`display: contents`**, **`-webkit-box`**.
 
 ### Drawing
 
-14. **SVG images**: almost every logo and icon (Wikipedia, odin-lang.org, GitHub, MDN). They need an SVG rasterizer, which means a new library.
-15. **`border-radius`** (8 / 2514): raylib can draw rounded rectangles, so this is a small step.
-16. **`background-image`** with a raster image, **`background-size`/`-position`/`-repeat`** (5 / 164).
-17. **`opacity`** (4 / 367), **`box-shadow`** (6 / 102), **`transform`** (4 / 220), **`mask-image`** (icons, 4 / 286).
+15. **SVG images**: almost every logo and icon (Wikipedia, odin-lang.org, GitHub, MDN). They need an SVG rasterizer, which means a new library.
+16. **`border-radius`** (8 / 2514): raylib can draw rounded rectangles, so this is a small step.
+17. **`background-image`** with a raster image, **`background-size`/`-position`/`-repeat`** (5 / 164).
+18. **`opacity`** (4 / 367), **`box-shadow`** (6 / 102), **`transform`** (4 / 220), **`mask-image`** (icons, 4 / 286).
 
 ### Forms
 
-18. **`<input>`, `<select>`, `<button>`, `<textarea>`**: they show their text (or all options of a `<select>`) instead of a control (Rust, Python docs, Wikipedia search).
+19. **`<input>`, `<select>`, `<button>`, `<textarea>`**: they show their text (or all options of a `<select>`) instead of a control (Rust, Python docs, Wikipedia search).
 
 ### Not visible on a static page
 
