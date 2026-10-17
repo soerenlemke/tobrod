@@ -427,3 +427,24 @@ test_overflow :: proc(t: ^testing.T) {
 	testing.expect_value(t, body.children[2].style.overflow, [2]Overflow{.Hidden, .Visible})
 	testing.expect_value(t, body.children[3].style.overflow, [2]Overflow{.Visible, .Visible})
 }
+
+@(test)
+test_css_report :: proc(t: ^testing.T) {
+	report := css_report_init()
+	defer css_report_destroy(&report)
+	doc, err := parse(`<html><head><style>
+		p { line-height: 1.5; color: red; display: grid }
+		.s { position: sticky; width: calc(100% - 2em) }
+	</style></head><body><p>a</p><p class="s">b</p><div style="white-space: nowrap"></div></body></html>`, report = &report)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	testing.expect_value(t, report.properties["line-height"], 2)
+	testing.expect_value(t, report.properties["white-space"], 1)
+	testing.expect(t, !("color" in report.properties), "color is supported")
+	testing.expect_value(t, report.values["display: grid"], 2)
+	testing.expect_value(t, report.values["position: sticky"], 1)
+	testing.expect_value(t, report.values["calc() in width"], 1)
+}

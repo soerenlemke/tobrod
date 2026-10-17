@@ -1,0 +1,14 @@
+# Real pages to measure tobrod against (tools/compare.py, tools/cssreport).
+# A mix of kinds: encyclopedia, documentation, news, code hosting, plain.
+https://de.wikipedia.org/wiki/Webbrowser
+https://en.wikipedia.org/wiki/Web_browser
+https://odin-lang.org/
+https://example.com/
+https://info.cern.ch/hypertext/WWW/TheProject.html
+https://danluu.com/
+https://news.ycombinator.com/
+https://lobste.rs/
+https://www.rust-lang.org/
+https://docs.python.org/3/tutorial/index.html
+https://developer.mozilla.org/en-US/docs/Web/CSS/display
+https://github.com/odin-lang/Odin
