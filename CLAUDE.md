@@ -23,6 +23,7 @@ odin test vendor/lexbor    # lexbor-Bindings
 odin test dom              # eigener DOM-Baum
 odin test http             # Header-Parsing, URL-Auflösung
 odin test browser          # History
+odin test loader           # Worker-Thread, mit eigenem lokalen Test-HTTP-Server (~5 s)
 odin test layout           # Layout (mit Fake-Textmessung, ohne Fenster)
 ```
 
@@ -73,6 +74,7 @@ dom/                    Package dom: eigener DOM-Baum (Parsen über lexbor, dann
   style.odin              Style, Color, ROOT_STYLE, default_style (Vererbung + UA-Stylesheet), apply_declaration
   css_values.odin         Wert-Parser: parse_color, parse_font_size, parse_font_weight
   plain_text.odin         from_plain_text: Text → Dokument html/body/pre (wie Chrome bei text/plain)
+loader/loader.odin      Package loader: lädt + parst Seiten in einem Worker-Thread (load/poll/cancel)
 layout/layout.odin      Package layout: DOM mit Styles → positionierte Text-Runs (Display List)
 ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
   main_window.odin        MainWindow, init/destroy, Haupt-Loop (run)
@@ -114,7 +116,7 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 
 ### Abhängigkeitsrichtung
 
-`main` → `browser` → (`ui`, `http`, `dom`); `http` → `vendor/curl`; `ui` → `layout` → `dom` → `vendor/lexbor`. `ui` kennt weder `browser` noch `http`. Diese Richtung beibehalten; neue Kommunikation von UI nach oben über Callbacks mit `rawptr`-Context.
+`main` → `browser` → (`ui`, `http`, `dom`); `http` → `vendor/curl`; `ui` → `layout` → `dom` → `vendor/lexbor`; `loader` → (`http`, `dom`) (noch von niemandem importiert). `ui` kennt weder `browser` noch `http`. Diese Richtung beibehalten; neue Kommunikation von UI nach oben über Callbacks mit `rawptr`-Context.
 
 ### Package-Details
 
@@ -122,6 +124,8 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - `Client` hält ein wiederverwendetes curl-Easy-Handle (curl macht Connection-Reuse intern) und je einen Builder für Header und Body.
 - `header_value(raw, name)` sucht einen Header (case-insensitive); bei Redirects gewinnt der letzte Treffer.
 - `resolve_url(base, ref)` nutzt curls URL-API (`curl_url_set` auf eine gesetzte URL löst relativ auf, RFC 3986). Die Binding von `url_get` war fehlerhaft (`-> ^Ucode`), korrigiert auf `-> Ucode` mit `part: ^cstring`; das Ergebnis mit `curl.free` freigeben.
+- `global_init`/`global_cleanup`: einmal pro Programm, **bevor** Threads curl benutzen (`curl_global_init` ist nicht thread-sicher). `init` prüft `easy_init` auf `nil` und liefert `Maybe(Http_Error)`. Ein `Client` gehört immer genau einem Thread.
+- `get(c, url, abort = nil)`: Mit `abort` (Pointer auf ein `bool`, atomar gesetzt von einem anderen Thread) bricht der Fortschritts-Callback (`XFERINFOFUNCTION`, mind. ~1×/s aufgerufen) den Transfer ab → Fehler `.E_ABORTED_BY_CALLBACK`.
 - `get` folgt Redirects (`FOLLOWLOCATION`, max. `MAX_REDIRECTS` = 10); `Http_Response.url` ist die End-URL (`CURLINFO_EFFECTIVE_URL`, gehört curl, gültig bis zum nächsten `get`).
 - `get` resettet beide Builder, setzt URL/Callbacks/Timeout (`STANDARD_READ_TIMEOUT` = 30 s) und führt `easy_perform` aus.
 - `write_callback` ist `proc "c"` und setzt `context = runtime.default_context()`, bevor in den Builder geschrieben wird.
@@ -149,6 +153,14 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
   2. `default_style(tag, hidden, parent)`: unser vereinfachtes UA-Stylesheet (Block-Tags, `li` = `List_Item`, `head`/`script`/… und `hidden` = `None`, `h1`–`h6` Größe + fett, `b`/`strong` fett, `small` kleiner, `a` = `LINK_COLOR`),
   3. `apply_declaration` für jede Property aus `STYLE_PROPERTIES`, die lexbors Kaskade liefert. Unbekannte Werte werden ignoriert (Default bleibt). `inherit`/`initial`/`unset` werden behandelt.
 - lexbor serialisiert normalisiert (lowercase, `#F00` → `#f00`, Kommas vereinheitlicht), lässt relative Einheiten (`em`, `%`, `smaller`, `bolder`) aber stehen – die rechnen wir gegen den Eltern-Style um. Unterstützt: Farben benannt (Teilmenge), Hex, `rgb()`/`rgba()`, `transparent`, `currentcolor` (kein `hsl()`); Größen `px`, `em`, `rem`, `%`, `pt`, Schlüsselwörter; Gewichte `normal`/`bold`/Zahl/`bolder`/`lighter`. Nicht unterstützte Layout-Modi fallen bei `display` auf ihr äußeres Verhalten zurück.
+
+**loader** ([loader/loader.odin](loader/loader.odin))
+- Ein Worker-Thread mit **eigenem** `http.Client` (ein curl-Handle darf nie von zwei Threads gleichzeitig benutzt werden). `load(url) -> Request_Id` übergibt einen Auftrag, `poll() -> (Result, ok)` holt fertige Ergebnisse ab (nie blockierend, gedacht für einmal pro Frame), `cancel()` bricht ab, `destroy` beendet den Worker (bricht einen laufenden Download ab, hängt also nicht).
+- Es gibt höchstens **einen** wartenden Auftrag: `load` ersetzt ihn und bricht den laufenden ab. Abgebrochene Aufträge liefern kein Ergebnis. Über die `Request_Id` erkennt der Aufrufer veraltete Ergebnisse.
+- Der Worker parst auch (`dom.parse` bzw. `dom.from_plain_text`), `Result` enthält ein fertiges Dokument oder einen Fehlertext und gehört dem Empfänger (`result_destroy`).
+- Synchronisation: `pending`, `results`, `quit` nur unter `mutex`; der Worker schläft auf `cond` (Condition Variable). `abort` wird ohne Mutex vom curl-Fortschritts-Callback gelesen, daher nur atomar (`sync.atomic_load/store`); zurückgesetzt wird es unter dem Mutex, wenn der Worker einen Auftrag übernimmt.
+- Speicher: Alles, was zwischen Threads wandert, nutzt den beim `init` übergebenen Allocator (der Worker setzt ihn als `context.allocator`, hat aber seinen eigenen Temp-Allocator und leert ihn nach jedem Auftrag). Odins Tracking-Allocator (Tests) hat einen Mutex, ist also thread-sicher.
+- Tests starten einen eigenen HTTP-Server auf einem freien Port (`core:net`, ein Thread pro Verbindung) mit `/page.html`, `/text`, `/redirect`, `/slow` (5 s). `@(init)`-Procs müssen `"contextless"` sein; dort wird `curl_global_init` direkt aufgerufen.
 
 **layout** ([layout/layout.odin](layout/layout.odin))
 - `build(doc, width, measure) -> ^Layout` liefert `runs: [dynamic]Text_Run` (`text`, `x`, `y` = linke obere Ecke, `width`, `font_size`, `bold`, `color`, `link` = `href` des umgebenden `<a>`, roh wie in der Seite) und `height`; `link_at(l, x, y)` findet den Link unter einem Punkt (ganze Zeilenbox zählt). Runs werden an Link-Grenzen getrennt. `destroy` gibt alles frei (eine Arena pro Layout).
@@ -187,7 +199,7 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 2. *(in 1 zusammengefasst)*
 3. ~~Backspace entfernt ein Byte statt einer Rune~~ – behoben mit `strings.pop_rune`.
 4. **HTTP blockiert den UI-Thread** bis zu 30 s (Timeout). Lösung ist Stage 5.
-5. `http.init` prüft nicht, ob `curl.easy_init()` `nil` liefert; `curl_global_init` wird nicht explizit aufgerufen (wichtig, sobald Threads dazukommen).
+5. ~~`http.init` prüft nicht auf `nil`, kein `curl_global_init`~~ – behoben im Package `http` (`init`, `global_init`); der Aufruf von `global_init` in `main`/`browser` folgt mit der Verdrahtung des Loaders.
 6. ~~`ui.destroy` gibt den `strings.Builder` der Adressleiste nicht frei~~ – behoben.
 7. `address_bar_render` allokiert pro Frame eine cstring auf dem Heap (könnte Temp-Allocator nutzen).
 8. ~~Fokus-Klick prüft die ganze Adressleiste statt nur das Eingabefeld~~ – behoben (`address_bar_input_rect`).
