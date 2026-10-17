@@ -9,7 +9,7 @@ import rl "vendor:raylib"
 
 // Takes the downloaded bytes of an image, decodes them and makes the layout
 // use the natural size from now on. Undecodable data (unknown format, an HTML
-// error page, ...) is ignored and the image stays a placeholder.
+// error page, ...) is ignored: the image stays empty once the page is loaded.
 page_view_add_image :: proc(pv: ^PageView, src, url, content_type: string, data: []u8) {
 	if pv.document == nil || src in pv.images || len(data) == 0 {
 		return

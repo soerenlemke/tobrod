@@ -14,6 +14,7 @@ PageView :: struct {
 	content_height: f32,
 	images:         map[string]rl.Texture2D, // decoded images of the document, see page_images.odin
 	image_sizes:    layout.Image_Sizes,      // their natural sizes, for the layout
+	loading:        bool,                    // the page or its images are still loading (set_loading)
 }
 
 page_view_init :: proc(window_width, window_height: i32) -> PageView {
@@ -123,7 +124,9 @@ page_view_render :: proc(pv: ^PageView) {
 	}
 
 	// images: the decoded texture scaled to the layout size, or a placeholder
-	// while it is loading (or if it could not be loaded)
+	// while the page is loading. Once everything is loaded, an image without
+	// a texture failed (or has a format we can't decode, like WebP): like a
+	// browser, we leave its place empty instead of covering the page with grey.
 	for image in pv.page_layout.images {
 		top := image.y - pv.scroll_y
 		if top + image.height < 0 || top > pv.rect.height {
@@ -133,7 +136,7 @@ page_view_render :: proc(pv: ^PageView) {
 		if texture, ok := pv.images[image.src]; ok {
 			source := rl.Rectangle{0, 0, f32(texture.width), f32(texture.height)}
 			rl.DrawTexturePro(texture, source, dest, {0, 0}, 0, rl.WHITE)
-		} else {
+		} else if pv.loading {
 			draw_image_placeholder(dest)
 		}
 	}
@@ -152,7 +155,7 @@ page_view_render :: proc(pv: ^PageView) {
 	}
 }
 
-// A light grey box with a border where an image will be (or could not be loaded).
+// A light grey box with a border where an image will be.
 @(private)
 draw_image_placeholder :: proc(rect: rl.Rectangle) {
 	rl.DrawRectangleRec(rect, rl.Color{235, 235, 235, 255})
