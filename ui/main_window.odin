@@ -15,12 +15,21 @@ WindowSettings :: struct {
 
 MainWindow :: struct {
 	address_bar:       AddressBar,
+	nav_buttons:       NavButtons,
 	page_view:         PageView,
 	on_url_submit:     proc(url: string, ctx: rawptr),
 	on_url_submit_ctx: rawptr,
 	// href as written in the page; resolving it is up to the receiver
 	on_link_click:     proc(href: string, ctx: rawptr),
 	on_link_click_ctx: rawptr,
+	on_navigate:       proc(action: Nav_Action, ctx: rawptr),
+	on_navigate_ctx:   rawptr,
+}
+
+// The browser tells the ui which navigation buttons are usable.
+set_navigation_state :: proc(ui: ^MainWindow, can_back, can_forward: bool) {
+	ui.nav_buttons.can_back = can_back
+	ui.nav_buttons.can_forward = can_forward
 }
 
 init :: proc(window_settings: WindowSettings) -> (MainWindow, Maybe(Error)) {
@@ -65,6 +74,7 @@ run :: proc(ui: ^MainWindow, screenshot_path := "") -> Maybe(Error) {
 			page_view_handle_resize(&ui.page_view, w, h)
 		}
 
+		nav_buttons_handle_input(ui, &ui.nav_buttons)
 		address_bar_handle_input(ui, &ui.address_bar)
 		page_view_handle_mouse(ui, &ui.page_view)
 
@@ -77,6 +87,7 @@ run :: proc(ui: ^MainWindow, screenshot_path := "") -> Maybe(Error) {
 
 		page_view_render(&ui.page_view)
 		address_bar_render(&ui.address_bar)
+		nav_buttons_render(&ui.nav_buttons)
 
 		if screenshot_path != "" && frame >= SCREENSHOT_AFTER_FRAMES {
 			err := take_screenshot(screenshot_path)

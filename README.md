@@ -42,7 +42,7 @@ Stage 2 — Window & UI
    - [ ] harden input by auto adding http when missing -> TODO for later
 - [ ] Basic tab management -> TODO for later
 - [x] Clickable links (relative URLs resolved via curl's URL API, redirects followed)
-- [ ] Navigation buttons (back, forward, reload) -> TODO for later
+- [x] Navigation buttons (back, forward, reload) with session history; Alt+←/→, F5/Ctrl+R
 
 Stage 3 — Page View Renderer (Raw Text)
 
