@@ -53,3 +53,52 @@ test_traverse_dom :: proc(t: ^testing.T) {
 	testing.expect_value(t, lxb_dom_node_prev_noi(lxb_dom_node_prev_noi(last_p)), first_p)
 	testing.expect(t, lxb_dom_node_prev_noi(first_p) == nil, "first child has no previous sibling")
 }
+
+@(test)
+test_node_data :: proc(t: ^testing.T) {
+	doc := lxb_html_document_create()
+	defer lxb_html_document_destroy(doc)
+
+	html := `<html><body><a href="/x" id="link" hidden>Hi <b>there</b></a></body></html>`
+	status := lxb_html_document_parse(doc, raw_data(transmute([]u8)html), len(html))
+	testing.expect(t, status == STATUS_OK, "expected parsing to succeed")
+
+	body := lxb_html_document_body_element_noi(doc)
+	testing.expect_value(t, element_name(element_from_node(body)), "body")
+
+	link_node := lxb_dom_node_first_child_noi(body)
+	link := element_from_node(link_node)
+	testing.expect(t, link != nil, "expected <a> to be an element")
+	testing.expect_value(t, element_name(link), "a")
+
+	// lookup by name
+	href, ok := element_attribute(link, "href")
+	testing.expect(t, ok, "expected href")
+	testing.expect_value(t, href, "/x")
+	hidden, hidden_ok := element_attribute(link, "hidden")
+	testing.expect(t, hidden_ok, "expected valueless attribute to be present")
+	testing.expect_value(t, hidden, "")
+	_, missing_ok := element_attribute(link, "title")
+	testing.expect(t, !missing_ok, "expected title to be missing")
+
+	// iteration keeps source order
+	names: [dynamic]string
+	defer delete(names)
+	for attr := lxb_dom_element_first_attribute_noi(link); attr != nil; attr = lxb_dom_element_next_attribute_noi(attr) {
+		append(&names, attr_name(attr))
+	}
+	testing.expect_value(t, len(names), 3)
+	if len(names) == 3 {
+		testing.expect_value(t, names[0], "href")
+		testing.expect_value(t, names[1], "id")
+		testing.expect_value(t, names[2], "hidden")
+	}
+
+	// text of an element includes its descendants
+	text := node_text_content(doc, link_node)
+	defer delete(text)
+	testing.expect_value(t, text, "Hi there")
+
+	// a text node is not an element
+	testing.expect(t, element_from_node(lxb_dom_node_first_child_noi(link_node)) == nil, "text node is no element")
+}
