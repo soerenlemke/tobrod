@@ -26,6 +26,23 @@ odin test vendor/lexbor    # Lexbor-Smoke-Test
 
 Stand 2026-10-17 auf macOS: `odin check .`, `odin build .` und `odin test vendor/lexbor` laufen erfolgreich durch.
 
+### Visuelle Tests (Testmodus)
+
+`tobrod` hat zwei Kommandozeilen-Optionen (geparst mit `core:flags`, Unix-Stil):
+
+- `--url <url>` lädt die URL direkt beim Start (wie Eingabe in der Adressleiste + Enter).
+- `--screenshot <pfad>` rendert ein paar Frames (`SCREENSHOT_AFTER_FRAMES`), speichert das Fenster als PNG und beendet sich. Exit-Code 1, wenn das Bild nicht geschrieben werden kann.
+
+Lokale Fixtures liegen in [testdata/](testdata/) (`hello.txt`, `utf8.txt`, `long.txt`, `index.html`):
+
+```sh
+python3 -m http.server 8765 --bind 127.0.0.1 --directory testdata   # in eigenem Terminal
+odin build . && mkdir -p screenshots
+./tobrod --url http://127.0.0.1:8765/utf8.txt --screenshot screenshots/utf8.png
+```
+
+`screenshots/` und das Binary `tobrod` sind in `.gitignore`.
+
 ### Abhängigkeiten pro Plattform
 
 | Lib | macOS | Windows | Linux |
@@ -39,7 +56,7 @@ Stand 2026-10-17 auf macOS: `odin check .`, `odin build .` und `odin test vendor
 ## Projektstruktur
 
 ```
-main.odin               Einstiegspunkt: WindowSettings → browser.init → register_callbacks → run
+main.odin               Einstiegspunkt: CLI-Optionen (--url, --screenshot) → browser.init → register_callbacks → navigate → run
 browser/browser.odin    Package browser: verbindet UI und HTTP-Client (Orchestrierung)
 http/client.odin        Package http: synchroner GET über libcurl easy-API
 ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
@@ -48,10 +65,12 @@ ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
   page_view.odin          Seitenansicht: Textumbruch, Scrollen, Rendering
   fonts.odin              globaler Font (fonts_init/fonts_close)
   constants.odin          UI-Konstanten (Höhen, Fontgröße, Scroll-Speed)
+  screenshot.odin         Fenster als PNG speichern (Testmodus)
 vendor/curl/            eigene Kopie der Odin-curl-Bindings (Package vendor_curl) + C-Header
 vendor/curl-src/        git-Submodul: curl-Quellcode (nur für den Windows-Build)
 vendor/lexbor/          minimale lexbor-Bindings + Test
 assets/fonts/           Inter 18pt Regular (OFL-Lizenz)
+testdata/               lokale Fixtures für den Testmodus
 setup.ps1               Windows-Setup (curl bauen)
 ```
 
@@ -123,6 +142,8 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 10. **lexbor auf Windows**: Die Signatur von `lxb_html_document_destroy` ist korrigiert (`^Html_Document`), und Linux linkt `system:lexbor`. Auf Windows bricht der Build mit einem `#panic` ab, bis lexbor dort (wie curl) aus dem Quellcode gebaut wird.
 11. URL-Eingabe ohne Schema (`example.com`) wird nicht automatisch zu `http(s)://` ergänzt (steht als TODO in der Roadmap).
 12. Linux ist bisher weder dokumentiert noch getestet.
+13. **Nicht-ASCII-Zeichen werden als `?` gezeichnet** (z. B. `testdata/utf8.txt`): `fonts_init` lädt nur die 95 ASCII-Glyphen. Lösung: Codepoints beim Laden mitgeben (z. B. Latin-1) oder Glyphen bei Bedarf nachladen.
+14. **Zeilenumbrüche im Inhalt gehen verloren** (z. B. `testdata/long.txt`): `wrap_text` zerlegt mit `strings.fields`, das auch `\n` als Trenner behandelt. Erst an Zeilenumbrüchen splitten, dann jede Zeile umbrechen.
 
 ## Roadmap (Kurzfassung, Details im README)
 

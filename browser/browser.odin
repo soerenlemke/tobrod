@@ -33,23 +33,32 @@ destroy :: proc(b: ^Browser) {
 	http.destroy(&b.http_client)
 }
 
-run :: proc(b: ^Browser) {
-	ui.run(&b.window)
+// With a non-empty screenshot_path the window is captured to that file and run returns.
+run :: proc(b: ^Browser, screenshot_path := "") -> Maybe(ui.Error) {
+	return ui.run(&b.window, screenshot_path)
 }
 
 register_callbacks :: proc(b: ^Browser) {
 	b.window.on_url_submit_ctx = b
 	b.window.on_url_submit = proc(url: string, ctx: rawptr) {
 		browser := cast(^Browser)ctx
-		response, err := http.get(&browser.http_client, url)
-		if http_err, ok := err.?; ok {
-			ui.page_view_set_content(
-				&browser.window.page_view,
-				fmt.tprintf("Error: %v", http_err.message),
-			)
-			return
-		}
-
-		ui.page_view_set_content(&browser.window.page_view, response.body)
+		load_page(browser, url)
 	}
+}
+
+// Load a URL as if it had been typed into the address bar.
+navigate :: proc(b: ^Browser, url: string) {
+	ui.address_bar_set_text(&b.window.address_bar, url)
+	load_page(b, url)
+}
+
+@(private)
+load_page :: proc(b: ^Browser, url: string) {
+	response, err := http.get(&b.http_client, url)
+	if http_err, ok := err.?; ok {
+		ui.page_view_set_content(&b.window.page_view, fmt.tprintf("Error: %v", http_err.message))
+		return
+	}
+
+	ui.page_view_set_content(&b.window.page_view, response.body)
 }

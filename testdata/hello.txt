@@ -1,0 +1,2 @@
+Hello from tobrod!
+This is a short plain-text fixture for the page view.

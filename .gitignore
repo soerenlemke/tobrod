@@ -7,3 +7,9 @@
 # etc
 vendor/curl-src/build/
 vendor/curl/lib/
+
+# build output of `odin run .` / `odin build .`
+/tobrod
+
+# screenshots from --screenshot test runs
+/screenshots/
