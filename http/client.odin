@@ -5,6 +5,7 @@ import "core:strings"
 import "../vendor/curl"
 
 STANDARD_READ_TIMEOUT :: 30
+MAX_REDIRECTS :: 10
 
 Http_Error :: struct {
 	code:    curl.code,
@@ -12,6 +13,7 @@ Http_Error :: struct {
 }
 
 Http_Response :: struct {
+	url:    string, // where we ended up after redirects; the base for relative links
 	header: string,
 	body:   string,
 }
@@ -57,13 +59,20 @@ get :: proc(c: ^Client, url: string) -> (Http_Response, Maybe(Http_Error)) {
 	curl.easy_setopt(c.handle, .WRITEFUNCTION, write_callback)
 	curl.easy_setopt(c.handle, .WRITEDATA, &c.body_builder) // body
 	curl.easy_setopt(c.handle, .TIMEOUT, STANDARD_READ_TIMEOUT)
+	curl.easy_setopt(c.handle, .FOLLOWLOCATION, 1)
+	curl.easy_setopt(c.handle, .MAXREDIRS, MAX_REDIRECTS)
 
 	response_code := curl.easy_perform(c.handle)
 	if response_code != .E_OK {
 		return {}, Http_Error{code = response_code, message = string(curl.easy_strerror(response_code))}
 	}
 
+	// owned by curl, valid until the next request on this handle
+	effective_url: cstring
+	curl.easy_getinfo(c.handle, .EFFECTIVE_URL, &effective_url)
+
 	return {
+			url = string(effective_url),
 			header = strings.to_string(c.header_builder),
 			body = strings.to_string(c.body_builder),
 		},

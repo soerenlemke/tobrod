@@ -41,6 +41,7 @@ Stage 2 — Window & UI
    - [x] triggering http client to call page when hitting enter
    - [ ] harden input by auto adding http when missing -> TODO for later
 - [ ] Basic tab management -> TODO for later
+- [x] Clickable links (relative URLs resolved via curl's URL API, redirects followed)
 - [ ] Navigation buttons (back, forward, reload) -> TODO for later
 
 Stage 3 — Page View Renderer (Raw Text)

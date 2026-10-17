@@ -21,7 +21,7 @@ odin build .               # nur bauen
 odin check .               # nur Typecheck, schnell
 odin test vendor/lexbor    # lexbor-Bindings
 odin test dom              # eigener DOM-Baum
-odin test http             # Header-Parsing
+odin test http             # Header-Parsing, URL-Auflösung
 odin test layout           # Layout (mit Fake-Textmessung, ohne Fenster)
 ```
 
@@ -63,6 +63,7 @@ main.odin               Einstiegspunkt: CLI-Optionen (--url, --screenshot) → b
 browser/browser.odin    Package browser: verbindet UI und HTTP-Client (Orchestrierung)
 http/client.odin        Package http: synchroner GET über libcurl easy-API
 http/header.odin        header_value: Header aus der rohen Antwort lesen
+http/url.odin           resolve_url (relative Links über curls URL-API), is_loadable_url
 dom/                    Package dom: eigener DOM-Baum (Parsen über lexbor, dann umkopiert)
   dom.odin                Node, Document, destroy, attribute
   parse.odin              parse: lexbor-Baum → eigener Baum
@@ -95,14 +96,16 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 
 1. `main` baut `ui.WindowSettings` (1024×768, „Browser“) und ruft `browser.init`.
 2. `browser.init` initialisiert zuerst `ui.init` (raylib-Fenster, resizable, Font, AddressBar, PageView), dann `http.init` (curl-Handle + zwei `strings.Builder`). Schlägt HTTP fehl, wird die UI wieder abgebaut.
-3. `browser.register_callbacks` setzt `on_url_submit` + `on_url_submit_ctx` (Pointer auf den `Browser`) im `MainWindow`. Das ist der Mechanismus, mit dem die UI nach oben kommuniziert, ohne `browser`/`http` zu importieren.
+3. `browser.register_callbacks` setzt `on_url_submit` und `on_link_click` (jeweils mit `_ctx` = Pointer auf den `Browser`) im `MainWindow`. Das ist der Mechanismus, mit dem die UI nach oben kommuniziert, ohne `browser`/`http` zu importieren.
 4. `browser.run` → `ui.run`: klassischer raylib-Loop pro Frame:
    - Resize → `address_bar_handle_resize`, `page_view_handle_resize`
    - `address_bar_handle_input` (Klick-Fokus, Zeichen, Backspace, Enter, Escape)
+   - `page_view_handle_mouse` (Hand-Cursor über Links, Linksklick → `on_link_click`)
    - Mausrad → `page_view_handle_scroll`
    - `BeginDrawing` → `page_view_render`, dann `address_bar_render` (Adressleiste liegt oben drüber) → `EndDrawing`
    - `free_all(context.temp_allocator)` am Frame-Ende
-5. Enter in der Adressleiste → Callback → `http.get` (blockierend). Bei `Content-Type: text/html` → `dom.parse` → `page_view_set_document` (PageView übernimmt das Dokument), sonst `page_view_set_content` (Body bzw. Fehlertext → `dom.from_plain_text`). Beim Rendern baut die PageView bei Bedarf das Layout (`layout.build`) und zeichnet die Runs.
+5. Enter in der Adressleiste → Callback → `load_page`: merkt sich die URL (`current_url`), `http.get` (blockierend, folgt Redirects). Nach einem Redirect werden `current_url` und Adressleiste auf `response.url` gesetzt. Bei `Content-Type: text/html` → `dom.parse` → `page_view_set_document` (PageView übernimmt das Dokument), sonst `page_view_set_content` (Body bzw. Fehlertext → `dom.from_plain_text`). Beim Rendern baut die PageView bei Bedarf das Layout (`layout.build`) und zeichnet die Runs.
+6. Klick auf einen Link → `on_link_click(href)` → `http.resolve_url(current_url, href)` → nur `http(s)` wird geladen (`navigate`), `mailto:` usw. werden ignoriert.
 
 ### Abhängigkeitsrichtung
 
@@ -113,13 +116,15 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 **http** ([http/client.odin](http/client.odin))
 - `Client` hält ein wiederverwendetes curl-Easy-Handle (curl macht Connection-Reuse intern) und je einen Builder für Header und Body.
 - `header_value(raw, name)` sucht einen Header (case-insensitive); bei Redirects gewinnt der letzte Treffer.
+- `resolve_url(base, ref)` nutzt curls URL-API (`curl_url_set` auf eine gesetzte URL löst relativ auf, RFC 3986). Die Binding von `url_get` war fehlerhaft (`-> ^Ucode`), korrigiert auf `-> Ucode` mit `part: ^cstring`; das Ergebnis mit `curl.free` freigeben.
+- `get` folgt Redirects (`FOLLOWLOCATION`, max. `MAX_REDIRECTS` = 10); `Http_Response.url` ist die End-URL (`CURLINFO_EFFECTIVE_URL`, gehört curl, gültig bis zum nächsten `get`).
 - `get` resettet beide Builder, setzt URL/Callbacks/Timeout (`STANDARD_READ_TIMEOUT` = 30 s) und führt `easy_perform` aus.
 - `write_callback` ist `proc "c"` und setzt `context = runtime.default_context()`, bevor in den Builder geschrieben wird.
 - Rückgabe `Http_Response{header, body}` – die Strings **zeigen in die Builder des Clients**, sind also nur bis zum nächsten `get` gültig.
 - Fehler: `Maybe(Http_Error)` mit curl-Code und `easy_strerror`-Text.
 
 **ui**
-- `MainWindow` besitzt `AddressBar`, `PageView` und den Submit-Callback.
+- `MainWindow` besitzt `AddressBar`, `PageView`, den Submit- und den Link-Callback. `page_view_handle_mouse` kopiert den Link vor dem Callback in den Temp-Allocator, weil das Laden der neuen Seite das Layout (und damit den String) zerstört.
 - `AddressBar`: Text in einem `strings.Builder`; Eingabefeld ist ein fest positioniertes Rect (x = 80, 80 px links/rechts für spätere Buttons reserviert). Fokusfarbe Blau `{66,133,244}`.
 - `PageView`: `rect` unterhalb der Adressleiste, `document` (gehört der PageView: `page_view_set_document` übernimmt es, `page_view_set_content` verpackt Text per `dom.from_plain_text`), `page_layout` (gecacht, `page_view_ensure_layout` baut nur neu, wenn sich die Breite ändert), `scroll_y`, `content_height` (= Layout-Höhe). `page_view_render` zeichnet nur Runs im sichtbaren Bereich (Scissor-Mode). `measure_text` ist die `Measure_Text`-Proc für das Layout (raylib). Fette Runs werden mit `font_bold` gezeichnet und gemessen (`font_for(bold)`). Scrollen wird auf `[0, content_height - rect.height]` begrenzt (`clamp_scroll`).
 - `font` und `font_bold` sind Package-globale Variablen (`fonts_init` lädt beide, Pfade in `FONT_REGULAR_PATH`/`FONT_BOLD_PATH`), jeweils einmal mit `FONT_LOAD_SIZE` (64) gerastert und beim Zeichnen auf die jeweilige Größe skaliert; Mipmaps + trilinearer Filter halten kleinen Text glatt. Geladen werden die Codepoints aus `font_codepoints` (ASCII, Latin-1, typografische Zeichen).
@@ -136,7 +141,7 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - lexbor serialisiert normalisiert (lowercase, `#F00` → `#f00`, Kommas vereinheitlicht), lässt relative Einheiten (`em`, `%`, `smaller`, `bolder`) aber stehen – die rechnen wir gegen den Eltern-Style um. Unterstützt: Farben benannt (Teilmenge), Hex, `rgb()`/`rgba()`, `transparent`, `currentcolor` (kein `hsl()`); Größen `px`, `em`, `rem`, `%`, `pt`, Schlüsselwörter; Gewichte `normal`/`bold`/Zahl/`bolder`/`lighter`. Nicht unterstützte Layout-Modi fallen bei `display` auf ihr äußeres Verhalten zurück.
 
 **layout** ([layout/layout.odin](layout/layout.odin))
-- `build(doc, width, measure) -> ^Layout` liefert `runs: [dynamic]Text_Run` (`text`, `x`, `y` = linke obere Ecke, `font_size`, `bold`, `color`) und `height`; `destroy` gibt alles frei (eine Arena pro Layout).
+- `build(doc, width, measure) -> ^Layout` liefert `runs: [dynamic]Text_Run` (`text`, `x`, `y` = linke obere Ecke, `width`, `font_size`, `bold`, `color`, `link` = `href` des umgebenden `<a>`, roh wie in der Seite) und `height`; `link_at(l, x, y)` findet den Link unter einem Punkt (ganze Zeilenbox zählt). Runs werden an Link-Grenzen getrennt. `destroy` gibt alles frei (eine Arena pro Layout).
 - Kennt keine Fonts: Textbreite kommt über `Measure_Text`; die UI übergibt raylib, die Tests `fake_measure` (Zeichen × Größe × 0,5) für exakte Erwartungen.
 - Vereinfachtes Block-/Inline-Layout: Block-Elemente untereinander mit Default-Margins (`vertical_margin`, in em) und **Margin-Collapsing** (`pending_margin` = max), 8 px Seitenrand (`PAGE_MARGIN`), 40 px Einzug für `ul`/`ol`/`blockquote`/`dd`, Listen-Marker (`•` bzw. `1.`) hängend links. Inline-Text wird an Wörtern umgebrochen, gleich gestylte Wörter einer Zeile werden zu einem Run zusammengefasst (`can_extend`). Zeilenhöhe = größte Schrift × 1,25, kleinere Schrift sitzt unten.
 - `<br>` beendet die Zeile (auf leerer Zeile: Leerzeile). In `<pre>` bleiben Leerzeichen/Umbrüche erhalten, lange Zeilen brechen trotzdem um (wie `pre-wrap`); Tabs = 4 Leerzeichen. Fett ab `font_weight >= 600`.
@@ -160,7 +165,8 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - Konstanten in `SCREAMING_SNAKE_CASE`, UI-weite Werte in [ui/constants.odin](ui/constants.odin).
 - Fehlerbehandlung: Fehler als zweiter Rückgabewert `Maybe(XxxError)`, Prüfung mit `if err, ok := err.?; ok { … }`. Kein Panic für erwartbare Fehler. Bei Teil-Initialisierung bereits erstellte Ressourcen wieder freigeben.
 - Speicher: Frame-lokale Allokationen (cstrings fürs Zeichnen, Textumbruch) über `context.temp_allocator`; der wird am Ende jedes Frames in `ui.run` geleert. Langlebiges explizit mit `defer delete(...)` bzw. in `destroy` freigeben.
-- C-Interop: `strings.clone_to_cstring` für Strings an C; C-Callbacks als `proc "c"` mit gesetztem Context.
+- C-Interop: `strings.clone_to_cstring` für Strings an C; C-Callbacks als `proc "c"` mit gesetztem Context. Auf Windows sind curl und lexbor mit `/MD` gebaut, ihre Foreign Imports setzen deshalb `/NODEFAULTLIB:libcmt` (sonst scheitern eigenständige Builds wie `odin test http`).
+- `defer` gilt in Odin pro **Block**, nicht pro Proc: ein `defer` im `if` läuft am Ende des `if`.
 - Kommentare kurz und auf Englisch, erklären das *Warum*.
 
 ## Bekannte Probleme und offene Punkte
@@ -187,6 +193,6 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 - Stage 1 HTTP-Client – erledigt
 - Stage 2 Fenster & UI – Fenster und Adressleiste stehen; offen: Schema-Ergänzung, Tabs, Navigation (zurück/vor/neu laden)
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
-- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt positionierte Text-Runs, die UI zeichnet sie mit Größe, Fett (Inter Bold) und Farbe. Offen: Links klickbar, Hintergründe/Boxen
+- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt positionierte Text-Runs, die UI zeichnet sie mit Größe, Fett (Inter Bold) und Farbe. Links sind klickbar (relative URLs über curl). Offen: Hintergründe/Boxen, Flexbox & Co.
 - Stage 5 Threads – HTTP in eigenen Thread, Ergebnis-Übergabe an die UI, Thread-Sicherheit des Clients
 - Stage 6 JavaScript – QuickJS anbinden
