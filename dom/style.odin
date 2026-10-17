@@ -15,6 +15,9 @@ Style :: struct {
 	visibility:  Visibility, // inherited, but a child can be visible again
 	list_style:  List_Style, // inherited from ul/ol to the li
 	position:    Position,   // not inherited
+	vertical_align:  Vertical_Align, // table cells only
+	border_collapse: bool,           // tables: no spacing between the cells (inherited)
+	caption_bottom:  bool,           // caption-side: bottom (inherited)
 
 	// box model, not inherited (see box_style.odin)
 	margin:      Edges,
@@ -62,6 +65,19 @@ Display :: enum {
 	Block,
 	List_Item,
 	None,
+	// tables (see layout/table.odin)
+	Table,
+	Table_Row_Group, // thead, tbody, tfoot
+	Table_Row,
+	Table_Cell,
+	Table_Caption,
+}
+
+// Vertical position of the content in a table cell. baseline is drawn like top.
+Vertical_Align :: enum {
+	Top,
+	Middle,
+	Bottom,
 }
 
 // Style of the document node: the start values everything inherits from.
@@ -95,6 +111,8 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		text_align  = parent.text_align,
 		visibility  = parent.visibility,
 		list_style  = parent.list_style,
+		border_collapse = parent.border_collapse,
+		caption_bottom  = parent.caption_bottom,
 		width       = AUTO,
 		height      = AUTO,
 		max_width   = AUTO,
@@ -128,6 +146,7 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 	case "th":
 		style.font_weight = 700
 		style.text_align = .Center
+		style.vertical_align = .Middle
 	case "small":
 		style.font_size = parent.font_size / 1.2
 	case "a":
@@ -136,6 +155,8 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		style.text_align = .Center
 	case "ol":
 		style.list_style = .Decimal
+	case "td":
+		style.vertical_align = .Middle
 	case "ul":
 		style.list_style = .Disc
 	}
@@ -225,6 +246,35 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 		case "inherit":
 			style.position = parent.position
 		}
+	case "vertical-align":
+		switch value {
+		case "top", "text-top", "baseline", "initial", "unset":
+			style.vertical_align = .Top
+		case "middle":
+			style.vertical_align = .Middle
+		case "bottom", "text-bottom":
+			style.vertical_align = .Bottom
+		case "inherit":
+			style.vertical_align = parent.vertical_align
+		}
+	case "caption-side":
+		switch value {
+		case "bottom":
+			style.caption_bottom = true
+		case "top", "initial":
+			style.caption_bottom = false
+		case "inherit", "unset":
+			style.caption_bottom = parent.caption_bottom
+		}
+	case "border-collapse":
+		switch value {
+		case "collapse":
+			style.border_collapse = true
+		case "separate", "initial":
+			style.border_collapse = false
+		case "inherit", "unset":
+			style.border_collapse = parent.border_collapse
+		}
 	case "list-style", "list-style-type":
 		if value == "inherit" || value == "unset" {
 			style.list_style = parent.list_style
@@ -244,7 +294,7 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 // font-size comes before the box properties, because em in margins refers to it.
 STYLE_PROPERTIES :: [?]string {
 	"display", "color", "font-size", "font-weight", "text-align",
-	"visibility", "position", "list-style", "list-style-type",
+	"visibility", "position", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
 	"width", "height", "max-width",
@@ -264,9 +314,21 @@ default_display :: proc(tag: string) -> Display {
 		return .None
 	case "li":
 		return .List_Item
+	case "table":
+		return .Table
+	case "thead", "tbody", "tfoot":
+		return .Table_Row_Group
+	case "tr":
+		return .Table_Row
+	case "td", "th":
+		return .Table_Cell
+	case "caption":
+		return .Table_Caption
+	case "colgroup", "col":
+		return .None // column styling is not supported
 	case "html", "body", "address", "article", "aside", "blockquote", "dd", "div", "dl", "dt",
 	     "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6",
-	     "header", "hr", "main", "nav", "ol", "p", "pre", "section", "table", "tr", "ul", "details", "summary":
+	     "header", "hr", "main", "nav", "ol", "p", "pre", "section", "ul", "details", "summary":
 		return .Block
 	}
 	return .Inline
@@ -274,7 +336,7 @@ default_display :: proc(tag: string) -> Display {
 
 // Maps a CSS display value as serialized by lexbor to our enum.
 // Layout modes we don't support yet fall back to their outer behavior:
-// flex/grid/table act like block, inline-block/inline-flex like inline.
+// flex/grid act like block, inline-block/inline-flex like inline.
 parse_display :: proc(value: string) -> (display: Display, ok: bool) {
 	// newer CSS allows two keywords ("block flow"), the first one is the outer display
 	outer := strings.trim_space(value)
@@ -286,10 +348,21 @@ parse_display :: proc(value: string) -> (display: Display, ok: bool) {
 		return .None, true
 	case "list-item":
 		return .List_Item, true
-	case "block", "flex", "grid", "table", "flow-root", "table-row", "table-row-group",
-	     "table-header-group", "table-footer-group", "table-caption":
+	case "block", "flex", "grid", "flow-root":
 		return .Block, true
-	case "inline", "inline-block", "inline-flex", "inline-grid", "inline-table", "table-cell", "contents":
+	case "table", "inline-table":
+		return .Table, true
+	case "table-row-group", "table-header-group", "table-footer-group":
+		return .Table_Row_Group, true
+	case "table-row":
+		return .Table_Row, true
+	case "table-cell":
+		return .Table_Cell, true
+	case "table-caption":
+		return .Table_Caption, true
+	case "table-column", "table-column-group":
+		return .None, true
+	case "inline", "inline-block", "inline-flex", "inline-grid", "contents":
 		return .Inline, true
 	}
 	return .Inline, false

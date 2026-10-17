@@ -154,6 +154,8 @@ Builder :: struct {
 	line_images:    [dynamic]Image_Item, // images of the current line, y is set in finish_line
 	pending_marker: Maybe(Pending_Marker), // list marker waiting for the first line of its li
 	image_sizes:    Image_Sizes,
+	extent:         f32, // rightmost edge of text and images so far (for measuring, see table.odin)
+	measuring:      bool, // a trial layout to measure content width: no text-align
 }
 
 // The top edge of an open block. It is only known once the collapsed margin
@@ -226,6 +228,12 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 		return
 	}
 
+	if style.display == .Table {
+		layout_table(b, node)
+		return
+	}
+
+	// (table rows and cells outside of a table are laid out like blocks)
 	if style.display == .Inline {
 		for child in node.children {
 			layout_node(b, child)
@@ -573,7 +581,9 @@ finish_line :: proc(b: ^Builder) {
 
 	// text-align: move the line by the free space (or half of it). List markers
 	// hang left of b.left and stay where they are.
-	if b.text_align != .Left {
+	// (not while measuring: centering in an "infinitely" wide trial layout
+	// would move the content far to the right and make it look huge)
+	if b.text_align != .Left && !b.measuring {
 		line_end := b.left
 		for run in b.line {
 			if run.x >= b.left {
@@ -601,6 +611,7 @@ finish_line :: proc(b: ^Builder) {
 		// bottom-align smaller text, centered in its own line box
 		own_height := run.font_size * LINE_HEIGHT_FACTOR
 		run.y = b.y + (line_height - own_height) + (own_height - run.font_size) / 2
+		b.extent = max(b.extent, run.x + run.width)
 		if !run.hidden {
 			append(&b.layout.runs, run)
 		}
@@ -608,6 +619,7 @@ finish_line :: proc(b: ^Builder) {
 	// images sit on the bottom of the line, like text
 	for &image in b.line_images {
 		image.y = b.y + line_height - image.height
+		b.extent = max(b.extent, image.x + image.width)
 		if !image.hidden {
 			append(&b.layout.images, image)
 		}
