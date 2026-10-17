@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>tobrod box model test</title>
+  <style>
+    body { background: #f0f2f5 }
+    .card { max-width: 32em; margin: 24px auto; padding: 16px 24px; background: #fff }
+    .card h2 { margin-top: 0 }
+    .note { background: light-dark(#fff8dc, #333); padding: 8px 12px; margin: 12px 0 }
+    .half { width: 50%; margin-left: auto; background: #dbeafe; padding: 8px }
+    .tight p { margin: 0 }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Centered card</h2>
+    <p>This card has <b>max-width: 32em</b>, <b>margin: 24px auto</b> and padding,
+       so it stays centered on wide windows and shrinks on narrow ones.</p>
+    <div class="note">A note with a light-dark() background and padding.</div>
+    <ul>
+      <li>list inside a card</li>
+      <li>markers hang into the padding of the ul</li>
+    </ul>
+  </div>
+  <div class="card tight">
+    <p>Second card, paragraphs without margins:</p>
+    <p>line two</p>
+    <div class="half">width: 50% with margin-left: auto (right half)</div>
+  </div>
+</body>
+</html>

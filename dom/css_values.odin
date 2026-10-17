@@ -80,10 +80,29 @@ parse_font_weight :: proc(value: string, parent: int) -> (weight: int, ok: bool)
 
 // Supports named colors (a common subset), #rgb, #rgba, #rrggbb, #rrggbbaa,
 // rgb()/rgba() and transparent. currentcolor is the inherited color.
-// hsl() and the other color functions are not supported yet.
+// light-dark() takes the light color. hsl() and the other color functions are
+// not supported yet.
 parse_color :: proc(value: string, current: Color) -> (color: Color, ok: bool) {
 	if value == "currentcolor" {
 		return current, true
+	}
+	// light-dark(light, dark): we only have a light theme, so take the first
+	if strings.has_prefix(value, "light-dark(") && strings.has_suffix(value, ")") {
+		args := value[len("light-dark("):len(value) - 1]
+		depth := 0
+		for c, i in args {
+			switch c {
+			case '(':
+				depth += 1
+			case ')':
+				depth -= 1
+			case ',':
+				if depth == 0 {
+					return parse_color(strings.trim_space(args[:i]), current)
+				}
+			}
+		}
+		return {}, false
 	}
 	if strings.has_prefix(value, "#") {
 		return parse_hex_color(value[1:])

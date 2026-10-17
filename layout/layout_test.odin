@@ -169,3 +169,58 @@ test_links :: proc(t: ^testing.T) {
 	_, ok = link_at(l, l.runs[1].x + 1, l.runs[1].y + 100)
 	testing.expect(t, !ok, "expected no link below the line")
 }
+
+@(test)
+test_box_model :: proc(t: ^testing.T) {
+	// window 400 wide, body content 384 (8px margin each side)
+	doc, l := build_html(t, `<html><head><style>
+		body { background: #eee }
+		.card { max-width: 200px; margin: 0 auto; padding: 10px 20px; background: #fff }
+		.card p { margin: 5px 0 }
+	</style></head><body><div class="card"><p>hi</p></div></body></html>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	// body background becomes the page background ("canvas")
+	testing.expect_value(t, l.background, dom.Color{0xee, 0xee, 0xee, 255})
+
+	// card: 200 wide content + 2*20 padding = 240, centered in 384 -> x = 8 + 72
+	testing.expect_value(t, len(l.boxes), 1)
+	if len(l.boxes) != 1 do return
+	card := l.boxes[0]
+	testing.expect_value(t, card.x, 80)
+	testing.expect_value(t, card.width, 240)
+	// the body margin (8) is applied at the card's padding: card top = 8;
+	// the p margin can't collapse through the padding, so text sits at
+	// 8 + 10 padding + 5 margin + 2 (centered in its 20px line box)
+	testing.expect_value(t, card.y, 8)
+	testing.expect_value(t, l.runs[0].x, 100) // 80 + 20 padding
+	testing.expect_value(t, l.runs[0].y, 25)
+	// height: 10 padding + 5 + 20 line + 5 + 10 padding
+	testing.expect_value(t, card.height, 50)
+}
+
+@(test)
+test_margins_collapse_through_parent :: proc(t: ^testing.T) {
+	// without padding, the p margin collapses with the div and body margins:
+	// the div background starts where the text starts, not at the body margin
+	doc, l := build_html(t, `<div style="background: red"><p style="margin: 30px 0">x</p></div>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.boxes) != 1 do return
+	testing.expect_value(t, l.boxes[0].y, 30)
+	testing.expect_value(t, l.boxes[0].height, 20) // only the line, the p margins stay outside
+	testing.expect_value(t, l.runs[0].y, 32)
+	testing.expect_value(t, l.height, 30 + 20 + 30)
+}
+
+@(test)
+test_percent_width :: proc(t: ^testing.T) {
+	doc, l := build_html(t, `<div style="width: 50%; margin-left: auto">right half</div>`, 416)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	// content 400 wide -> div 200 wide, auto left margin pushes it right
+	testing.expect_value(t, l.runs[0].x, 8 + 200)
+}

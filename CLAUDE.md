@@ -38,7 +38,7 @@ Stand 2026-10-17 auf macOS und Windows (Odin `dev-2026-05`, nach `setup.ps1`): `
 - `--url <url>` lädt die URL direkt beim Start (wie Eingabe in der Adressleiste + Enter).
 - `--screenshot <pfad>` wartet, bis die Seite geladen ist (und mindestens `SCREENSHOT_AFTER_FRAMES` Frames), speichert das Fenster als PNG und beendet sich. Ladebalken/Stopp-Button sind deshalb auf Screenshots nie zu sehen. Exit-Code 1, wenn das Bild nicht geschrieben werden kann.
 
-Lokale Fixtures liegen in [testdata/](testdata/) (`hello.txt`, `utf8.txt`, `long.txt`, `index.html`, `styles.html` – Überschriften, Fett, Farben, Größen, Listen, `pre`, `br`):
+Lokale Fixtures liegen in [testdata/](testdata/) (`hello.txt`, `utf8.txt`, `long.txt`, `index.html`, `styles.html` – Überschriften, Fett, Farben, Größen, Listen, `pre`, `br`; `boxes.html` – Box-Modell: zentrierte Karten, Padding, Hintergründe, `width: 50%`):
 
 ```sh
 python3 -m http.server 8765 --bind 127.0.0.1 --directory testdata   # in eigenem Terminal
@@ -73,9 +73,10 @@ dom/                    Package dom: eigener DOM-Baum (Parsen über lexbor, dann
   print.odin              tree_to_string (Debug/Tests)
   style.odin              Style, Color, ROOT_STYLE, default_style (Vererbung + UA-Stylesheet), apply_declaration
   css_values.odin         Wert-Parser: parse_color, parse_font_size, parse_font_weight
+  box_style.odin          Box-Modell: Length/Edges, UA-Margins/Paddings (default_box), Kurzschreibweisen zerlegen
   plain_text.odin         from_plain_text: Text → Dokument html/body/pre (wie Chrome bei text/plain)
 loader/loader.odin      Package loader: lädt + parst Seiten in einem Worker-Thread (load/poll/cancel)
-layout/layout.odin      Package layout: DOM mit Styles → positionierte Text-Runs (Display List)
+layout/layout.odin      Package layout: DOM mit Styles → Hintergrund-Boxen + positionierte Text-Runs (Display List)
 ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
   main_window.odin        MainWindow, init/destroy, Haupt-Loop (run)
   address_bar.odin        Adressleiste: Eingabe, Fokus, Enter → Callback
@@ -144,7 +145,7 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - Ladebalken (`loading_bar.odin`): unbestimmter Fortschritt, ein Segment (30 % Breite) läuft in 1,2 s von links nach rechts, berechnet aus `rl.GetTime()`. Funktioniert nur, weil die Hauptschleife während des Ladens weiterläuft. `page_view_handle_mouse` kopiert den Link vor dem Callback in den Temp-Allocator, weil das Laden der neuen Seite das Layout (und damit den String) zerstört.
 - `AddressBar`: Text in einem `strings.Builder`; Eingabefeld (`address_bar_input_rect`) beginnt rechts der Navigations-Buttons und reicht bis 8 px vor den rechten Rand. Nur ein Klick ins Eingabefeld fokussiert.
 - `NavButtons`: `can_back`/`can_forward` (gesetzt vom Browser über `set_navigation_state`), `loading` (über `set_loading`: dann zeigt der dritte Button Stopp ✕ statt Reload, `Nav_Action.Stop` teilt sich den Platz mit `.Reload`), Buttons à 24 px; Icons mit `DrawLineEx`/`DrawRing`/`DrawTriangle` gezeichnet (Inter hat kein ↻). raylib lässt Dreiecke mit Ecken im Uhrzeigersinn weg (Backface Culling) → `draw_triangle_any_order`. Deaktivierte Buttons grau, Hover hellgrau hinterlegt. Fokusfarbe Blau `{66,133,244}`.
-- `PageView`: `rect` unterhalb der Adressleiste, `document` (gehört der PageView: `page_view_set_document` übernimmt es, `page_view_set_content` verpackt Text per `dom.from_plain_text`), `page_layout` (gecacht, `page_view_ensure_layout` baut nur neu, wenn sich die Breite ändert), `scroll_y`, `content_height` (= Layout-Höhe). `page_view_render` zeichnet nur Runs im sichtbaren Bereich (Scissor-Mode). `measure_text` ist die `Measure_Text`-Proc für das Layout (raylib). Fette Runs werden mit `font_bold` gezeichnet und gemessen (`font_for(bold)`). Scrollen wird auf `[0, content_height - rect.height]` begrenzt (`clamp_scroll`).
+- `PageView` zeichnet in der Reihenfolge der Display List: Seitenhintergrund (`page_layout.background`), Boxen, Text (jeweils nur Sichtbares). `rect` unterhalb der Adressleiste, `document` (gehört der PageView: `page_view_set_document` übernimmt es, `page_view_set_content` verpackt Text per `dom.from_plain_text`), `page_layout` (gecacht, `page_view_ensure_layout` baut nur neu, wenn sich die Breite ändert), `scroll_y`, `content_height` (= Layout-Höhe). `page_view_render` zeichnet nur Runs im sichtbaren Bereich (Scissor-Mode). `measure_text` ist die `Measure_Text`-Proc für das Layout (raylib). Fette Runs werden mit `font_bold` gezeichnet und gemessen (`font_for(bold)`). Scrollen wird auf `[0, content_height - rect.height]` begrenzt (`clamp_scroll`).
 - `font` und `font_bold` sind Package-globale Variablen (`fonts_init` lädt beide, Pfade in `FONT_REGULAR_PATH`/`FONT_BOLD_PATH`), jeweils einmal mit `FONT_LOAD_SIZE` (64) gerastert und beim Zeichnen auf die jeweilige Größe skaliert; Mipmaps + trilinearer Filter halten kleinen Text glatt. Geladen werden die Codepoints aus `font_codepoints` (ASCII, Latin-1, typografische Zeichen).
 
 **dom** ([dom/](dom/))
@@ -156,6 +157,9 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
   1. vererbte Properties (`color`, `font-size`, `font-weight`) vom Eltern-Node, `display` nicht,
   2. `default_style(tag, hidden, parent)`: unser vereinfachtes UA-Stylesheet (Block-Tags, `li` = `List_Item`, `head`/`script`/… und `hidden` = `None`, `h1`–`h6` Größe + fett, `b`/`strong` fett, `small` kleiner, `a` = `LINK_COLOR`),
   3. `apply_declaration` für jede Property aus `STYLE_PROPERTIES`, die lexbors Kaskade liefert. Unbekannte Werte werden ignoriert (Default bleibt). `inherit`/`initial`/`unset` werden behandelt.
+- Box-Modell (`box_style.odin`, nicht vererbt): `margin`/`padding` als `Edges` (`[Edge]Length`, Index `.Top/.Right/.Bottom/.Left`), `width`, `max_width` (`.Auto` = keins), `background` (Alpha 0 = transparent). `Length` hat die Einheiten `Px`, `Em` (gegen die eigene, finale Schriftgröße), `Percent` (gegen die Breite des umgebenden Blocks, auch vertikal) und `Auto`; aufgelöst wird erst im Layout (`resolve_length`). `rem`/`pt` werden sofort in px umgerechnet. Die UA-Margins/Paddings (`body` 8px, `p` 1em 0, `ul`/`ol` padding-left 40px, Überschriften, `blockquote`, …) stehen in `default_box`.
+- **lexbor löst Kurzschreibweisen nicht auf** (`margin: 0 auto` kommt nur als `margin`, `margin-top` bleibt leer; ebenso `padding`, `border`, `background`). Wir zerlegen `margin`/`padding` (1–4 Werte) selbst und holen die Farbe aus `background` (`background_color_of`, trennt an Leerzeichen außerhalb von Klammern). Reihenfolge in `STYLE_PROPERTIES`: Kurzform vor Langform, die Langform gewinnt. **Einschränkung:** Wir kennen nur die Werte, nicht ihre Spezifität – `.a.b { margin: 0 }` gegen `.a { margin-top: 5px }` ergibt fälschlich 5px.
+- `light-dark(a, b)` liefert die helle Farbe `a` (wir haben nur ein helles Theme). Unbekannte Einheiten (`vh`, `vw`, `ch`, …) machen die ganze Deklaration ungültig, sie wird ignoriert.
 - lexbor serialisiert normalisiert (lowercase, `#F00` → `#f00`, Kommas vereinheitlicht), lässt relative Einheiten (`em`, `%`, `smaller`, `bolder`) aber stehen – die rechnen wir gegen den Eltern-Style um. Unterstützt: Farben benannt (Teilmenge), Hex, `rgb()`/`rgba()`, `transparent`, `currentcolor` (kein `hsl()`); Größen `px`, `em`, `rem`, `%`, `pt`, Schlüsselwörter; Gewichte `normal`/`bold`/Zahl/`bolder`/`lighter`. Nicht unterstützte Layout-Modi fallen bei `display` auf ihr äußeres Verhalten zurück.
 
 **loader** ([loader/loader.odin](loader/loader.odin))
@@ -168,9 +172,14 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - Tests starten einen eigenen HTTP-Server auf einem freien Port (`core:net`, ein Thread pro Verbindung) mit `/page.html`, `/text`, `/redirect`, `/slow` (5 s). `@(init)`-Procs müssen `"contextless"` sein; dort wird `curl_global_init` direkt aufgerufen.
 
 **layout** ([layout/layout.odin](layout/layout.odin))
-- `build(doc, width, measure) -> ^Layout` liefert `runs: [dynamic]Text_Run` (`text`, `x`, `y` = linke obere Ecke, `width`, `font_size`, `bold`, `color`, `link` = `href` des umgebenden `<a>`, roh wie in der Seite) und `height`; `link_at(l, x, y)` findet den Link unter einem Punkt (ganze Zeilenbox zählt). Runs werden an Link-Grenzen getrennt. `destroy` gibt alles frei (eine Arena pro Layout).
+- `build(doc, width, measure) -> ^Layout` liefert `background` (Seitenhintergrund), `boxes: [dynamic]Box` (Hintergründe von Block-Boxen, Eltern vor Kindern) und `runs: [dynamic]Text_Run` (`text`, `x`, `y` = linke obere Ecke, `width`, `font_size`, `bold`, `color`, `link` = `href` des umgebenden `<a>`, roh wie in der Seite) und `height`; `link_at(l, x, y)` findet den Link unter einem Punkt (ganze Zeilenbox zählt). Runs werden an Link-Grenzen getrennt. `destroy` gibt alles frei (eine Arena pro Layout).
 - Kennt keine Fonts: Textbreite kommt über `Measure_Text`; die UI übergibt raylib, die Tests `fake_measure` (Zeichen × Größe × 0,5) für exakte Erwartungen.
-- Vereinfachtes Block-/Inline-Layout: Block-Elemente untereinander mit Default-Margins (`vertical_margin`, in em) und **Margin-Collapsing** (`pending_margin` = max), 8 px Seitenrand (`PAGE_MARGIN`), 40 px Einzug für `ul`/`ol`/`blockquote`/`dd`, Listen-Marker (`•` bzw. `1.`) hängend links. Inline-Text wird an Wörtern umgebrochen, gleich gestylte Wörter einer Zeile werden zu einem Run zusammengefasst (`can_extend`). Zeilenhöhe = größte Schrift × 1,25, kleinere Schrift sitzt unten.
+- Block-Layout (`layout_block`) nach dem CSS-Box-Modell, vereinfacht (keine Borders, kein `height`, immer `content-box`):
+  - Horizontal: verfügbare Breite − Margins − Paddings = Inhaltsbreite, begrenzt durch `width`/`max-width`; übriger Platz geht an `auto`-Margins (beide `auto` = zentriert).
+  - Vertikal: Margins kollabieren lazy (`pending_margin` = max). Padding stoppt das Collapsing (`flush_margin` vor dem Padding). Die Oberkante eines Blocks ist erst bekannt, wenn der kollabierte Margin angewendet wird: offene Blöcke liegen auf `block_tops` und werden in `flush_margin` aufgelöst (alle noch offenen bekommen dieselbe Oberkante). Leere Blöcke ohne Padding haben Höhe 0.
+  - Hintergründe: Slot in `boxes` beim Betreten reservieren (Zeichenreihenfolge Eltern → Kinder), Maße beim Verlassen eintragen. `html`/`body` färben stattdessen die ganze Seite (`background`, „Canvas“; `html` hat Vorrang).
+  - Seitenrand und Listeneinzug sind keine Spezialfälle mehr, sondern UA-Styles (`body`-Margin, `ul`-Padding). Listen-Marker hängen links in das Padding.
+- Inline-Layout: Text wird an Wörtern umgebrochen, gleich gestylte Wörter einer Zeile werden zu einem Run zusammengefasst (`can_extend`). Zeilenhöhe = größte Schrift × 1,25, kleinere Schrift sitzt unten. Inline-Elemente haben noch keine Hintergründe.
 - `<br>` beendet die Zeile (auf leerer Zeile: Leerzeile). In `<pre>` bleiben Leerzeichen/Umbrüche erhalten, lange Zeilen brechen trotzdem um (wie `pre-wrap`); Tabs = 4 Leerzeichen. Fett ab `font_weight >= 600`.
 
 **vendor/lexbor** ([vendor/lexbor/lexbor.odin](vendor/lexbor/lexbor.odin))
@@ -220,6 +229,6 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 - Stage 1 HTTP-Client – erledigt
 - Stage 2 Fenster & UI – Fenster, Adressleiste, klickbare Links und Navigation (zurück/vor/neu laden) stehen; offen: Schema-Ergänzung, Tabs
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
-- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt positionierte Text-Runs, die UI zeichnet sie mit Größe, Fett (Inter Bold) und Farbe. Links sind klickbar (relative URLs über curl). Offen: Hintergründe/Boxen, Flexbox & Co.
+- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt positionierte Text-Runs, die UI zeichnet sie mit Größe, Fett (Inter Bold) und Farbe. Links sind klickbar (relative URLs über curl). Box-Modell (margin, padding, width, max-width, auto-Zentrierung, Hintergründe). Offen: `text-align`, Borders, Bilder, Flexbox & Co.
 - Stage 5 Threads – erledigt: Laden + Parsen im Worker-Thread (`loader`), Ergebnisse per Queue, eigener curl-Handle pro Thread, Abbrechen; Ladebalken + Stopp-Button
 - Stage 6 JavaScript – QuickJS anbinden

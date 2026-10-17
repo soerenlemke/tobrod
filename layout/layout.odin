@@ -6,9 +6,10 @@ import "core:mem/virtual"
 import "core:strings"
 import "../dom"
 
-// Turns a styled DOM into positioned pieces of text (a "display list"), which
-// the ui just has to draw. Simplified block and inline layout:
-// - block elements stack vertically with collapsing margins
+// Turns a styled DOM into a "display list" of background boxes and positioned
+// pieces of text, which the ui just has to draw. Simplified block and inline layout:
+// - block elements stack vertically: CSS box model with margin, padding, width,
+//   max-width, auto margins (centering) and collapsing vertical margins
 // - inline text is split into words and wrapped into lines
 // - a line is as high as its largest font, smaller text sits at the bottom
 // layout knows nothing about fonts: text width comes from a Measure_Text proc,
@@ -25,19 +26,28 @@ Text_Run :: struct {
 	link:      string, // href of the surrounding <a>, as written in the page; "" if none
 }
 
-// Owns all runs and their strings; destroy frees everything at once.
-Layout :: struct {
-	arena:  virtual.Arena,
-	runs:   [dynamic]Text_Run,
-	width:  f32, // the width this layout was made for
-	height: f32, // total content height
+// The background of a block box (border box = padding + content).
+Box :: struct {
+	x, y, width, height: f32,
+	color:               dom.Color,
 }
+
+// Owns all boxes, runs and their strings; destroy frees everything at once.
+// Draw order: background, then boxes in order (parents before children), then runs.
+Layout :: struct {
+	arena:      virtual.Arena,
+	background: dom.Color, // page background from <html> or <body> ("canvas")
+	boxes:      [dynamic]Box,
+	runs:       [dynamic]Text_Run,
+	width:      f32, // the width this layout was made for
+	height:     f32, // total content height
+}
+
+PAGE_BACKGROUND :: dom.Color{255, 255, 255, 255}
 
 Measure_Text :: #type proc(text: string, font_size: f32, bold: bool) -> f32
 
 LINE_HEIGHT_FACTOR :: f32(1.25) // line height relative to the font size ("normal")
-PAGE_MARGIN :: f32(8)           // the default margin of <body>
-LIST_INDENT :: f32(40)          // the default padding-left of <ul>/<ol>
 BOLD_WEIGHT :: 600              // from this font-weight on we draw bold
 
 build :: proc(doc: ^dom.Document, width: f32, measure: Measure_Text) -> ^Layout {
@@ -49,21 +59,23 @@ build :: proc(doc: ^dom.Document, width: f32, measure: Measure_Text) -> ^Layout 
 	}
 	allocator := virtual.arena_allocator(&l.arena)
 	l.runs.allocator = allocator
+	l.boxes.allocator = allocator
+	l.background = PAGE_BACKGROUND
 
+	// the page margin is no special case anymore: it is the default margin of body
 	b := Builder {
-		layout         = l,
-		allocator      = allocator,
-		measure        = measure,
-		left           = PAGE_MARGIN,
-		right          = max(width - PAGE_MARGIN, PAGE_MARGIN + 1),
-		x              = PAGE_MARGIN,
-		pending_margin = PAGE_MARGIN,
+		layout    = l,
+		allocator = allocator,
+		measure   = measure,
+		left      = 0,
+		right     = width,
 	}
 	b.line.allocator = allocator
+	b.block_tops.allocator = allocator
 
 	layout_node(&b, doc.root)
 	finish_line(&b)
-	l.height = b.y + max(b.pending_margin, PAGE_MARGIN)
+	l.height = b.y + b.pending_margin
 	return l
 }
 
@@ -102,6 +114,17 @@ Builder :: struct {
 	pending_margin: f32,                 // collapsed vertical margin before the next line
 	can_extend:     bool,                // the next word may be appended to the last run
 	link:           string,              // href of the <a> we are in, "" outside of links
+	block_tops:     [dynamic]Block_Top,  // one per open block, see flush_margin
+	canvas_from_html: bool,              // <html> set the page background, <body> must not override it
+}
+
+// The top edge of an open block. It is only known once the collapsed margin
+// above it is applied (the top margin of the block may still collapse with
+// the one of its first child), so it stays unresolved until then.
+@(private)
+Block_Top :: struct {
+	y:        f32,
+	resolved: bool,
 }
 
 @(private)
@@ -153,13 +176,79 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 		return
 	}
 
-	// block or list item: starts on a new line, with margins around it
-	finish_line(b)
-	margin := vertical_margin(node.tag, style.font_size)
-	add_margin(b, margin)
+	layout_block(b, node)
+}
 
-	old_left := b.left
-	b.left += indent(node.tag)
+// A block or list item: the CSS box model, simplified (no borders yet,
+// no height, box-sizing is always content-box).
+@(private)
+layout_block :: proc(b: ^Builder, node: ^dom.Node) {
+	finish_line(b)
+	style := node.style
+	font_size := style.font_size
+	available := b.right - b.left // width of the containing block
+
+	// all percentages (even vertical ones) refer to the width of the containing block
+	margin, padding: [dom.Edge]f32
+	for edge in dom.Edge {
+		margin[edge] = dom.resolve_length(style.margin[edge], font_size, available)
+		padding[edge] = dom.resolve_length(style.padding[edge], font_size, available)
+	}
+
+	// horizontal: content width first, then auto margins take what is left
+	width: f32
+	if style.width.unit == .Auto {
+		width = available - margin[.Left] - margin[.Right] - padding[.Left] - padding[.Right]
+	} else {
+		width = dom.resolve_length(style.width, font_size, available)
+	}
+	if style.max_width.unit != .Auto {
+		width = min(width, dom.resolve_length(style.max_width, font_size, available))
+	}
+	width = max(width, 0)
+
+	left_auto := style.margin[.Left].unit == .Auto
+	right_auto := style.margin[.Right].unit == .Auto
+	free := available - width - padding[.Left] - padding[.Right] - margin[.Left] - margin[.Right]
+	if free > 0 {
+		if left_auto && right_auto {
+			margin[.Left] += free / 2 // margin: 0 auto -> centered
+		} else if left_auto {
+			margin[.Left] += free // pushed to the right
+		}
+	}
+	box_x := b.left + margin[.Left]
+	box_width := padding[.Left] + width + padding[.Right]
+
+	// vertical: the top margin joins the pending (collapsing) margin. Padding
+	// separates this block from its children, so then the margin is applied now.
+	add_margin(b, margin[.Top])
+	append(&b.block_tops, Block_Top{})
+	if padding[.Top] > 0 {
+		flush_margin(b)
+		b.y += padding[.Top]
+	}
+
+	// reserve the background slot now: parents are drawn before their children
+	box_index := -1
+	if style.background[3] > 0 {
+		switch node.tag {
+		case "html":
+			b.layout.background = style.background
+			b.canvas_from_html = true
+		case "body":
+			if !b.canvas_from_html {
+				b.layout.background = style.background
+			}
+		case:
+			append(&b.layout.boxes, Box{color = style.background})
+			box_index = len(b.layout.boxes) - 1
+		}
+	}
+
+	old_left, old_right := b.left, b.right
+	b.left = box_x + padding[.Left]
+	b.right = b.left + width
 	b.x = b.left
 
 	if style.display == .List_Item {
@@ -170,9 +259,22 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	}
 
 	finish_line(b)
-	b.left = old_left
+	if padding[.Bottom] > 0 {
+		flush_margin(b) // the bottom margin of the last child stays inside
+		b.y += padding[.Bottom]
+	}
+
+	top := pop(&b.block_tops)
+	if !top.resolved {
+		top.y = b.y // no content and no padding: an empty box
+	}
+	if box_index >= 0 {
+		b.layout.boxes[box_index] = Box{box_x, top.y, box_width, b.y - top.y, style.background}
+	}
+
+	b.left, b.right = old_left, old_right
 	b.x = b.left
-	add_margin(b, margin)
+	add_margin(b, margin[.Bottom])
 }
 
 // Normal text: whitespace collapses to single spaces, lines wrap at spaces.
@@ -343,10 +445,23 @@ start_line :: proc(b: ^Builder) {
 	if len(b.line) > 0 {
 		return
 	}
-	b.y += b.pending_margin
-	b.pending_margin = 0
+	flush_margin(b)
 	b.x = b.left
 	b.can_extend = false
+}
+
+// Applies the collapsed margin. Now the top edges of all blocks that were
+// still waiting for it are known: they all start here.
+@(private)
+flush_margin :: proc(b: ^Builder) {
+	b.y += b.pending_margin
+	b.pending_margin = 0
+	#reverse for &top in b.block_tops {
+		if top.resolved {
+			break // everything further out was resolved before
+		}
+		top = {b.y, true}
+	}
 }
 
 // Fixes the vertical position of all runs of the line and moves y down.
@@ -375,37 +490,6 @@ finish_line :: proc(b: ^Builder) {
 @(private)
 add_margin :: proc(b: ^Builder, margin: f32) {
 	b.pending_margin = max(b.pending_margin, margin)
-}
-
-// Default vertical margins from the user agent stylesheet, in em of the element.
-@(private)
-vertical_margin :: proc(tag: string, font_size: f32) -> f32 {
-	switch tag {
-	case "p", "ul", "ol", "dl", "pre", "blockquote", "figure", "h3":
-		return font_size
-	case "h1":
-		return font_size * 0.67
-	case "h2":
-		return font_size * 0.83
-	case "h4":
-		return font_size * 1.33
-	case "h5":
-		return font_size * 1.67
-	case "h6":
-		return font_size * 2.33
-	case "hr":
-		return font_size * 0.5
-	}
-	return 0
-}
-
-@(private)
-indent :: proc(tag: string) -> f32 {
-	switch tag {
-	case "ul", "ol", "blockquote", "dd":
-		return LIST_INDENT
-	}
-	return 0
 }
 
 @(private)
