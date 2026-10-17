@@ -275,3 +275,69 @@ test_vh_padding :: proc(t: ^testing.T) {
 	defer destroy(l)
 	testing.expect_value(t, l.runs[0].y, 60 + 2)
 }
+
+@(test)
+test_image_sizes :: proc(t: ^testing.T) {
+	doc, err := dom.parse(`<p>
+		<img src="a.png" width="100" height="50">
+		<img src="b.png" style="width: 20px">
+		<img src="loaded.png" width="40">
+		<img src="loaded.png">
+		<img src="big.png" style="max-width: 100%">
+	</p>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer dom.destroy(doc)
+
+	sizes := make(Image_Sizes)
+	defer delete(sizes)
+	sizes["loaded.png"] = {80, 60}
+	sizes["big.png"] = {2000, 1000}
+
+	l := build(doc, {416, 600}, fake_measure, sizes)
+	defer destroy(l)
+
+	testing.expect_value(t, len(l.images), 5)
+	if len(l.images) != 5 do return
+	expect_size :: proc(t: ^testing.T, image: Image_Item, w, h: f32, loc := #caller_location) {
+		testing.expectf(t, image.width == w && image.height == h, "%s: got %vx%v, want %vx%v", image.src, image.width, image.height, w, h, loc = loc)
+	}
+	expect_size(t, l.images[0], 100, 50)   // attributes
+	expect_size(t, l.images[1], 20, 16)    // CSS width, height unknown -> placeholder height
+	expect_size(t, l.images[2], 40, 30)    // width given, height from the aspect ratio
+	expect_size(t, l.images[3], 80, 60)    // natural size
+	expect_size(t, l.images[4], 400, 200)  // max-width: 100% of the 400px body, proportional
+}
+
+@(test)
+test_images_in_lines :: proc(t: ^testing.T) {
+	// body content 8..408. "ab" is 16px, the image 100x50
+	doc, l := build_html(t, `<p>ab <a href="x.html"><img src="i.png" width="100" height="50"></a> ab</p>`, 416)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.images) != 1 || len(l.runs) != 2 do return
+	image := l.images[0]
+	// placed after "ab" and a space, the line is 50px high, everything on its bottom
+	testing.expect_value(t, image.x, 8 + 16 + 8)
+	testing.expect_value(t, image.y, 16)
+	testing.expect_value(t, l.runs[0].y, 16 + 50 - 20 + 2)
+	testing.expect_value(t, l.runs[1].x, 8 + 16 + 8 + 100 + 8)
+	testing.expect_value(t, l.height, 16 + 50 + 16)
+
+	// the image belongs to the link
+	link, ok := link_at(l, image.x + 50, image.y + 25)
+	testing.expect(t, ok && link == "x.html", "expected the image to be a link")
+}
+
+@(test)
+test_image_wraps :: proc(t: ^testing.T) {
+	// a 300px image doesn't fit next to the 300px of text in a 400px line
+	doc, l := build_html(t, `<p>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa <img src="i.png" width="300" height="10"></p>`, 416)
+	defer dom.destroy(doc)
+	defer destroy(l)
+	if len(l.images) != 1 do return
+	testing.expect_value(t, l.images[0].x, 8)
+	testing.expect(t, l.images[0].y > l.runs[0].y, "image on the next line")
+}

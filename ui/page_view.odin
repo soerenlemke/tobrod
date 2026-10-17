@@ -111,6 +111,15 @@ page_view_render :: proc(pv: ^PageView) {
 		rl.DrawRectangleRec({x + box.width - br, y + bt, br, box.height - bt - bb}, rl.Color(box.border_color[.Right]))
 	}
 
+	// images: decoding comes in a later step, until then all are placeholders
+	for image in pv.page_layout.images {
+		top := image.y - pv.scroll_y
+		if top + image.height < 0 || top > pv.rect.height {
+			continue
+		}
+		draw_image_placeholder({pv.rect.x + image.x, pv.rect.y + top, image.width, image.height})
+	}
+
 	for run in pv.page_layout.runs {
 		// skip what is outside the visible area
 		top := run.y - pv.scroll_y
@@ -123,6 +132,13 @@ page_view_render :: proc(pv: ^PageView) {
 		color := rl.Color(run.color)
 		rl.DrawTextEx(font_for(run.bold), text_c, pos, run.font_size, 0, color)
 	}
+}
+
+// A light grey box with a border where an image will be (or failed to load).
+@(private)
+draw_image_placeholder :: proc(rect: rl.Rectangle) {
+	rl.DrawRectangleRec(rect, rl.Color{235, 235, 235, 255})
+	rl.DrawRectangleLinesEx(rect, 1, rl.Color{190, 190, 190, 255})
 }
 
 // The Measure_Text proc for layout: asks raylib how wide the text is.
