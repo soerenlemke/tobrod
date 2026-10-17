@@ -69,10 +69,8 @@ load_page :: proc(b: ^Browser, url: string) {
 			ui.page_view_set_content(&b.window.page_view, fmt.tprintf("Error: %v", e.message))
 			return
 		}
-		defer dom.destroy(doc)
-
-		// page_view_set_content copies, so the temp allocator is fine here
-		ui.page_view_set_content(&b.window.page_view, dom.to_display_text(doc, context.temp_allocator))
+		// the page view owns the document from now on
+		ui.page_view_set_document(&b.window.page_view, doc)
 		return
 	}
 

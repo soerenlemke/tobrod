@@ -114,3 +114,32 @@ test_plain_text :: proc(t: ^testing.T) {
 	expected := "line@8,18 16\none@48,18 16\nline@8,38 16\ntwo@48,38 16\n"
 	testing.expect_value(t, runs_to_string(l), expected)
 }
+
+@(test)
+test_display_from_css :: proc(t: ^testing.T) {
+	doc, l := build_html(t, `<html><head><style>
+		.ad { display: none }
+		span.box { display: block }
+		ul.inline li { display: inline }
+	</style><title>not shown</title></head><body>
+		<p>Text<span class="ad">AD</span> more</p>
+		<p>a<span class="box">boxed</span>b</p>
+		<ul class="inline"><li>x</li> <li>y</li></ul>
+		<script>not shown</script>
+	</body></html>`, 800)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	// the span block splits the line; inline list items have no markers
+	texts := make([dynamic]string, context.temp_allocator)
+	for run in l.runs {
+		append(&texts, run.text)
+	}
+	expected := []string{"Text more", "a", "boxed", "b", "x y"}
+	testing.expect_value(t, len(texts), len(expected))
+	for text, i in expected {
+		if i < len(texts) {
+			testing.expect_value(t, texts[i], text)
+		}
+	}
+}

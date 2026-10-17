@@ -36,7 +36,7 @@ Stand 2026-10-17 auf macOS und Windows (Odin `dev-2026-05`, nach `setup.ps1`): `
 - `--url <url>` lädt die URL direkt beim Start (wie Eingabe in der Adressleiste + Enter).
 - `--screenshot <pfad>` rendert ein paar Frames (`SCREENSHOT_AFTER_FRAMES`), speichert das Fenster als PNG und beendet sich. Exit-Code 1, wenn das Bild nicht geschrieben werden kann.
 
-Lokale Fixtures liegen in [testdata/](testdata/) (`hello.txt`, `utf8.txt`, `long.txt`, `index.html`):
+Lokale Fixtures liegen in [testdata/](testdata/) (`hello.txt`, `utf8.txt`, `long.txt`, `index.html`, `styles.html` – Überschriften, Fett, Farben, Größen, Listen, `pre`, `br`):
 
 ```sh
 python3 -m http.server 8765 --bind 127.0.0.1 --directory testdata   # in eigenem Terminal
@@ -69,13 +69,12 @@ dom/                    Package dom: eigener DOM-Baum (Parsen über lexbor, dann
   print.odin              tree_to_string (Debug/Tests)
   style.odin              Style, Color, ROOT_STYLE, default_style (Vererbung + UA-Stylesheet), apply_declaration
   css_values.odin         Wert-Parser: parse_color, parse_font_size, parse_font_weight
-  text.odin               to_display_text: DOM → lesbarer Text für die PageView
   plain_text.odin         from_plain_text: Text → Dokument html/body/pre (wie Chrome bei text/plain)
 layout/layout.odin      Package layout: DOM mit Styles → positionierte Text-Runs (Display List)
 ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
   main_window.odin        MainWindow, init/destroy, Haupt-Loop (run)
   address_bar.odin        Adressleiste: Eingabe, Fokus, Enter → Callback
-  page_view.odin          Seitenansicht: Textumbruch, Scrollen, Rendering
+  page_view.odin          Seitenansicht: besitzt Dokument + gecachtes Layout, zeichnet Text-Runs, Scrollen
   fonts.odin              globaler Font (fonts_init/fonts_close)
   constants.odin          UI-Konstanten (Höhen, Fontgröße, Scroll-Speed)
   screenshot.odin         Fenster als PNG speichern (Testmodus)
@@ -103,11 +102,11 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
    - Mausrad → `page_view_handle_scroll`
    - `BeginDrawing` → `page_view_render`, dann `address_bar_render` (Adressleiste liegt oben drüber) → `EndDrawing`
    - `free_all(context.temp_allocator)` am Frame-Ende
-5. Enter in der Adressleiste → Callback → `http.get` (blockierend). Bei `Content-Type: text/html` → `dom.parse` → `dom.to_display_text` → `page_view_set_content`, sonst der rohe Body bzw. Fehlertext.
+5. Enter in der Adressleiste → Callback → `http.get` (blockierend). Bei `Content-Type: text/html` → `dom.parse` → `page_view_set_document` (PageView übernimmt das Dokument), sonst `page_view_set_content` (Body bzw. Fehlertext → `dom.from_plain_text`). Beim Rendern baut die PageView bei Bedarf das Layout (`layout.build`) und zeichnet die Runs.
 
 ### Abhängigkeitsrichtung
 
-`main` → `browser` → (`ui`, `http`); `http` → `vendor/curl`; `browser` → `dom` → `vendor/lexbor`; `layout` → `dom` (noch von niemandem importiert). `ui` kennt weder `browser` noch `http`. Diese Richtung beibehalten; neue Kommunikation von UI nach oben über Callbacks mit `rawptr`-Context.
+`main` → `browser` → (`ui`, `http`, `dom`); `http` → `vendor/curl`; `ui` → `layout` → `dom` → `vendor/lexbor`. `ui` kennt weder `browser` noch `http`. Diese Richtung beibehalten; neue Kommunikation von UI nach oben über Callbacks mit `rawptr`-Context.
 
 ### Package-Details
 
@@ -122,8 +121,8 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 **ui**
 - `MainWindow` besitzt `AddressBar`, `PageView` und den Submit-Callback.
 - `AddressBar`: Text in einem `strings.Builder`; Eingabefeld ist ein fest positioniertes Rect (x = 80, 80 px links/rechts für spätere Buttons reserviert). Fokusfarbe Blau `{66,133,244}`.
-- `PageView`: `rect` unterhalb der Adressleiste, `content` (roher Text, gehört der PageView, nur über `page_view_set_content` setzen), `scroll_y`, `content_height`. `wrap_text` teilt an Zeilenumbrüchen und bricht jede Zeile wortweise mit `rl.MeasureTextEx` um und arbeitet komplett im Temp-Allocator. Rendering mit Scissor-Mode. Scrollen wird auf `[0, content_height - rect.height]` begrenzt.
-- `font` ist eine Package-globale Variable (geladen mit Größe 32, gezeichnet mit `FONT_SIZE` 16). Geladen werden die Codepoints aus `font_codepoints` (ASCII, Latin-1, typografische Zeichen).
+- `PageView`: `rect` unterhalb der Adressleiste, `document` (gehört der PageView: `page_view_set_document` übernimmt es, `page_view_set_content` verpackt Text per `dom.from_plain_text`), `page_layout` (gecacht, `page_view_ensure_layout` baut nur neu, wenn sich die Breite ändert), `scroll_y`, `content_height` (= Layout-Höhe). `page_view_render` zeichnet nur Runs im sichtbaren Bereich (Scissor-Mode). `measure_text` ist die `Measure_Text`-Proc für das Layout (raylib). Fett ist **synthetisch**: Text wird um `SYNTHETIC_BOLD_OFFSET` (1 px) versetzt doppelt gezeichnet, es gibt noch keinen Bold-Font. Scrollen wird auf `[0, content_height - rect.height]` begrenzt (`clamp_scroll`).
+- `font` ist eine Package-globale Variable, einmal mit `FONT_LOAD_SIZE` (64) gerastert und beim Zeichnen auf die jeweilige Größe skaliert; Mipmaps + trilinearer Filter halten kleinen Text glatt. Geladen werden die Codepoints aus `font_codepoints` (ASCII, Latin-1, typografische Zeichen).
 
 **dom** ([dom/](dom/))
 - `parse(html) -> (^Document, Maybe(Parse_Error))`: parst mit lexbor, kopiert rekursiv in eigene `Node`s und zerstört das lexbor-Dokument sofort. Danach zeigt nichts mehr in lexbors Speicher.
@@ -135,7 +134,6 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
   2. `default_style(tag, hidden, parent)`: unser vereinfachtes UA-Stylesheet (Block-Tags, `li` = `List_Item`, `head`/`script`/… und `hidden` = `None`, `h1`–`h6` Größe + fett, `b`/`strong` fett, `small` kleiner, `a` = `LINK_COLOR`),
   3. `apply_declaration` für jede Property aus `STYLE_PROPERTIES`, die lexbors Kaskade liefert. Unbekannte Werte werden ignoriert (Default bleibt). `inherit`/`initial`/`unset` werden behandelt.
 - lexbor serialisiert normalisiert (lowercase, `#F00` → `#f00`, Kommas vereinheitlicht), lässt relative Einheiten (`em`, `%`, `smaller`, `bolder`) aber stehen – die rechnen wir gegen den Eltern-Style um. Unterstützt: Farben benannt (Teilmenge), Hex, `rgb()`/`rgba()`, `transparent`, `currentcolor` (kein `hsl()`); Größen `px`, `em`, `rem`, `%`, `pt`, Schlüsselwörter; Gewichte `normal`/`bold`/Zahl/`bolder`/`lighter`. Nicht unterstützte Layout-Modi fallen bei `display` auf ihr äußeres Verhalten zurück.
-- `to_display_text` ist noch kein Layout, nur Text mit Browser-Grundregeln: `display: none` wird übersprungen, Whitespace-Collapsing (außer in `<pre>`), `Block`/`List_Item` auf neuer Zeile (`p`, `h1`–`h6`, Listen u. a. mit Leerzeile als Ersatz für Margins, `has_vertical_margin`), `<br>` als Umbruch, `• ` vor `List_Item`. Umbrüche werden nur vor dem nächsten Text geschrieben (`pending_breaks`), so stapeln sie sich nicht.
 
 **layout** ([layout/layout.odin](layout/layout.odin))
 - `build(doc, width, measure) -> ^Layout` liefert `runs: [dynamic]Text_Run` (`text`, `x`, `y` = linke obere Ecke, `font_size`, `bold`, `color`) und `height`; `destroy` gibt alles frei (eine Arena pro Layout).
@@ -169,7 +167,7 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 
 Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 
-1. ~~Dangling-String bei HTTP-Fehlern~~ / ~~Body-Lebensdauer~~ – behoben: `PageView` besitzt seinen Inhalt, gesetzt wird er nur über `page_view_set_content` (kopiert und setzt Scroll zurück). Freigegeben wird er in `page_view_destroy`.
+1. ~~Dangling-String bei HTTP-Fehlern~~ / ~~Body-Lebensdauer~~ – behoben: `PageView` besitzt sein Dokument (`page_view_set_document`/`page_view_set_content`), freigegeben in `page_view_destroy` bzw. beim nächsten Setzen.
 2. *(in 1 zusammengefasst)*
 3. ~~Backspace entfernt ein Byte statt einer Rune~~ – behoben mit `strings.pop_rune`.
 4. **HTTP blockiert den UI-Thread** bis zu 30 s (Timeout). Lösung ist Stage 5.
@@ -177,18 +175,18 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 6. ~~`ui.destroy` gibt den `strings.Builder` der Adressleiste nicht frei~~ – behoben.
 7. `address_bar_render` allokiert pro Frame eine cstring auf dem Heap (könnte Temp-Allocator nutzen).
 8. Fokus-Klick prüft die ganze Adressleiste statt nur das Eingabefeld.
-9. `wrap_text` läuft jeden Frame neu über den ganzen Text und misst jeden Kandidaten → bei großen Seiten langsam. `content_height` wird erst beim Rendern berechnet. Kandidat für Caching bei Content- oder Breitenänderung.
+9. ~~Textumbruch läuft jeden Frame neu~~ – behoben: Das Layout wird gecacht und nur bei Breiten- oder Inhaltsänderung neu gebaut.
 10. ~~lexbor auf Windows~~ – behoben: wird von `setup.ps1` aus dem Submodul `vendor/lexbor-src` statisch gebaut. Weil Odin standardmäßig die statische CRT (`libcmt`) linkt, setzt das Binding wie `vendor:raylib` `/NODEFAULTLIB:libcmt` (sonst scheitert `odin test vendor/lexbor` an `__imp__dsign`).
 11. URL-Eingabe ohne Schema (`example.com`) wird nicht automatisch zu `http(s)://` ergänzt (steht als TODO in der Roadmap).
 12. Linux ist bisher weder dokumentiert noch getestet.
 13. ~~Nicht-ASCII-Zeichen werden als `?` gezeichnet~~ – behoben: `fonts_init` lädt ASCII, Latin-1 und ein paar typografische Zeichen (`– „“ … €`). Andere Schriften (z. B. Kyrillisch, CJK) erscheinen weiterhin als `?`; dafür bräuchte es Glyphen bei Bedarf.
-14. ~~Zeilenumbrüche im Inhalt gehen verloren~~ – behoben: `wrap_text` teilt erst an Zeilenumbrüchen (`\n`, `\r\n`) und bricht dann jede Zeile mit `wrap_line` um; leere Zeilen bleiben erhalten.
+14. ~~Zeilenumbrüche im Inhalt gehen verloren~~ – behoben: Plain Text läuft als `<pre>` durchs Layout, Umbrüche bleiben erhalten.
 
 ## Roadmap (Kurzfassung, Details im README)
 
 - Stage 1 HTTP-Client – erledigt
 - Stage 2 Fenster & UI – Fenster und Adressleiste stehen; offen: Schema-Ergänzung, Tabs, Navigation (zurück/vor/neu laden)
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
-- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, HTML wird als Text angezeigt, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt daraus positionierte Text-Runs; nächster Schritt: Runs in der UI zeichnen (PageView hält Dokument + gecachtes Layout)
+- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt positionierte Text-Runs, die UI zeichnet sie mit Größe, Fett (synthetisch) und Farbe. Offen: echter Bold-Font, Links klickbar, Hintergründe/Boxen
 - Stage 5 Threads – HTTP in eigenen Thread, Ergebnis-Übergabe an die UI, Thread-Sicherheit des Clients
 - Stage 6 JavaScript – QuickJS anbinden

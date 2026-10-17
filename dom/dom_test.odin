@@ -52,54 +52,6 @@ test_parent_and_attributes :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_display_text :: proc(t: ^testing.T) {
-	doc, err := parse(`<html><head><title>T</title><style>p{}</style></head><body>
-  <h1>Title</h1>
-  <p>Some   <b>bold</b>
-     text.<br>Next line</p>
-  <script>var x = 1;</script>
-  <ul><li>one</li><li>two</li></ul>
-  <pre>a  b
-c</pre>
-  <div>end</div>
-</body></html>`)
-	if e, ok := err.?; ok {
-		testing.fail_now(t, e.message)
-	}
-	defer destroy(doc)
-
-	text := to_display_text(doc)
-	defer delete(text)
-	expected := "Title\n\nSome bold text.\nNext line\n\n• one\n• two\n\na  b\nc\n\nend"
-	testing.expect_value(t, text, expected)
-}
-
-@(test)
-test_display_from_css :: proc(t: ^testing.T) {
-	doc, err := parse(`<html><head><style>
-		.ad { display: none }
-		span.box { display: block }
-		ul.inline li { display: inline }
-		#shown { display: block }
-	</style></head><body>
-		<p>Text<span class="ad">AD</span> more</p>
-		<p>a<span class="box">boxed</span>b</p>
-		<p hidden>hidden by attribute</p>
-		<ul class="inline"><li>x</li> <li>y</li></ul>
-		<script id="shown">visible script</script>
-	</body></html>`)
-	if e, ok := err.?; ok {
-		testing.fail_now(t, e.message)
-	}
-	defer destroy(doc)
-
-	text := to_display_text(doc)
-	defer delete(text)
-	expected := "Text more\n\na\nboxed\nb\n\nx y\n\nvisible script"
-	testing.expect_value(t, text, expected)
-}
-
-@(test)
 test_parse_display :: proc(t: ^testing.T) {
 	cases := []struct {
 		value:   string,
