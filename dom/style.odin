@@ -29,6 +29,7 @@ Style :: struct {
 	max_width:   Length, // .Auto = none
 	background:  Color,  // alpha 0 = transparent
 	border:      Borders,
+	flex:        Flex,   // flexbox, see flex_style.odin
 }
 
 // justify is drawn like left for now
@@ -86,6 +87,7 @@ Display :: enum {
 	Table_Row,
 	Table_Cell,
 	Table_Caption,
+	Flex, // flexbox container (layout/flex.odin); inline-flex is treated like flex
 }
 
 // Vertical position of the content in a table cell. baseline is drawn like top.
@@ -105,6 +107,7 @@ ROOT_STYLE :: Style {
 	height      = AUTO,
 	max_width   = AUTO,
 	border      = INITIAL_BORDERS,
+	flex        = INITIAL_FLEX,
 }
 
 // Initial value of display in CSS, used for "initial" and "unset".
@@ -132,6 +135,7 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		height      = AUTO,
 		max_width   = AUTO,
 		border      = INITIAL_BORDERS,
+		flex        = INITIAL_FLEX,
 	}
 	default_box(tag, &style)
 	if has_hidden_attribute {
@@ -316,6 +320,9 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 		} else if list_style, ok := parse_list_style(value); ok {
 			style.list_style = list_style
 		}
+	case "flex", "flex-direction", "flex-wrap", "flex-flow", "justify-content", "align-items", "align-self",
+	     "gap", "row-gap", "column-gap", "flex-grow", "flex-shrink", "flex-basis":
+		apply_flex_declaration(style, property, value)
 	case:
 		apply_box_declaration(style, property, value)
 	}
@@ -334,6 +341,8 @@ STYLE_PROPERTIES :: [?]string {
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
 	"width", "height", "max-width",
 	"background", "background-color",
+	"flex-direction", "flex-wrap", "flex-flow", "justify-content", "align-items", "align-self",
+	"gap", "row-gap", "column-gap", "flex", "flex-grow", "flex-shrink", "flex-basis",
 	"border", "border-width", "border-style", "border-color",
 	"border-top", "border-right", "border-bottom", "border-left",
 	"border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
@@ -383,7 +392,9 @@ parse_display :: proc(value: string) -> (display: Display, ok: bool) {
 		return .None, true
 	case "list-item":
 		return .List_Item, true
-	case "block", "flex", "grid", "flow-root":
+	case "flex", "inline-flex":
+		return .Flex, true
+	case "block", "grid", "flow-root":
 		return .Block, true
 	case "table", "inline-table":
 		return .Table, true
@@ -397,7 +408,7 @@ parse_display :: proc(value: string) -> (display: Display, ok: bool) {
 		return .Table_Caption, true
 	case "table-column", "table-column-group":
 		return .None, true
-	case "inline", "inline-block", "inline-flex", "inline-grid", "contents":
+	case "inline", "inline-block", "inline-grid", "contents":
 		return .Inline, true
 	}
 	return .Inline, false

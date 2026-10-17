@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>tobrod flexbox test</title>
+  <style>
+    body { margin: 0; background: #f0f2f5 }
+    header { display: flex; align-items: center; gap: 12px; background: #fff; border-bottom: 1px solid #c8ccd1; padding: 8px 16px }
+    header .logo { font-weight: bold; font-size: 1.25em }
+    header .search { flex: 1; border: 1px solid #a2a9b1; padding: 4px 8px; color: #72777d; background: #fff }
+    nav { display: flex; justify-content: center; gap: 4px; margin: 12px 0 }
+    nav a { padding: 4px 12px; background: #fff; border: 1px solid #c8ccd1 }
+    .cards { display: flex; flex-wrap: wrap; gap: 12px; padding: 0 16px }
+    .card { flex: 1 1 200px; background: #fff; border: 1px solid #c8ccd1; padding: 12px }
+    .row { display: flex; justify-content: space-between; align-items: flex-end; margin: 12px 16px; padding: 8px; background: #dbeafe }
+    .col { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 12px 16px; padding: 8px; background: #fff }
+  </style>
+</head>
+<body>
+  <header><span class="logo">tobrod</span><span class="search">Search…</span><a href="#">Log in</a></header>
+  <nav><a href="#">Article</a><a href="#">Talk</a><a href="#">Read</a><a href="#">History</a></nav>
+  <div class="cards">
+    <div class="card"><b>Card 1</b><br>flex: 1 1 200px – the cards share the row and wrap when there is not enough room.</div>
+    <div class="card"><b>Card 2</b><br>Short.</div>
+    <div class="card"><b>Card 3</b><br>A third card with a little more text in it to make it taller than the others.</div>
+  </div>
+  <div class="row"><span>space-between, align-items: flex-end</span><span style="font-size: 2em">big</span><span>right</span></div>
+  <div class="col"><span>column</span><span><b>centered</b> items</span><span>with a gap</span></div>
+</body>
+</html>
