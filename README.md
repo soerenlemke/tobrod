@@ -60,6 +60,8 @@ Stage 4 — HTML & CSS Parsing
    - [x] `display` (UA defaults + CSS, `display: none` hides elements)
    - [x] inheritance and defaults for other properties (color, font-size, font-weight)
    - [ ] render text with its style (font size, bold, color)
+      - [x] layout: styled text runs with line wrapping, margins, lists (package `layout`)
+      - [ ] draw the runs in the ui
 
 Stage 5 - Threads
 - [ ] Run http requests in own thread

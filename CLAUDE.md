@@ -22,6 +22,7 @@ odin check .               # nur Typecheck, schnell
 odin test vendor/lexbor    # lexbor-Bindings
 odin test dom              # eigener DOM-Baum
 odin test http             # Header-Parsing
+odin test layout           # Layout (mit Fake-Textmessung, ohne Fenster)
 ```
 
 **Immer aus dem Repo-Root starten**: Der Font wird über den relativen Pfad `assets/fonts/Inter_18pt-Regular.ttf` geladen ([ui/main_window.odin](ui/main_window.odin)).
@@ -69,6 +70,8 @@ dom/                    Package dom: eigener DOM-Baum (Parsen über lexbor, dann
   style.odin              Style, Color, ROOT_STYLE, default_style (Vererbung + UA-Stylesheet), apply_declaration
   css_values.odin         Wert-Parser: parse_color, parse_font_size, parse_font_weight
   text.odin               to_display_text: DOM → lesbarer Text für die PageView
+  plain_text.odin         from_plain_text: Text → Dokument html/body/pre (wie Chrome bei text/plain)
+layout/layout.odin      Package layout: DOM mit Styles → positionierte Text-Runs (Display List)
 ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
   main_window.odin        MainWindow, init/destroy, Haupt-Loop (run)
   address_bar.odin        Adressleiste: Eingabe, Fokus, Enter → Callback
@@ -104,7 +107,7 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 
 ### Abhängigkeitsrichtung
 
-`main` → `browser` → (`ui`, `http`); `http` → `vendor/curl`; `browser` → `dom` → `vendor/lexbor`. `ui` kennt weder `browser` noch `http`. Diese Richtung beibehalten; neue Kommunikation von UI nach oben über Callbacks mit `rawptr`-Context.
+`main` → `browser` → (`ui`, `http`); `http` → `vendor/curl`; `browser` → `dom` → `vendor/lexbor`; `layout` → `dom` (noch von niemandem importiert). `ui` kennt weder `browser` noch `http`. Diese Richtung beibehalten; neue Kommunikation von UI nach oben über Callbacks mit `rawptr`-Context.
 
 ### Package-Details
 
@@ -133,6 +136,12 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
   3. `apply_declaration` für jede Property aus `STYLE_PROPERTIES`, die lexbors Kaskade liefert. Unbekannte Werte werden ignoriert (Default bleibt). `inherit`/`initial`/`unset` werden behandelt.
 - lexbor serialisiert normalisiert (lowercase, `#F00` → `#f00`, Kommas vereinheitlicht), lässt relative Einheiten (`em`, `%`, `smaller`, `bolder`) aber stehen – die rechnen wir gegen den Eltern-Style um. Unterstützt: Farben benannt (Teilmenge), Hex, `rgb()`/`rgba()`, `transparent`, `currentcolor` (kein `hsl()`); Größen `px`, `em`, `rem`, `%`, `pt`, Schlüsselwörter; Gewichte `normal`/`bold`/Zahl/`bolder`/`lighter`. Nicht unterstützte Layout-Modi fallen bei `display` auf ihr äußeres Verhalten zurück.
 - `to_display_text` ist noch kein Layout, nur Text mit Browser-Grundregeln: `display: none` wird übersprungen, Whitespace-Collapsing (außer in `<pre>`), `Block`/`List_Item` auf neuer Zeile (`p`, `h1`–`h6`, Listen u. a. mit Leerzeile als Ersatz für Margins, `has_vertical_margin`), `<br>` als Umbruch, `• ` vor `List_Item`. Umbrüche werden nur vor dem nächsten Text geschrieben (`pending_breaks`), so stapeln sie sich nicht.
+
+**layout** ([layout/layout.odin](layout/layout.odin))
+- `build(doc, width, measure) -> ^Layout` liefert `runs: [dynamic]Text_Run` (`text`, `x`, `y` = linke obere Ecke, `font_size`, `bold`, `color`) und `height`; `destroy` gibt alles frei (eine Arena pro Layout).
+- Kennt keine Fonts: Textbreite kommt über `Measure_Text`; die UI übergibt raylib, die Tests `fake_measure` (Zeichen × Größe × 0,5) für exakte Erwartungen.
+- Vereinfachtes Block-/Inline-Layout: Block-Elemente untereinander mit Default-Margins (`vertical_margin`, in em) und **Margin-Collapsing** (`pending_margin` = max), 8 px Seitenrand (`PAGE_MARGIN`), 40 px Einzug für `ul`/`ol`/`blockquote`/`dd`, Listen-Marker (`•` bzw. `1.`) hängend links. Inline-Text wird an Wörtern umgebrochen, gleich gestylte Wörter einer Zeile werden zu einem Run zusammengefasst (`can_extend`). Zeilenhöhe = größte Schrift × 1,25, kleinere Schrift sitzt unten.
+- `<br>` beendet die Zeile (auf leerer Zeile: Leerzeile). In `<pre>` bleiben Leerzeichen/Umbrüche erhalten, lange Zeilen brechen trotzdem um (wie `pre-wrap`); Tabs = 4 Leerzeichen. Fett ab `font_weight >= 600`.
 
 **vendor/lexbor** ([vendor/lexbor/lexbor.odin](vendor/lexbor/lexbor.odin))
 - Opake Typen `Html_Document` und `Dom_Node`, `Status`/`STATUS_OK`, `Dom_Node_Type`; Funktionen `lxb_html_document_create/parse/destroy`, `lxb_html_document_body_element_noi` und die Traversal-Procs `lxb_dom_node_{first_child,last_child,next,prev,parent,type}_noi`. `document_node` castet ein Dokument zum Node (wie lexbors `lxb_dom_interface_node`). Genutzt werden die `_noi`-Varianten, weil die normalen Funktionen `static inline` sind.
@@ -180,6 +189,6 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 - Stage 1 HTTP-Client – erledigt
 - Stage 2 Fenster & UI – Fenster und Adressleiste stehen; offen: Schema-Ergänzung, Tabs, Navigation (zurück/vor/neu laden)
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
-- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, HTML wird als Text angezeigt, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS), genutzt wird bisher nur `display`; nächster Schritt: Layout mit gestylten Textstücken
+- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, HTML wird als Text angezeigt, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt daraus positionierte Text-Runs; nächster Schritt: Runs in der UI zeichnen (PageView hält Dokument + gecachtes Layout)
 - Stage 5 Threads – HTTP in eigenen Thread, Ergebnis-Übergabe an die UI, Thread-Sicherheit des Clients
 - Stage 6 JavaScript – QuickJS anbinden
