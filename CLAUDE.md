@@ -112,8 +112,11 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - `font` ist eine Package-globale Variable (geladen mit Größe 32, gezeichnet mit `FONT_SIZE` 16).
 
 **vendor/lexbor** ([vendor/lexbor/lexbor.odin](vendor/lexbor/lexbor.odin))
-- Opake Typen `Html_Document` und `Dom_Node`, `Status`/`STATUS_OK`, `Dom_Node_Type`; Funktionen `lxb_html_document_create/parse/destroy`, `lxb_html_document_body_element_noi` und die Traversal-Procs `lxb_dom_node_{first_child,last_child,next,prev,parent,type}_noi`. `document_node` castet ein Dokument zum Node (wie lexbors `lxb_dom_interface_node`). Genutzt werden die `_noi`-Varianten, weil die normalen Funktionen `static inline` sind. Noch nicht in `main`/`browser` eingebunden.
-- Nächste Schritte laut Roadmap: Node-Daten (Tag-Name, Text, Attribute), dann eigener DOM-Baum.
+- Opake Typen `Html_Document` und `Dom_Node`, `Status`/`STATUS_OK`, `Dom_Node_Type`; Funktionen `lxb_html_document_create/parse/destroy`, `lxb_html_document_body_element_noi` und die Traversal-Procs `lxb_dom_node_{first_child,last_child,next,prev,parent,type}_noi`. `document_node` castet ein Dokument zum Node (wie lexbors `lxb_dom_interface_node`). Genutzt werden die `_noi`-Varianten, weil die normalen Funktionen `static inline` sind.
+- Node-Daten: opake `Dom_Element`/`Dom_Attr`; `element_from_node` castet nur Element-Nodes (sonst `nil`). Helper `element_name`, `element_attribute` (über `lxb_dom_element_attr_by_name`, weil `get_attribute` „fehlt“ und „ohne Wert“ nicht unterscheidet), `attr_name`/`attr_value`, `node_text_content`.
+- Speicher: Namen und Attributwerte zeigen in lexbors Speicher und gelten, solange das Dokument lebt. `node_text_content` liefert dagegen eine Kopie (Caller gibt frei), weil lexbor den Text separat allokiert und wir ihn sofort mit `lxb_dom_document_destroy_text_noi` freigeben.
+- Noch nicht in `main`/`browser` eingebunden.
+- Nächster Schritt laut Roadmap: eigener DOM-Baum.
 
 ## Code-Konventionen
 
@@ -151,6 +154,6 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 - Stage 1 HTTP-Client – erledigt
 - Stage 2 Fenster & UI – Fenster und Adressleiste stehen; offen: Schema-Ergänzung, Tabs, Navigation (zurück/vor/neu laden)
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
-- Stage 4 HTML & CSS – lexbor-Grundbindings und DOM-Traversal fertig; nächster Schritt: Node-Daten (Tag-Name, Text, Attribute)
+- Stage 4 HTML & CSS – lexbor-Bindings für Traversal und Node-Daten fertig; nächster Schritt: eigener DOM-Baum
 - Stage 5 Threads – HTTP in eigenen Thread, Ergebnis-Übergabe an die UI, Thread-Sicherheit des Clients
 - Stage 6 JavaScript – QuickJS anbinden
