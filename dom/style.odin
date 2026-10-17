@@ -11,6 +11,13 @@ Style :: struct {
 	color:       Color,
 	font_size:   f32, // px
 	font_weight: int, // 1..1000, 400 = normal, 700 = bold
+
+	// box model, not inherited (see box_style.odin)
+	margin:      Edges,
+	padding:     Edges,
+	width:       Length, // .Auto = fill the available width
+	max_width:   Length, // .Auto = none
+	background:  Color,  // alpha 0 = transparent
 }
 
 Display :: enum {
@@ -26,6 +33,8 @@ ROOT_STYLE :: Style {
 	color       = {0, 0, 0, 255},
 	font_size   = ROOT_FONT_SIZE,
 	font_weight = 400,
+	width       = AUTO,
+	max_width   = AUTO,
 }
 
 // Initial value of display in CSS, used for "initial" and "unset".
@@ -44,7 +53,10 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		color       = parent.color,
 		font_size   = parent.font_size,
 		font_weight = parent.font_weight,
+		width       = AUTO,
+		max_width   = AUTO,
 	}
+	default_box(tag, &style)
 	if has_hidden_attribute {
 		style.display = .None
 	}
@@ -125,11 +137,24 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 				style.font_weight = weight
 			}
 		}
+	case:
+		apply_box_declaration(style, property, value)
 	}
 }
 
 // Properties we take from the cascade, in the order they are applied.
-STYLE_PROPERTIES :: [?]string{"display", "color", "font-size", "font-weight"}
+// Shorthands come before their longhands, so a longhand wins over a shorthand
+// of the same element. (We only get the winning value per property from lexbor,
+// not its specificity, so `.a.b { margin: 0 }` vs `.a { margin-top: 5px }` comes
+// out wrong. Good enough for now.)
+// font-size comes before the box properties, because em in margins refers to it.
+STYLE_PROPERTIES :: [?]string {
+	"display", "color", "font-size", "font-weight",
+	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
+	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
+	"width", "max-width",
+	"background", "background-color",
+}
 
 @(private)
 default_display :: proc(tag: string) -> Display {

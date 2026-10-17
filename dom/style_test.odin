@@ -150,3 +150,54 @@ children_with_tag :: proc(node: ^Node, tag: string) -> [dynamic]^Node {
 	}
 	return result
 }
+
+@(test)
+test_box_shorthands :: proc(t: ^testing.T) {
+	e, ok := parse_edges("1em 2px 3% auto", true)
+	testing.expect(t, ok, "expected 4 values to parse")
+	testing.expect_value(t, e[.Top], em(1))
+	testing.expect_value(t, e[.Right], px(2))
+	testing.expect_value(t, e[.Bottom], Length{.Percent, 3})
+	testing.expect_value(t, e[.Left], AUTO)
+
+	e, ok = parse_edges("0 auto", true)
+	testing.expect(t, ok && e[.Top] == px(0) && e[.Right] == AUTO && e[.Bottom] == px(0) && e[.Left] == AUTO, "two values: vertical horizontal")
+
+	_, ok = parse_edges("auto", false)
+	testing.expect(t, !ok, "padding has no auto")
+	_, ok = parse_edges("1px 2px 3px 4px 5px", true)
+	testing.expect(t, !ok, "at most four values")
+
+	color, color_ok := background_color_of("#222 url(x.png) no-repeat", {})
+	testing.expect(t, color_ok && color == Color{0x22, 0x22, 0x22, 255}, "color from background shorthand")
+	color, color_ok = background_color_of("url(a b.png) rgb(1, 2, 3)", {})
+	testing.expect(t, color_ok && color == Color{1, 2, 3, 255}, "spaces inside parentheses don't split")
+	color, color_ok = parse_color("light-dark(#eee, #222)", {})
+	testing.expect(t, color_ok && color == Color{0xee, 0xee, 0xee, 255}, "light-dark takes the light color")
+}
+
+@(test)
+test_box_styles_from_css :: proc(t: ^testing.T) {
+	doc, err := parse(`<html><head><style>
+		div { margin: 0 auto; max-width: 20em; padding: 4px 8px; background: #abc }
+		div { margin-top: 10px }
+	</style></head><body><div>x</div><ul></ul></body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	body := find_element(doc.root, "body")
+	testing.expect_value(t, body.style.margin[.Left], px(8)) // UA default
+
+	div := find_element(doc.root, "div")
+	// the longhand margin-top wins over the shorthand
+	testing.expect_value(t, div.style.margin, edges(px(10), AUTO, px(0), AUTO))
+	testing.expect_value(t, div.style.padding, edges(px(4), px(8), px(4), px(8)))
+	testing.expect_value(t, div.style.max_width, em(20))
+	testing.expect_value(t, div.style.width, AUTO)
+	testing.expect_value(t, div.style.background, Color{0xaa, 0xbb, 0xcc, 255})
+
+	ul := find_element(doc.root, "ul")
+	testing.expect_value(t, ul.style.padding[.Left], px(40))
+}

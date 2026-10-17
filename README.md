@@ -67,6 +67,10 @@ Stage 4 — HTML & CSS Parsing
    - [x] render text with its style (font size, bold, color)
       - [x] layout: styled text runs with line wrapping, margins, lists (package `layout`)
       - [x] draw the runs in the ui (regular and bold Inter)
+   - [ ] more layout
+      - [x] box model: margin, padding, width, max-width, `margin: auto` centering, background colors
+      - [ ] `text-align`, borders
+      - [ ] images
 
 Stage 5 - Threads
 - [x] Run http requests in own thread (package `loader`: worker thread, also parses)

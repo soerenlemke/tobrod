@@ -84,9 +84,20 @@ page_view_render :: proc(pv: ^PageView) {
 	rl.BeginScissorMode(i32(pv.rect.x), i32(pv.rect.y), i32(pv.rect.width), i32(pv.rect.height))
 	defer rl.EndScissorMode()
 
-	rl.DrawRectangleRec(pv.rect, pv.bg_color)
 	if pv.page_layout == nil {
+		rl.DrawRectangleRec(pv.rect, pv.bg_color)
 		return
+	}
+
+	// display list order: page background, boxes (parents first), text
+	rl.DrawRectangleRec(pv.rect, rl.Color(pv.page_layout.background))
+	for box in pv.page_layout.boxes {
+		top := box.y - pv.scroll_y
+		if top + box.height < 0 || top > pv.rect.height {
+			continue
+		}
+		rect := rl.Rectangle{pv.rect.x + box.x, pv.rect.y + top, box.width, box.height}
+		rl.DrawRectangleRec(rect, rl.Color(box.color))
 	}
 
 	for run in pv.page_layout.runs {
