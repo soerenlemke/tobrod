@@ -13,3 +13,6 @@ vendor/curl/lib/
 
 # screenshots from --screenshot test runs
 /screenshots/
+
+# lexbor build output (Windows)
+vendor/lexbor-src/build/
