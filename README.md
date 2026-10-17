@@ -54,8 +54,9 @@ Stage 4 — HTML & CSS Parsing
    - [x] read node/element data (tag name, text content, attributes)
 - [x] Build a DOM tree from parsed HTML
 - [x] Show HTML pages as plain text (hidden elements, whitespace collapsing, block line breaks)
-- [ ] CSS parsing and CSSOM construction
-- [ ] Selector matching
+- [x] CSS parsing and CSSOM construction (via lexbor's css/style modules)
+- [x] Selector matching and cascade (via lexbor: specificity, `!important`, inline styles)
+- [ ] Use computed styles in our DOM and when rendering
 
 Stage 5 - Threads
 - [ ] Run http requests in own thread

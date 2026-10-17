@@ -102,3 +102,58 @@ test_node_data :: proc(t: ^testing.T) {
 	// a text node is not an element
 	testing.expect(t, element_from_node(lxb_dom_node_first_child_noi(link_node)) == nil, "text node is no element")
 }
+
+@(test)
+test_element_style :: proc(t: ^testing.T) {
+	doc := lxb_html_document_create()
+	defer lxb_html_document_destroy(doc)
+	testing.expect_value(t, lxb_style_init(doc), STATUS_OK)
+	defer lxb_style_destroy(doc)
+
+	html := `<html><head><style>
+		p { color: red; font-size: 12px }
+		.big { font-size: 20px }
+		#main { color: blue !important }
+	</style></head><body>
+		<p id="main" class="big" style="color: green">a</p>
+		<p>b</p>
+		<div>c</div>
+	</body></html>`
+	status := lxb_html_document_parse(doc, raw_data(transmute([]u8)html), len(html))
+	testing.expect_value(t, status, STATUS_OK)
+
+	body := lxb_html_document_body_element_noi(doc)
+	main_p := element_from_node(next_element(lxb_dom_node_first_child_noi(body)))
+	plain_p := element_from_node(next_element(lxb_dom_node_next_noi(cast(^Dom_Node)main_p)))
+	div := element_from_node(next_element(lxb_dom_node_next_noi(cast(^Dom_Node)plain_p)))
+
+	// !important beats the inline style, the class beats the type selector
+	expect_style(t, main_p, "color", "blue")
+	expect_style(t, main_p, "font-size", "20px")
+
+	// only the type selector matches
+	expect_style(t, plain_p, "color", "red")
+	expect_style(t, plain_p, "font-size", "12px")
+
+	// nothing declared for div
+	_, ok := element_style(div, "color")
+	testing.expect(t, !ok, "expected no color for div")
+}
+
+// Skips whitespace text nodes; returns the first element at or after node.
+@(private = "file")
+next_element :: proc(node: ^Dom_Node) -> ^Dom_Node {
+	n := node
+	for n != nil && lxb_dom_node_type_noi(n) != .Element {
+		n = lxb_dom_node_next_noi(n)
+	}
+	return n
+}
+
+@(private = "file")
+expect_style :: proc(t: ^testing.T, element: ^Dom_Element, property, expected: string, loc := #caller_location) {
+	value, ok := element_style(element, property)
+	defer delete(value)
+	testing.expect(t, ok, "expected property to be set", loc = loc)
+	testing.expect_value(t, value, expected, loc = loc)
+}

@@ -5,9 +5,12 @@ import "core:strings"
 when ODIN_OS == .Windows {
 	// built from the vendor/lexbor-src submodule by setup.ps1 with the dynamic CRT (/MD).
 	// Odin links the static CRT (libcmt) by default, so drop it – same trick as vendor:raylib.
-	@(extra_linker_flags = "/NODEFAULTLIB:libcmt")
+	// @(export) makes `lib` visible to the other files of the package (style.odin);
+	// a foreign import is file-scoped otherwise.
+	@(export, extra_linker_flags = "/NODEFAULTLIB:libcmt")
 	foreign import lib "../lexbor-src/build/Release/lexbor_static.lib"
 } else {
+	@(export)
 	foreign import lib "system:lexbor"
 }
 

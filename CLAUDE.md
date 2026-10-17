@@ -77,7 +77,7 @@ ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
 vendor/curl/            eigene Kopie der Odin-curl-Bindings (Package vendor_curl) + C-Header
 vendor/curl-src/        git-Submodul: curl-Quellcode (nur für den Windows-Build)
 vendor/lexbor-src/      git-Submodul: lexbor-Quellcode v3.0.1 (nur für den Windows-Build)
-vendor/lexbor/          minimale lexbor-Bindings + Test
+vendor/lexbor/          lexbor-Bindings + Tests (lexbor.odin: HTML/DOM, style.odin: CSS-Kaskade)
 assets/fonts/           Inter 18pt Regular (OFL-Lizenz)
 testdata/               lokale Fixtures für den Testmodus
 setup.ps1               Windows-Setup (curl und lexbor bauen)
@@ -132,7 +132,10 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - Node-Daten: opake `Dom_Element`/`Dom_Attr`; `element_from_node` castet nur Element-Nodes (sonst `nil`). Helper `element_name`, `element_attribute` (über `lxb_dom_element_attr_by_name`, weil `get_attribute` „fehlt“ und „ohne Wert“ nicht unterscheidet), `attr_name`/`attr_value`, `node_text_content`.
 - Speicher: Namen und Attributwerte zeigen in lexbors Speicher und gelten, solange das Dokument lebt. `node_text_content` liefert dagegen eine Kopie (Caller gibt frei), weil lexbor den Text separat allokiert und wir ihn sofort mit `lxb_dom_document_destroy_text_noi` freigeben.
 - Noch nicht in `main`/`browser` eingebunden.
-- Der eigene DOM-Baum ist im Package `dom`; `vendor/lexbor` wird nur von dort benutzt.
+- CSS ([vendor/lexbor/style.odin](vendor/lexbor/style.odin)): `lxb_style_init` vor dem Parsen, `lxb_style_destroy` vor `lxb_html_document_destroy`. Danach liest lexbor `<style>` und `style=""` selbst ein und macht die Kaskade (Selektoren, Spezifität, `!important`, Reihenfolge). `element_style(el, "color")` liefert den gewinnenden Wert als String (kopiert, Caller gibt frei) – nur Deklariertes, keine geerbten oder Default-Werte.
+- `Css_Rule_Declaration` bildet den **Anfang** von `lxb_css_rule_declaration_t` nach (`rule`, `type`, Wert-Pointer), damit `lxb_css_property_serialize` aufgerufen werden kann. Beim Update des Submoduls `css/rule.h` prüfen.
+- `foreign import lib` ist mit `@(export)` markiert, weil Foreign Imports sonst nur in ihrer Datei sichtbar sind.
+- Der eigene DOM-Baum ist im Package `dom`; `vendor/lexbor` wird nur von dort benutzt (CSS noch nicht).
 
 ## Code-Konventionen
 
@@ -170,6 +173,6 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 - Stage 1 HTTP-Client – erledigt
 - Stage 2 Fenster & UI – Fenster und Adressleiste stehen; offen: Schema-Ergänzung, Tabs, Navigation (zurück/vor/neu laden)
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
-- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, HTML wird als Text angezeigt; nächster Schritt: CSS parsen
+- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, HTML wird als Text angezeigt, CSS-Kaskade über lexbor gebunden; nächster Schritt: Styles in den eigenen DOM übernehmen und beim Rendern nutzen
 - Stage 5 Threads – HTTP in eigenen Thread, Ergebnis-Übergabe an die UI, Thread-Sicherheit des Clients
 - Stage 6 JavaScript – QuickJS anbinden
