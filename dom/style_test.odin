@@ -408,3 +408,22 @@ test_position_offsets :: proc(t: ^testing.T) {
 	p := find_element(doc.root, "p")
 	testing.expect_value(t, p.style.offset, AUTO_EDGES)
 }
+
+@(test)
+test_overflow :: proc(t: ^testing.T) {
+	doc, err := parse(`<html><head><style>
+		.a { overflow: hidden }
+		.b { overflow: auto clip }
+		.c { overflow-x: scroll }
+	</style></head><body><div class="a"></div><div class="b"></div><div class="c"></div><p></p></body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	body := find_element(doc.root, "body")
+	testing.expect_value(t, body.children[0].style.overflow, [2]Overflow{.Hidden, .Hidden})
+	testing.expect_value(t, body.children[1].style.overflow, [2]Overflow{.Hidden, .Clip})
+	testing.expect_value(t, body.children[2].style.overflow, [2]Overflow{.Hidden, .Visible})
+	testing.expect_value(t, body.children[3].style.overflow, [2]Overflow{.Visible, .Visible})
+}

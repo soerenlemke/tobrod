@@ -112,13 +112,19 @@ page_view_render :: proc(pv: ^PageView) {
 }
 
 // Draws boxes, images and runs; scroll_y is how far they are scrolled up.
+// Items of an overflow: hidden box are only drawn inside its clip rectangle
+// (raylib's scissor mode, switched only when the clip changes).
 @(private)
 draw_display_list :: proc(pv: ^PageView, boxes: []layout.Box, images: []layout.Image_Item, runs: []layout.Text_Run, scroll_y: f32) {
+	current: layout.Clip = 0
+	defer set_clip(pv, 0, scroll_y, &current) // back to the whole page view
+
 	for box in boxes {
 		top := box.y - scroll_y
 		if top + box.height < 0 || top > pv.rect.height {
 			continue
 		}
+		set_clip(pv, box.clip, scroll_y, &current)
 		x, y := pv.rect.x + box.x, pv.rect.y + top
 		if box.color[3] > 0 {
 			rl.DrawRectangleRec({x, y, box.width, box.height}, rl.Color(box.color))
@@ -141,6 +147,7 @@ draw_display_list :: proc(pv: ^PageView, boxes: []layout.Box, images: []layout.I
 		if top + image.height < 0 || top > pv.rect.height {
 			continue
 		}
+		set_clip(pv, image.clip, scroll_y, &current)
 		dest := rl.Rectangle{pv.rect.x + image.x, pv.rect.y + top, image.width, image.height}
 		if texture, ok := pv.images[image.src]; ok {
 			source := rl.Rectangle{0, 0, f32(texture.width), f32(texture.height)}
@@ -157,11 +164,31 @@ draw_display_list :: proc(pv: ^PageView, boxes: []layout.Box, images: []layout.I
 			continue
 		}
 
+		set_clip(pv, run.clip, scroll_y, &current)
 		text_c := strings.clone_to_cstring(run.text, context.temp_allocator)
 		pos := rl.Vector2{pv.rect.x + run.x, pv.rect.y + top}
 		color := rl.Color(run.color)
 		rl.DrawTextEx(font_for(run.bold), text_c, pos, run.font_size, 0, color)
 	}
+}
+
+// Limits drawing to the clip rectangle (and always to the page view).
+@(private)
+set_clip :: proc(pv: ^PageView, clip: layout.Clip, scroll_y: f32, current: ^layout.Clip) {
+	if clip == current^ {
+		return
+	}
+	current^ = clip
+	x0, y0 := pv.rect.x, pv.rect.y
+	x1, y1 := x0 + pv.rect.width, y0 + pv.rect.height
+	if r, ok := layout.clip_rect(pv.page_layout, clip); ok {
+		x0 = max(x0, pv.rect.x + r.x)
+		y0 = max(y0, pv.rect.y + r.y - scroll_y)
+		x1 = min(x1, pv.rect.x + r.x + r.width)
+		y1 = min(y1, pv.rect.y + r.y + r.height - scroll_y)
+	}
+	rl.EndScissorMode()
+	rl.BeginScissorMode(i32(x0), i32(y0), i32(max(x1 - x0, 0)), i32(max(y1 - y0, 0)))
 }
 
 // A light grey box with a border where an image will be.

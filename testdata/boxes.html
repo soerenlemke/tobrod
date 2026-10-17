@@ -17,6 +17,10 @@
     .min { min-height: 40px; background: #bbf7d0; margin-bottom: 8px }
     .max { max-height: 24px; background: #fecaca; margin-bottom: 8px }
     .spacer { height: 2em; border: 1px dashed #999 }
+    .clipped { overflow: hidden; height: 64px; border: 2px solid #6b7280; padding: 4px 8px; background: #f3f4f6; margin-top: 12px }
+    .clipped .wide { width: 150%; background: #fca5a5 }
+    .chip { overflow: hidden; width: 160px; background: #dbeafe; padding: 4px; margin-top: 8px }
+    .chip div { width: 400px; background: #93c5fd }
   </style>
 </head>
 <body>
@@ -47,6 +51,11 @@
     <div class="max">max-height: 24px – the text is longer than the box, so it overflows into the next one, like overflow: visible in a real browser.</div>
     <div class="spacer"></div>
     <p>below an empty div with height: 2em</p>
+    <div class="clipped">
+      overflow: hidden with height: 64px – this text is long enough to need a few lines, but only what fits into the padding box is drawn.
+      <div class="wide">and this block is 150% wide, it is cut off on the right</div>
+    </div>
+    <div class="chip"><div>a 400px wide block inside a 160px box with overflow: hidden</div></div>
   </div>
 </body>
 </html>

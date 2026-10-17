@@ -26,6 +26,7 @@ Text_Run :: struct {
 	color:     dom.Color,
 	link:      string, // href of the surrounding <a>, as written in the page; "" if none
 	hidden:    bool,   // visibility: hidden - takes up space, but is dropped in finish_line
+	clip:      Clip,
 }
 
 // A block box: background (alpha 0 = none) and borders. x/y/width/height is
@@ -35,6 +36,7 @@ Box :: struct {
 	color:               dom.Color,
 	border:              [dom.Edge]f32, // widths in px, 0 = none
 	border_color:        [dom.Edge]dom.Color,
+	clip:                Clip,
 }
 
 // An <img>: where it goes and how big it is. The ui draws the decoded image
@@ -44,6 +46,17 @@ Image_Item :: struct {
 	x, y, width, height: f32,
 	link:                string, // href of the surrounding <a>, "" if none
 	hidden:              bool,   // visibility: hidden
+	clip:                Clip,
+}
+
+// overflow: hidden cuts off what sticks out of a box. Every box, run and
+// image of such a box refers to the clip rectangle it must be drawn in:
+// 0 = none, otherwise Layout.clips[clip - 1] (in the coordinates of the
+// layer the item is in). Nested clips are already intersected.
+Clip :: distinct int
+
+Clip_Rect :: struct {
+	x, y, width, height: f32,
 }
 
 // Natural sizes of the images that are already loaded, by src as written in
@@ -62,6 +75,15 @@ Layout :: struct {
 	viewport:   [2]f32, // the size this layout was made for (width, height of the page view)
 	height:     f32,    // total content height
 	fixed:      Fixed_Layer, // position: fixed, drawn last and not scrolled
+	clips:      [dynamic]Clip_Rect, // see Clip
+}
+
+// The clip rectangle of an item, false if it is not clipped.
+clip_rect :: proc(l: ^Layout, clip: Clip) -> (Clip_Rect, bool) {
+	if clip == 0 {
+		return {}, false
+	}
+	return l.clips[clip - 1], true
 }
 
 // Elements with position: fixed stay where they are when the page scrolls.
@@ -98,6 +120,7 @@ build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text, image
 	l.runs.allocator = allocator
 	l.boxes.allocator = allocator
 	l.images.allocator = allocator
+	l.clips.allocator = allocator
 	l.background = PAGE_BACKGROUND
 
 	// the page margin is no special case anymore: it is the default margin of body
@@ -123,7 +146,7 @@ build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text, image
 	begin_containing_block(&b)
 	layout_node(&b, doc.root)
 	finish_line(&b)
-	b.last_box = {width = viewport.x, height = viewport.y}
+	b.last_box = {width = viewport.x, height = viewport.y, index = -1}
 	end_containing_block(&b)
 	draw_positioned_last(&b)
 	l.height = max(b.y + b.pending_margin, b.overflow)
@@ -144,16 +167,21 @@ destroy :: proc(l: ^Layout) {
 // Fixed elements are on top: they are checked first, in viewport coordinates
 // (scroll_y is how far the page is scrolled).
 link_at :: proc(l: ^Layout, x, y: f32, scroll_y: f32 = 0) -> (link: string, ok: bool) {
-	if link, ok = link_in(l.fixed.runs[:], l.fixed.images[:], x, y - scroll_y); ok {
+	if link, ok = link_in(l, l.fixed.runs[:], l.fixed.images[:], x, y - scroll_y); ok {
 		return
 	}
-	return link_in(l.runs[:], l.images[:], x, y)
+	return link_in(l, l.runs[:], l.images[:], x, y)
 }
 
 @(private)
-link_in :: proc(runs: []Text_Run, images: []Image_Item, x, y: f32) -> (link: string, ok: bool) {
+link_in :: proc(l: ^Layout, runs: []Text_Run, images: []Image_Item, x, y: f32) -> (link: string, ok: bool) {
+	// a clipped part of a link is not there
+	visible :: proc(l: ^Layout, clip: Clip, x, y: f32) -> bool {
+		r, clipped := clip_rect(l, clip)
+		return !clipped || x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height
+	}
 	for image in images {
-		if image.link != "" && x >= image.x && x <= image.x + image.width && y >= image.y && y <= image.y + image.height {
+		if image.link != "" && x >= image.x && x <= image.x + image.width && y >= image.y && y <= image.y + image.height && visible(l, image.clip, x, y) {
 			return image.link, true
 		}
 	}
@@ -163,7 +191,7 @@ link_in :: proc(runs: []Text_Run, images: []Image_Item, x, y: f32) -> (link: str
 		}
 		line_height := run.font_size * LINE_HEIGHT_FACTOR
 		top := run.y - (line_height - run.font_size) / 2
-		if x >= run.x && x <= run.x + run.width && y >= top && y <= top + line_height {
+		if x >= run.x && x <= run.x + run.width && y >= top && y <= top + line_height && visible(l, run.clip, x, y) {
 			return run.link, true
 		}
 	}
@@ -277,8 +305,17 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	// (defer is per block in Odin, so these are at proc level.)
 	offset := relative_offset(b, style)
 	moves_as_block := style.position == .Relative && (style.display != .Inline || style.float != .None) && !is_replaced_element(node.tag)
-	if moves_as_block && style.float == .None {
+	// overflow: hidden cuts off the content when the element is done: after a
+	// relative shift (this defer runs after the one below)
+	clips_x, clips_y := clips_overflow(style)
+	clips := (clips_x || clips_y) && !b.measuring && style.display != .Inline && !is_replaced_element(node.tag)
+	if (moves_as_block || clips) && style.float == .None {
 		finish_line(b) // the lines before belong to the parent
+	}
+	clipped := display_range_start(b)
+	defer if clips {
+		clipped = display_range_end(b, clipped)
+		clip_contents(b, clipped, clips_x, clips_y, offset if moves_as_block else {})
 	}
 	moved := display_range_start(b)
 	defer if moves_as_block {
@@ -453,9 +490,9 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	if !top.resolved {
 		top.y = b.y // no content and no padding: an empty box
 	}
-	b.last_box = {box_x, top.y, box_width, b.y - top.y, border}
+	b.last_box = {box_x, top.y, box_width, b.y - top.y, border, box_index}
 	if box_index >= 0 {
-		box := Box{box_x, top.y, box_width, b.y - top.y, box_background, border, {}}
+		box := Box{box_x, top.y, box_width, b.y - top.y, box_background, border, {}, 0}
 		for edge in dom.Edge {
 			box.border_color[edge] = dom.border_color(style.border[edge], style.color)
 		}
