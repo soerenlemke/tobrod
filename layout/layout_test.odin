@@ -605,3 +605,47 @@ test_position_absolute_percent_height :: proc(t: ^testing.T) {
 	image := l.images[0]
 	testing.expect_value(t, [4]f32{image.x, image.y, image.width, image.height}, [4]f32{0, 0, 300, 200})
 }
+
+@(test)
+test_position_fixed_layer :: proc(t: ^testing.T) {
+	// a header bar fixed to the top: in its own layer, the page doesn't make
+	// room for it and doesn't grow
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="position: fixed; top: 0; left: 0; right: 0; height: 30px; background: red">bar</div>
+		<div style="position: relative; margin-top: 100px">
+			<span style="position: fixed; bottom: 10px; right: 10px">ok</span>
+		</div>
+		<p style="margin: 0">text</p></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, len(l.boxes), 0)
+	testing.expect_value(t, runs_to_string(l), "text@0,102 16\n")
+	testing.expect_value(t, l.height, 120)
+
+	if len(l.fixed.boxes) != 1 || len(l.fixed.runs) != 2 do return
+	bar := l.fixed.boxes[0]
+	testing.expect_value(t, [4]f32{bar.x, bar.y, bar.width, bar.height}, [4]f32{0, 0, 400, 30})
+	testing.expect_value(t, l.fixed.runs[0].text, "bar")
+	// against the viewport (400 x 600), not the relative div
+	ok := l.fixed.runs[1]
+	testing.expect_value(t, [2]f32{ok.x, ok.y}, [2]f32{400 - 10 - 16, 600 - 10 - 20 + 2})
+}
+
+@(test)
+test_position_fixed_links :: proc(t: ^testing.T) {
+	// a fixed link stays clickable at the same place in the window, wherever
+	// the page is scrolled to; it covers the page link below it
+	doc, l := build_html(t, `<body style="margin: 0">
+		<a href="top" style="position: fixed; top: 0; left: 0">fixed</a>
+		<div style="height: 2000px"><a href="page">page</a></div></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	link, ok := link_at(l, 5, 5)
+	testing.expect(t, ok && link == "top", "fixed link over the page link")
+	link, ok = link_at(l, 5, 1005, 1000)
+	testing.expect(t, ok && link == "top", "fixed link after scrolling")
+	link, ok = link_at(l, 5, 5 + 1000, 0)
+	testing.expect(t, !ok, "nothing on the page there")
+}

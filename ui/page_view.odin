@@ -103,10 +103,19 @@ page_view_render :: proc(pv: ^PageView) {
 		return
 	}
 
-	// display list order: page background, boxes (parents first), text
+	// display list order: page background, boxes (parents first), images,
+	// text; then the same for the fixed elements, which don't scroll
 	rl.DrawRectangleRec(pv.rect, rl.Color(pv.page_layout.background))
-	for box in pv.page_layout.boxes {
-		top := box.y - pv.scroll_y
+	l := pv.page_layout
+	draw_display_list(pv, l.boxes[:], l.images[:], l.runs[:], pv.scroll_y)
+	draw_display_list(pv, l.fixed.boxes[:], l.fixed.images[:], l.fixed.runs[:], 0)
+}
+
+// Draws boxes, images and runs; scroll_y is how far they are scrolled up.
+@(private)
+draw_display_list :: proc(pv: ^PageView, boxes: []layout.Box, images: []layout.Image_Item, runs: []layout.Text_Run, scroll_y: f32) {
+	for box in boxes {
+		top := box.y - scroll_y
 		if top + box.height < 0 || top > pv.rect.height {
 			continue
 		}
@@ -127,8 +136,8 @@ page_view_render :: proc(pv: ^PageView) {
 	// while the page is loading. Once everything is loaded, an image without
 	// a texture failed (or has a format we can't decode, like WebP): like a
 	// browser, we leave its place empty instead of covering the page with grey.
-	for image in pv.page_layout.images {
-		top := image.y - pv.scroll_y
+	for image in images {
+		top := image.y - scroll_y
 		if top + image.height < 0 || top > pv.rect.height {
 			continue
 		}
@@ -141,9 +150,9 @@ page_view_render :: proc(pv: ^PageView) {
 		}
 	}
 
-	for run in pv.page_layout.runs {
+	for run in runs {
 		// skip what is outside the visible area
-		top := run.y - pv.scroll_y
+		top := run.y - scroll_y
 		if top + run.font_size < 0 || top > pv.rect.height {
 			continue
 		}
@@ -182,7 +191,7 @@ page_view_handle_mouse :: proc(ui: ^MainWindow, pv: ^PageView) {
 	// window coordinates -> page coordinates
 	x := mouse.x - pv.rect.x
 	y := mouse.y - pv.rect.y + pv.scroll_y
-	link, on_link := layout.link_at(pv.page_layout, x, y)
+	link, on_link := layout.link_at(pv.page_layout, x, y, pv.scroll_y)
 
 	rl.SetMouseCursor(.POINTING_HAND if on_link else .DEFAULT)
 

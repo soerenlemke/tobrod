@@ -61,6 +61,16 @@ Layout :: struct {
 	images:     [dynamic]Image_Item,
 	viewport:   [2]f32, // the size this layout was made for (width, height of the page view)
 	height:     f32,    // total content height
+	fixed:      Fixed_Layer, // position: fixed, drawn last and not scrolled
+}
+
+// Elements with position: fixed stay where they are when the page scrolls.
+// Their coordinates are relative to the top left of the viewport (the page
+// view), not the page; the ui draws them after everything else.
+Fixed_Layer :: struct {
+	boxes:  [dynamic]Box,
+	runs:   [dynamic]Text_Run,
+	images: [dynamic]Image_Item,
 }
 
 PAGE_BACKGROUND :: dom.Color{255, 255, 255, 255}
@@ -106,6 +116,7 @@ build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text, image
 	b.block_tops.allocator = allocator
 	b.positioned.allocator = allocator
 	b.containing.allocator = allocator
+	b.fixed_waiting.allocator = allocator
 
 	// the initial containing block: absolute elements without a positioned
 	// ancestor are placed against the first screen of the page
@@ -116,6 +127,7 @@ build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text, image
 	end_containing_block(&b)
 	draw_positioned_last(&b)
 	l.height = max(b.y + b.pending_margin, b.overflow)
+	place_fixed(&b) // they don't make the page taller
 	for f in b.floats {
 		l.height = max(l.height, f.y + f.height) // the page grows with its floats
 	}
@@ -129,13 +141,23 @@ destroy :: proc(l: ^Layout) {
 
 // The link under a point of the page (layout coordinates), "" if there is none.
 // The whole line box of a run counts, so clicks between the lines still hit.
-link_at :: proc(l: ^Layout, x, y: f32) -> (link: string, ok: bool) {
-	for image in l.images {
+// Fixed elements are on top: they are checked first, in viewport coordinates
+// (scroll_y is how far the page is scrolled).
+link_at :: proc(l: ^Layout, x, y: f32, scroll_y: f32 = 0) -> (link: string, ok: bool) {
+	if link, ok = link_in(l.fixed.runs[:], l.fixed.images[:], x, y - scroll_y); ok {
+		return
+	}
+	return link_in(l.runs[:], l.images[:], x, y)
+}
+
+@(private)
+link_in :: proc(runs: []Text_Run, images: []Image_Item, x, y: f32) -> (link: string, ok: bool) {
+	for image in images {
 		if image.link != "" && x >= image.x && x <= image.x + image.width && y >= image.y && y <= image.y + image.height {
 			return image.link, true
 		}
 	}
-	for run in l.runs {
+	for run in runs {
 		if run.link == "" {
 			continue
 		}
@@ -179,6 +201,7 @@ Builder :: struct {
 	offset:         [2]f32, // of the open position: relative inline elements, see layout_element
 	positioned:     [dynamic][2]int, // box ranges [first, end) of positioned elements, drawn last
 	containing:     [dynamic]Containing_Block, // open positioned elements, see position.odin
+	fixed_waiting:  [dynamic]Waiting_Absolute, // position: fixed, placed at the end
 	last_box:       Placed_Box, // border box of the block (or table, flex container) laid out last
 	overflow:       f32,  // bottom of absolute elements: the page grows with them
 }
@@ -228,13 +251,14 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 		return
 	}
 	// out of the normal flow: absolute elements are placed when their
-	// containing block is done (position.odin); fixed ones are not supported
-	// yet. b.unfloat is the element being laid out as its own root.
+	// containing block is done, fixed ones at the very end (position.odin).
+	// b.unfloat is the element being laid out as its own root.
 	if style.position == .Absolute && node != b.unfloat {
 		register_absolute(b, node)
 		return
 	}
-	if style.position == .Fixed {
+	if style.position == .Fixed && node != b.unfloat {
+		register_fixed(b, node)
 		return
 	}
 	if style.float != .None && node != b.unfloat {
@@ -291,8 +315,8 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	// a positioned element is the containing block of the absolute elements
 	// inside it; they are placed when it is done (before a relative shift,
 	// which then moves them along)
-	is_container := style.position != .Static && !b.measuring &&
-		(style.display != .Inline || style.position == .Absolute)
+	out_of_flow := style.position == .Absolute || style.position == .Fixed
+	is_container := style.position != .Static && !b.measuring && (style.display != .Inline || out_of_flow)
 	if is_container {
 		begin_containing_block(b)
 	}
@@ -310,8 +334,8 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	}
 
 	// (table rows and cells outside of a table are laid out like blocks;
-	// absolute elements are blocks, too)
-	if style.display == .Inline && style.position != .Absolute {
+	// absolute and fixed elements are blocks, too)
+	if style.display == .Inline && !out_of_flow {
 		for child in node.children {
 			layout_node(b, child)
 		}

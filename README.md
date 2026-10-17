@@ -20,7 +20,7 @@ It is a toy: it renders many real pages surprisingly well (try a Wikipedia artic
 - **Navigation**: address bar, clickable links, back / forward / reload with a session history (also Alt+←/→, F5, Ctrl+R, Escape to stop)
 - **HTML**: parsed by lexbor into tobrod's own DOM tree; plain text documents are shown like in Chrome
 - **CSS**: `<style>`, `style=""` and external stylesheets, `@media` queries, custom properties (`var()`), inheritance and the user agent defaults
-- **Layout**: block and inline layout with margin collapsing, the box model (margin, padding, borders, width / max-width, height / min-height / max-height, `margin: auto`), `position: relative` and `absolute`, backgrounds, `text-align`, lists, images, tables, floats and flexbox
+- **Layout**: block and inline layout with margin collapsing, the box model (margin, padding, borders, width / max-width, height / min-height / max-height, `margin: auto`), `position: relative`, `absolute` and `fixed`, backgrounds, `text-align`, lists, images, tables, floats and flexbox
 - **Rendering**: text in regular and bold [Inter](https://github.com/rsms/inter) with sizes and colors, boxes, borders, images (PNG, JPG, GIF, BMP, QOI)
 
 See the [roadmap](#roadmap) for the details and [known limitations](#known-limitations) for what's missing.
@@ -114,7 +114,7 @@ The detailed developer notes (in German) are in [CLAUDE.md](CLAUDE.md).
 - no JavaScript yet
 - no SVG or WebP images (their place stays empty, like a broken image; no `alt` text yet), no video playback (the poster image is shown)
 - fonts: only Latin characters (Latin-1 and a few more); other scripts show `?`
-- layout: no CSS grid, no percentage heights in the flow, no `z-index`, `position: fixed/sticky` not supported (fixed elements are hidden), no `rowspan`
+- layout: no CSS grid, no percentage heights in the flow, no `z-index`, `position: sticky` behaves like `static`, no `rowspan`
 - `@media` queries are evaluated once, for the window size at load time
 - no forms, no text selection, no tabs, no cookies
 
@@ -156,7 +156,8 @@ Stage 4 — HTML & CSS
 - [ ] CSS grid
 - [x] `position: relative` (with `top` / `right` / `bottom` / `left` / `inset`)
 - [x] `position: absolute` (containing block, static position, stretching, shrink-to-fit, hidden by an empty `clip`)
-- [ ] `position: fixed` and `sticky`
+- [x] `position: fixed` (own layer that doesn't scroll)
+- [ ] `position: sticky`
 - [ ] SVG
 
 Stage 5 — Threads
