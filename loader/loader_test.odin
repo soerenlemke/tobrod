@@ -87,6 +87,10 @@ handle_connection :: proc(client: net.TCP_Socket) {
 		respond(client, "200 OK", "text/plain", "just text")
 	case "/redirect":
 		net.send_tcp(client, transmute([]u8)string("HTTP/1.1 302 Found\r\nLocation: /page.html\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+	case "/styled.html":
+		respond(client, "200 OK", "text/html", `<html><head><link rel="stylesheet" href="style.css"></head><body><p>x</p></body></html>`)
+	case "/style.css":
+		respond(client, "200 OK", "text/css", "p { color: red }")
 	case "/image.bin":
 		respond(client, "200 OK", "image/png", "PNG fake bytes")
 	case "/slow":
@@ -306,4 +310,38 @@ test_new_page_drops_queued_resources :: proc(t: ^testing.T) {
 
 	_, more := wait_for_result(&l, 500 * time.Millisecond)
 	testing.expect(t, !more, "the old resources must not arrive")
+}
+
+@(test)
+test_external_stylesheet :: proc(t: ^testing.T) {
+	s: Test_Server
+	l: Loader
+	setup(t, &s, &l)
+	defer server_stop(&s)
+	defer destroy(&l)
+
+	load(&l, fmt.tprintf("%s/styled.html", s.base_url))
+	result, ok := wait_for_result(&l, 5 * time.Second)
+	testing.expect(t, ok, "expected the page")
+	defer result_destroy(&result)
+	if result.document == nil {
+		testing.fail_now(t, "expected a document")
+	}
+
+	// the stylesheet was fetched (relative to the page) before the page was finished
+	p := find_tag(result.document.root, "p")
+	testing.expect(t, p != nil && p.style.color == dom.Color{255, 0, 0, 255}, "expected the color from style.css")
+}
+
+@(private = "file")
+find_tag :: proc(node: ^dom.Node, tag: string) -> ^dom.Node {
+	for child in node.children {
+		if child.kind == .Element && child.tag == tag {
+			return child
+		}
+		if found := find_tag(child, tag); found != nil {
+			return found
+		}
+	}
+	return nil
 }

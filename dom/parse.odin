@@ -5,9 +5,20 @@ import "core:mem/virtual"
 import "core:strings"
 import lxb "../vendor/lexbor"
 
+// Fetches an external stylesheet for parse. href is written like in the page
+// (relative), resolving and loading it is up to the caller, so dom stays free
+// of networking. The returned text only has to live until the call returns.
+Stylesheet_Loader :: struct {
+	load: proc(ctx: rawptr, href: string) -> (css: string, ok: bool),
+	ctx:  rawptr,
+}
+
 // Parses html with lexbor and copies the result into our own tree.
+// With a stylesheet loader, <link rel="stylesheet"> files are fetched and take
+// part in the cascade; like in a browser they block until they are there
+// ("render-blocking"), so the page never shows up unstyled first.
 // The lexbor document is destroyed before returning, so nothing points into it.
-parse :: proc(html: string) -> (doc: ^Document, err: Maybe(Parse_Error)) {
+parse :: proc(html: string, stylesheets: Stylesheet_Loader = {}) -> (doc: ^Document, err: Maybe(Parse_Error)) {
 	lxb_doc := lxb.lxb_html_document_create()
 	if lxb_doc == nil {
 		return nil, Parse_Error{"lexbor: could not create document"}
@@ -24,6 +35,43 @@ parse :: proc(html: string) -> (doc: ^Document, err: Maybe(Parse_Error)) {
 
 	if status := lxb.lxb_html_document_parse(lxb_doc, raw_data(html), uint(len(html))); status != lxb.STATUS_OK {
 		return nil, Parse_Error{"lexbor: parsing failed"}
+	}
+
+	// external stylesheets, attached before the styles are read in copy_children
+	sheets: [dynamic]^lxb.Css_Stylesheet
+	css_parser: ^lxb.Css_Parser
+	defer {
+		// runs first (defers are reversed), like in lexbor's own example
+		for sheet in sheets {
+			lxb.lxb_css_stylesheet_destroy(sheet, true)
+		}
+		delete(sheets)
+		if css_parser != nil {
+			lxb.lxb_css_parser_destroy(css_parser, true)
+		}
+	}
+	if stylesheets.load != nil {
+		hrefs := make([dynamic]string, context.temp_allocator)
+		find_stylesheet_links(lxb.document_node(lxb_doc), &hrefs)
+		for href in hrefs {
+			css, ok := stylesheets.load(stylesheets.ctx, href)
+			if !ok {
+				continue // a missing stylesheet doesn't stop the page
+			}
+			if css_parser == nil {
+				css_parser = lxb.lxb_css_parser_create()
+				if lxb.lxb_css_parser_init(css_parser, nil) != lxb.STATUS_OK {
+					break
+				}
+			}
+			sheet := lxb.lxb_css_stylesheet_create(nil)
+			if lxb.lxb_css_stylesheet_parse(sheet, css_parser, raw_data(css), uint(len(css))) != lxb.STATUS_OK {
+				lxb.lxb_css_stylesheet_destroy(sheet, true)
+				continue
+			}
+			lxb.lxb_html_document_stylesheet_attach_noi(lxb_doc, sheet)
+			append(&sheets, sheet)
+		}
 	}
 
 	doc = new(Document)
@@ -109,4 +157,41 @@ compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style) -> 
 		}
 	}
 	return style
+}
+
+// Collects the hrefs of <link rel="stylesheet"> in document order. Print-only
+// stylesheets are skipped. (Other media queries are not evaluated yet.)
+@(private)
+find_stylesheet_links :: proc(node: ^lxb.Dom_Node, hrefs: ^[dynamic]string) {
+	for child := lxb.lxb_dom_node_first_child_noi(node); child != nil; child = lxb.lxb_dom_node_next_noi(child) {
+		if element := lxb.element_from_node(child); element != nil {
+			if lxb.element_name(element) == "link" && is_stylesheet_link(element) {
+				if href, ok := lxb.element_attribute(element, "href"); ok && href != "" {
+					append(hrefs, href)
+				}
+			}
+			find_stylesheet_links(child, hrefs)
+		}
+	}
+}
+
+@(private)
+is_stylesheet_link :: proc(element: ^lxb.Dom_Element) -> bool {
+	rel := lxb.element_attribute(element, "rel") or_return
+	// rel is a space separated list, e.g. "alternate stylesheet" (which we skip)
+	is_stylesheet, is_alternate := false, false
+	rest := rel
+	for word in strings.fields_iterator(&rest) {
+		switch strings.to_lower(word, context.temp_allocator) {
+		case "stylesheet":
+			is_stylesheet = true
+		case "alternate":
+			is_alternate = true
+		}
+	}
+	if !is_stylesheet || is_alternate {
+		return false
+	}
+	media, has_media := lxb.element_attribute(element, "media")
+	return !has_media || strings.to_lower(strings.trim_space(media), context.temp_allocator) != "print"
 }

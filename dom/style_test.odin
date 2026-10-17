@@ -253,3 +253,52 @@ test_viewport_units :: proc(t: ^testing.T) {
 	length, _ = parse_length("10vw", false)
 	testing.expect_value(t, resolve_length(length, 16, 0, {1000, 600}), 100)
 }
+
+@(test)
+test_external_stylesheets :: proc(t: ^testing.T) {
+	html := `<html><head>
+		<link rel="stylesheet" href="a.css">
+		<link rel="stylesheet" href="print.css" media="print">
+		<link rel="alternate stylesheet" href="alt.css">
+		<link rel="icon" href="x.ico">
+		<link rel="stylesheet" href="missing.css">
+		<style>p { font-weight: bold }</style>
+	</head><body><p>x</p><div>y</div></body></html>`
+
+	Fake :: struct {
+		requested: [dynamic]string,
+	}
+	fake: Fake
+	defer delete(fake.requested)
+
+	load := proc(ctx: rawptr, href: string) -> (css: string, ok: bool) {
+		fake := cast(^Fake)ctx
+		append(&fake.requested, href)
+		switch href {
+		case "a.css":
+			return "p { color: red } div { display: none }", true
+		case "print.css", "alt.css":
+			return "p { color: blue }", true
+		}
+		return "", false // missing.css
+	}
+
+	doc, err := parse(html, {load = load, ctx = &fake})
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	// only real, non-print stylesheets are requested, in document order
+	testing.expect_value(t, len(fake.requested), 2)
+	if len(fake.requested) == 2 {
+		testing.expect_value(t, fake.requested[0], "a.css")
+		testing.expect_value(t, fake.requested[1], "missing.css")
+	}
+
+	p := find_element(doc.root, "p")
+	testing.expect_value(t, p.style.color, Color{255, 0, 0, 255})  // from a.css
+	testing.expect_value(t, p.style.font_weight, 700)               // <style> still works
+	div := find_element(doc.root, "div")
+	testing.expect_value(t, div.style.display, Display.None)
+}

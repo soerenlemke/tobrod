@@ -71,3 +71,28 @@ write_to_builder :: proc "c" (data: [^]u8, len: uint, ctx: rawptr) -> Status {
 	strings.write_string(b, strings.string_from_ptr(data, int(len)))
 	return STATUS_OK
 }
+
+// Stylesheets from outside the HTML (<link rel="stylesheet">): we parse the CSS
+// text ourselves and attach the result to the document; from then on its
+// rules take part in the cascade like those of <style> elements.
+
+// Opaque (C: lxb_css_parser_t, lxb_css_stylesheet_t)
+Css_Parser :: struct {}
+Css_Stylesheet :: struct {}
+
+@(default_calling_convention = "c")
+foreign lib {
+	// from lexbor/css/parser.h; tokenizer nil = create its own
+	lxb_css_parser_create :: proc() -> ^Css_Parser ---
+	lxb_css_parser_init :: proc(parser: ^Css_Parser, tokenizer: rawptr) -> Status ---
+	lxb_css_parser_destroy :: proc(parser: ^Css_Parser, self_destroy: bool) -> ^Css_Parser ---
+
+	// from lexbor/css/stylesheet.h; memory nil = create its own
+	lxb_css_stylesheet_create :: proc(memory: rawptr) -> ^Css_Stylesheet ---
+	lxb_css_stylesheet_parse :: proc(sst: ^Css_Stylesheet, parser: ^Css_Parser, data: [^]u8, length: uint) -> Status ---
+	lxb_css_stylesheet_destroy :: proc(sst: ^Css_Stylesheet, destroy_memory: bool) -> ^Css_Stylesheet ---
+
+	// from lexbor/style/html/interfaces/document.h; the stylesheet must stay
+	// alive as long as the document uses it
+	lxb_html_document_stylesheet_attach_noi :: proc(document: ^Html_Document, sst: ^Css_Stylesheet) -> Status ---
+}
