@@ -388,3 +388,23 @@ test_flex_properties :: proc(t: ^testing.T) {
 	testing.expect(t, c.style.flex.grow == 0 && c.style.flex.shrink == 0, "flex: none")
 	testing.expect_value(t, c.style.float, Float.None) // floats don't apply to flex items
 }
+
+@(test)
+test_position_offsets :: proc(t: ^testing.T) {
+	doc, err := parse(`<html><head><style>
+		.a { position: relative; top: 1em; left: -5px }
+		.b { inset: 1px 2px }
+	</style></head><body><div class="a">x</div><div class="b">y</div><p>z</p></body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	a := find_element(doc.root, "div")
+	testing.expect_value(t, a.style.position, Position.Relative)
+	testing.expect_value(t, a.style.offset, edges(em(1), AUTO, AUTO, px(-5)))
+	b := find_element(doc.root, "body").children[1]
+	testing.expect_value(t, b.style.offset, edges(px(1), px(2), px(1), px(2)))
+	p := find_element(doc.root, "p")
+	testing.expect_value(t, p.style.offset, AUTO_EDGES)
+}
