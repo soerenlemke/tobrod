@@ -18,12 +18,13 @@ Ordered by how much they change what a page looks like, weighed against how big 
 
 ### Bugs
 
-1. ~~**`<link media="...">` is not evaluated.**~~ Fixed: the `media` attribute of `<link>` and `<style>` is evaluated like an `@media` block. The Python docs used to load their `(prefers-color-scheme: dark)` stylesheet and turn dark.
+- ~~**`<link media="...">` is not evaluated.**~~ Fixed: the `media` attribute of `<link>` and `<style>` is evaluated like an `@media` block. The Python docs used to load their `(prefers-color-scheme: dark)` stylesheet and turn dark.
+- **`@import` in stylesheets is not followed.** The Python docs load most of their rules with `@import url("basic.css")`, so their navigation bar becomes a bulleted list.
 
 ### Text
 
 2. ~~**`text-decoration`** (9 / 4260)~~: done. Underline, overline and line-through, propagated to the text inside, the UA underline of links.
-3. **`line-height`** (9 / 1980): every line is 1.25 × the font size. Pages that set their own line height look too tight or too loose.
+3. ~~**`line-height`** (9 / 1980)~~: done (numbers, lengths, percentages, inherited like in CSS). Not yet from the `font` shorthand.
 4. **`font-style: italic`** (5 / 209) and **`font-family`** (9 / 1650): we have one font, Inter, in regular and bold. Italic, a serif and a monospace font would each need another font file (OFL, like Inter). Web fonts (`@font-face`) are a bigger step after that.
 5. **`white-space`** (8 / 1202): `nowrap` and `pre` outside of `<pre>`; navigation bars and labels wrap where they shouldn't.
 6. **`text-transform`** (6 / 289), **`letter-spacing`** (4 / 296), **`word-break`**/**`overflow-wrap`** (5 / 196): smaller, easy steps.

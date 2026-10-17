@@ -11,6 +11,7 @@ Style :: struct {
 	color:       Color,
 	font_size:   f32, // px
 	font_weight: int, // 1..1000, 400 = normal, 700 = bold
+	line_height: Line_Height, // inherited, see text_style.odin
 	text_align:  Text_Align,
 	visibility:  Visibility, // inherited, but a child can be visible again
 	list_style:  List_Style, // inherited from ul/ol to the li
@@ -147,6 +148,7 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		color       = parent.color,
 		font_size   = parent.font_size,
 		font_weight = parent.font_weight,
+		line_height = parent.line_height,
 		text_align  = parent.text_align,
 		visibility  = parent.visibility,
 		list_style  = parent.list_style,
@@ -367,6 +369,15 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 		}
 	case "text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color":
 		apply_text_declaration(style, property, value)
+	case "line-height":
+		switch value {
+		case "inherit", "unset":
+			style.line_height = parent.line_height
+		case "initial":
+			style.line_height = {}
+		case:
+			style.line_height = parse_line_height(value, style.font_size) or_else style.line_height
+		}
 	case "flex", "flex-direction", "flex-wrap", "flex-flow", "justify-content", "align-items", "align-self",
 	     "gap", "row-gap", "column-gap", "flex-grow", "flex-shrink", "flex-basis":
 		apply_flex_declaration(style, property, value)
@@ -382,7 +393,7 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 // out wrong. Good enough for now.)
 // font-size comes before the box properties, because em in margins refers to it.
 STYLE_PROPERTIES :: [?]string {
-	"display", "color", "font-size", "font-weight", "text-align",
+	"display", "color", "font-size", "font-weight", "line-height", "text-align",
 	"visibility", "position", "inset", "top", "right", "bottom", "left", "clip",
 	"text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color", "overflow", "overflow-x", "overflow-y", "float", "clear", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",

@@ -806,3 +806,27 @@ test_text_decoration_spaces :: proc(t: ^testing.T) {
 	testing.expect_value(t, l.runs[2].text, "b")
 	testing.expect_value(t, l.runs[2].decoration_lead, 8)
 }
+
+@(test)
+test_line_height_layout :: proc(t: ^testing.T) {
+	// 30px lines: the 16px text sits in the middle of each
+	doc, l := build_html(t, `<body style="margin: 0; line-height: 30px">aaaa bbbb</body>`, 40)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, runs_to_string(l), "aaaa@0,7 16\nbbbb@0,37 16\n")
+	testing.expect_value(t, l.height, 60)
+}
+
+@(test)
+test_line_height_inline_background :: proc(t: ^testing.T) {
+	// a tall line doesn't make the background taller: it covers the font's
+	// content area (20px) around the text
+	doc, l := build_html(t, `<body style="margin: 0; line-height: 40px">a <span style="background: red">b</span></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.boxes) != 1 || len(l.runs) != 2 do return
+	testing.expect_value(t, l.runs[1].y, 12)
+	testing.expect_value(t, box_rect(l.boxes[0]), [4]f32{16, 10, 8, 20})
+}

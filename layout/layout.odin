@@ -29,6 +29,7 @@ Text_Run :: struct {
 	clip:      Clip,
 	decoration: dom.Decoration, // underline etc., drawn by the ui with the text
 	decoration_lead: f32,       // the lines also cover this much space before the run
+	line_height: f32,           // of its text (line-height in px); the text sits in the middle
 }
 
 // A block box: background (alpha 0 = none) and borders. x/y/width/height is
@@ -101,7 +102,9 @@ PAGE_BACKGROUND :: dom.Color{255, 255, 255, 255}
 
 Measure_Text :: #type proc(text: string, font_size: f32, bold: bool) -> f32
 
-LINE_HEIGHT_FACTOR :: f32(1.25) // line height relative to the font size ("normal")
+// The content area of text, what an inline background covers: about the
+// height of the font's glyphs, independent of line-height.
+CONTENT_AREA_FACTOR :: dom.NORMAL_LINE_HEIGHT
 IMAGE_PLACEHOLDER_SIZE :: f32(16) // for an image whose size is not known (yet)
 // Other replaced elements (video, iframe, canvas, ...) are 300x150 by default,
 // like in every browser.
@@ -192,9 +195,8 @@ link_in :: proc(l: ^Layout, runs: []Text_Run, images: []Image_Item, x, y: f32) -
 		if run.link == "" {
 			continue
 		}
-		line_height := run.font_size * LINE_HEIGHT_FACTOR
-		top := run.y - (line_height - run.font_size) / 2
-		if x >= run.x && x <= run.x + run.width && y >= top && y <= top + line_height && visible(l, run.clip, x, y) {
+		top := run.y - (run.line_height - run.font_size) / 2
+		if x >= run.x && x <= run.x + run.width && y >= top && y <= top + run.line_height && visible(l, run.clip, x, y) {
 			return run.link, true
 		}
 	}
@@ -639,7 +641,7 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 		space_width = 0
 	}
 	if line_empty(b) {
-		line_height := style.font_size * LINE_HEIGHT_FACTOR
+		line_height := dom.line_height_px(style)
 		start_line(b, line_height)
 		fit_line(b, inline_left + width, line_height) // below a float if it doesn't fit next to it
 		space_width = 0
@@ -671,6 +673,7 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 		link      = b.link,
 		hidden    = style.visibility == .Hidden,
 		decoration = style.decoration,
+		line_height = dom.line_height_px(style),
 		// a space that is itself decorated (inside the same link) is drawn
 		// with the line, like "with a" -> "bold" in <a>with a <b>bold</b></a>
 		decoration_lead = only_space if b.pending_space && b.space_style.decoration == style.decoration else 0,
@@ -684,7 +687,7 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 @(private)
 place_spaces :: proc(b: ^Builder, spaces: string, style: dom.Style) {
 	if line_empty(b) {
-		start_line(b, style.font_size * LINE_HEIGHT_FACTOR)
+		start_line(b, dom.line_height_px(style))
 	}
 	b.x += b.measure(spaces, style.font_size, style.font_weight >= BOLD_WEIGHT)
 	b.pending_space = false
@@ -724,6 +727,7 @@ place_marker :: proc(b: ^Builder, marker: Pending_Marker) {
 		text      = marker.text,
 		x         = marker.right - gap - width,
 		width     = width,
+		line_height = dom.line_height_px(style),
 		font_size = style.font_size,
 		bold      = bold,
 		color     = style.color,
@@ -735,8 +739,8 @@ place_marker :: proc(b: ^Builder, marker: Pending_Marker) {
 @(private)
 line_break :: proc(b: ^Builder, style: dom.Style) {
 	if line_empty(b) {
-		start_line(b, style.font_size * LINE_HEIGHT_FACTOR)
-		b.y += style.font_size * LINE_HEIGHT_FACTOR
+		start_line(b, dom.line_height_px(style))
+		b.y += dom.line_height_px(style)
 		b.x = b.left
 		return
 	}
@@ -783,7 +787,7 @@ finish_line :: proc(b: ^Builder) {
 	// as high as the largest font or image on it
 	line_height: f32 = 0
 	for run in b.line {
-		line_height = max(line_height, run.font_size * LINE_HEIGHT_FACTOR)
+		line_height = max(line_height, run.line_height)
 	}
 	for image in b.line_images {
 		line_height = max(line_height, image.height)
@@ -819,7 +823,7 @@ finish_line :: proc(b: ^Builder) {
 
 	for &run in b.line {
 		// bottom-align smaller text, centered in its own line box
-		own_height := run.font_size * LINE_HEIGHT_FACTOR
+		own_height := run.line_height
 		run.y += b.y + (line_height - own_height) + (own_height - run.font_size) / 2
 		b.extent = max(b.extent, run.x + run.width)
 		if !run.hidden {

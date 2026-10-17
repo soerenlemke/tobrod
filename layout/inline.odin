@@ -9,8 +9,9 @@ import "../dom"
 // on: its runs and images are next to each other in the line, so a fragment
 // only remembers where they start and end. The left border belongs to the
 // first fragment, the right one to the last (box-decoration-break: slice).
-// Vertically the box covers the line box of the element's font plus padding
-// and border, which don't make the line higher - like in CSS.
+// Vertically the box covers the content area of the element's font (not its
+// line-height) plus padding and border, which don't make the line higher -
+// like in CSS.
 
 @(private)
 Inline_Fragment :: struct {
@@ -133,14 +134,17 @@ place_inline_boxes :: proc(b: ^Builder, line_top, line_height: f32) {
 			continue
 		}
 
-		// the line box of the element's font, at the bottom of the line like its text
-		own := style.font_size * LINE_HEIGHT_FACTOR
-		top := line_top + line_height - own - f.padding[.Top] - border[.Top]
+		// the content area of the element's font around its text, which sits
+		// in the middle of the element's line box at the bottom of the line
+		own := dom.line_height_px(style)
+		text_top := line_top + line_height - own + (own - style.font_size) / 2
+		content := style.font_size * CONTENT_AREA_FACTOR
+		top := text_top - (content - style.font_size) / 2 - f.padding[.Top] - border[.Top]
 		box := Box {
 			x      = left,
 			y      = top + f.offset.y,
 			width  = right - left,
-			height = own + f.padding[.Top] + f.padding[.Bottom] + border[.Top] + border[.Bottom],
+			height = content + f.padding[.Top] + f.padding[.Bottom] + border[.Top] + border[.Bottom],
 			color  = style.background,
 			border = border,
 		}

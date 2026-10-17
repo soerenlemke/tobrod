@@ -166,7 +166,7 @@ clipped_away :: proc(b: ^Builder, style: dom.Style) -> bool {
 @(private)
 current_line_height :: proc(b: ^Builder) -> (height: f32) {
 	for run in b.line {
-		height = max(height, run.font_size * LINE_HEIGHT_FACTOR)
+		height = max(height, run.line_height)
 	}
 	for image in b.line_images {
 		height = max(height, image.height)
