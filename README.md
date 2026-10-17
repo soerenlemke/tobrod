@@ -53,6 +53,7 @@ Stage 4 — HTML & CSS Parsing
    - [x] traverse DOM nodes (first_child, next sibling)
    - [x] read node/element data (tag name, text content, attributes)
 - [x] Build a DOM tree from parsed HTML
+- [x] Show HTML pages as plain text (hidden elements, whitespace collapsing, block line breaks)
 - [ ] CSS parsing and CSSOM construction
 - [ ] Selector matching
 

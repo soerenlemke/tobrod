@@ -50,3 +50,26 @@ test_parent_and_attributes :: proc(t: ^testing.T) {
 	_, title_ok := attribute(a, "title")
 	testing.expect(t, !title_ok, "expected title to be missing")
 }
+
+@(test)
+test_display_text :: proc(t: ^testing.T) {
+	doc, err := parse(`<html><head><title>T</title><style>p{}</style></head><body>
+  <h1>Title</h1>
+  <p>Some   <b>bold</b>
+     text.<br>Next line</p>
+  <script>var x = 1;</script>
+  <ul><li>one</li><li>two</li></ul>
+  <pre>a  b
+c</pre>
+  <div>end</div>
+</body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	text := to_display_text(doc)
+	defer delete(text)
+	expected := "Title\n\nSome bold text.\nNext line\n\n• one\n• two\n\na  b\nc\n\nend"
+	testing.expect_value(t, text, expected)
+}

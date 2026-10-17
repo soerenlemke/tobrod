@@ -21,6 +21,7 @@ odin build .               # nur bauen
 odin check .               # nur Typecheck, schnell
 odin test vendor/lexbor    # lexbor-Bindings
 odin test dom              # eigener DOM-Baum
+odin test http             # Header-Parsing
 ```
 
 **Immer aus dem Repo-Root starten**: Der Font wird über den relativen Pfad `assets/fonts/Inter_18pt-Regular.ttf` geladen ([ui/main_window.odin](ui/main_window.odin)).
@@ -60,10 +61,12 @@ odin build . && mkdir -p screenshots
 main.odin               Einstiegspunkt: CLI-Optionen (--url, --screenshot) → browser.init → register_callbacks → navigate → run
 browser/browser.odin    Package browser: verbindet UI und HTTP-Client (Orchestrierung)
 http/client.odin        Package http: synchroner GET über libcurl easy-API
+http/header.odin        header_value: Header aus der rohen Antwort lesen
 dom/                    Package dom: eigener DOM-Baum (Parsen über lexbor, dann umkopiert)
   dom.odin                Node, Document, destroy, attribute
   parse.odin              parse: lexbor-Baum → eigener Baum
   print.odin              tree_to_string (Debug/Tests)
+  text.odin               to_display_text: DOM → lesbarer Text für die PageView
 ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
   main_window.odin        MainWindow, init/destroy, Haupt-Loop (run)
   address_bar.odin        Adressleiste: Eingabe, Fokus, Enter → Callback
@@ -95,16 +98,17 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
    - Mausrad → `page_view_handle_scroll`
    - `BeginDrawing` → `page_view_render`, dann `address_bar_render` (Adressleiste liegt oben drüber) → `EndDrawing`
    - `free_all(context.temp_allocator)` am Frame-Ende
-5. Enter in der Adressleiste → Callback → `http.get` (blockierend) → `page_view.content = response.body` bzw. Fehlertext.
+5. Enter in der Adressleiste → Callback → `http.get` (blockierend). Bei `Content-Type: text/html` → `dom.parse` → `dom.to_display_text` → `page_view_set_content`, sonst der rohe Body bzw. Fehlertext.
 
 ### Abhängigkeitsrichtung
 
-`main` → `browser` → (`ui`, `http`); `http` → `vendor/curl`; `dom` → `vendor/lexbor` (noch von niemandem importiert). `ui` kennt weder `browser` noch `http`. Diese Richtung beibehalten; neue Kommunikation von UI nach oben über Callbacks mit `rawptr`-Context.
+`main` → `browser` → (`ui`, `http`); `http` → `vendor/curl`; `browser` → `dom` → `vendor/lexbor`. `ui` kennt weder `browser` noch `http`. Diese Richtung beibehalten; neue Kommunikation von UI nach oben über Callbacks mit `rawptr`-Context.
 
 ### Package-Details
 
 **http** ([http/client.odin](http/client.odin))
 - `Client` hält ein wiederverwendetes curl-Easy-Handle (curl macht Connection-Reuse intern) und je einen Builder für Header und Body.
+- `header_value(raw, name)` sucht einen Header (case-insensitive); bei Redirects gewinnt der letzte Treffer.
 - `get` resettet beide Builder, setzt URL/Callbacks/Timeout (`STANDARD_READ_TIMEOUT` = 30 s) und führt `easy_perform` aus.
 - `write_callback` ist `proc "c"` und setzt `context = runtime.default_context()`, bevor in den Builder geschrieben wird.
 - Rückgabe `Http_Response{header, body}` – die Strings **zeigen in die Builder des Clients**, sind also nur bis zum nächsten `get` gültig.
@@ -121,6 +125,7 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - `Node`: `kind` (`Document`/`Element`/`Text`/`Comment`), `parent`, `children` (`[dynamic]^Node`), `tag` (lowercase), `attributes` (`[]Attribute`, Quellreihenfolge), `text`. Doctype und Processing Instructions werden weggelassen.
 - Speicher: Ein `virtual.Arena` pro `Document`, alle Nodes und Strings liegen darin; `destroy` gibt alles auf einmal frei.
 - lexbor ergänzt fehlendes `<html>`/`<head>`/`<body>` wie ein echter Browser.
+- `to_display_text` ist noch kein Layout, nur Text mit Browser-Grundregeln: `head`/`script`/`style`/`template` unsichtbar, Whitespace-Collapsing (außer in `<pre>`), Block-Elemente auf neuer Zeile (`p`, `h1`–`h6`, Listen u. a. mit Leerzeile), `<br>` als Umbruch, `• ` vor `<li>`. Umbrüche werden nur vor dem nächsten Text geschrieben (`pending_breaks`), so stapeln sie sich nicht.
 
 **vendor/lexbor** ([vendor/lexbor/lexbor.odin](vendor/lexbor/lexbor.odin))
 - Opake Typen `Html_Document` und `Dom_Node`, `Status`/`STATUS_OK`, `Dom_Node_Type`; Funktionen `lxb_html_document_create/parse/destroy`, `lxb_html_document_body_element_noi` und die Traversal-Procs `lxb_dom_node_{first_child,last_child,next,prev,parent,type}_noi`. `document_node` castet ein Dokument zum Node (wie lexbors `lxb_dom_interface_node`). Genutzt werden die `_noi`-Varianten, weil die normalen Funktionen `static inline` sind.
@@ -165,6 +170,6 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 - Stage 1 HTTP-Client – erledigt
 - Stage 2 Fenster & UI – Fenster und Adressleiste stehen; offen: Schema-Ergänzung, Tabs, Navigation (zurück/vor/neu laden)
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
-- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig; nächster Schritt: DOM im Browser anzeigen bzw. CSS
+- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, HTML wird als Text angezeigt; nächster Schritt: CSS parsen
 - Stage 5 Threads – HTTP in eigenen Thread, Ergebnis-Übergabe an die UI, Thread-Sicherheit des Clients
 - Stage 6 JavaScript – QuickJS anbinden
