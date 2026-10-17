@@ -310,3 +310,40 @@ test_external_stylesheets :: proc(t: ^testing.T) {
 	div := find_element(doc.root, "div")
 	testing.expect_value(t, div.style.display, Display.None)
 }
+
+@(test)
+test_position_visibility_list_style :: proc(t: ^testing.T) {
+	doc, err := parse(`<html><head><style>
+		.menu { visibility: hidden; list-style: none }
+		.menu .shown { visibility: visible }
+		.popup { position: absolute }
+		ol.square { list-style-type: square }
+	</style></head><body>
+		<ul class="menu"><li>a</li><li class="shown">b</li></ul>
+		<div class="popup">p</div>
+		<ol><li>1</li></ol>
+		<ol class="square"><li>x</li></ol>
+	</body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	menu := find_element(doc.root, "ul")
+	testing.expect_value(t, menu.style.visibility, Visibility.Hidden)
+	testing.expect_value(t, menu.children[0].style.visibility, Visibility.Hidden) // inherited
+	testing.expect_value(t, menu.children[0].style.list_style, List_Style.None)   // inherited
+	testing.expect_value(t, menu.children[1].style.visibility, Visibility.Visible)
+
+	testing.expect_value(t, find_element(doc.root, "div").style.position, Position.Absolute)
+
+	ol := find_element(doc.root, "ol")
+	testing.expect_value(t, ol.children[0].style.list_style, List_Style.Decimal) // UA default for ol
+	ok_square := false
+	for child in find_element(doc.root, "body").children {
+		if child.kind == .Element && child.tag == "ol" && len(child.attributes) > 0 {
+			ok_square = child.children[0].style.list_style == .Square
+		}
+	}
+	testing.expect(t, ok_square, "list-style-type: square inherited by the li")
+}

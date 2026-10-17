@@ -341,3 +341,41 @@ test_image_wraps :: proc(t: ^testing.T) {
 	testing.expect_value(t, l.images[0].x, 8)
 	testing.expect(t, l.images[0].y > l.runs[0].y, "image on the next line")
 }
+
+@(test)
+test_visibility_and_out_of_flow :: proc(t: ^testing.T) {
+	doc, l := build_html(t, `<p>a <span style="visibility: hidden">hidden</span> b</p><div style="position: absolute">gone</div><p>c</p>`, 800)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	texts := make([dynamic]string, context.temp_allocator)
+	for run in l.runs {
+		append(&texts, run.text)
+	}
+	// "hidden" is not drawn but still takes its space: "b" stays where it was
+	testing.expect_value(t, len(texts), 3)
+	if len(texts) == 3 {
+		testing.expect_value(t, texts[0], "a")
+		testing.expect_value(t, texts[1], "b")
+		testing.expect_value(t, l.runs[1].x, 8 + 8 + 8 + 48 + 8) // a, space, hidden (6 chars), space
+		testing.expect_value(t, texts[2], "c")
+	}
+	// the absolute div takes no space: "c" follows the first p directly
+	testing.expect_value(t, l.runs[2].y, 18 + 20 + 16)
+}
+
+@(test)
+test_list_markers :: proc(t: ^testing.T) {
+	doc, l := build_html(t, `<ul style="list-style: none"><li>none</li></ul><ul style="list-style-type: square"><li><div><a href="x">nested</a></div></li></ul>`, 800)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	// no marker for list-style: none; the square marker sits on the first line
+	// of its li even though the text is inside a nested block
+	testing.expect_value(t, len(l.runs), 3)
+	if len(l.runs) != 3 do return
+	testing.expect_value(t, l.runs[0].text, "none")
+	testing.expect_value(t, l.runs[1].text, "▪")
+	testing.expect_value(t, l.runs[2].text, "nested")
+	testing.expect_value(t, l.runs[1].y, l.runs[2].y)
+}

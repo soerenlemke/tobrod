@@ -12,6 +12,9 @@ Style :: struct {
 	font_size:   f32, // px
 	font_weight: int, // 1..1000, 400 = normal, 700 = bold
 	text_align:  Text_Align,
+	visibility:  Visibility, // inherited, but a child can be visible again
+	list_style:  List_Style, // inherited from ul/ol to the li
+	position:    Position,   // not inherited
 
 	// box model, not inherited (see box_style.odin)
 	margin:      Edges,
@@ -28,6 +31,30 @@ Text_Align :: enum {
 	Left,
 	Center,
 	Right,
+}
+
+Visibility :: enum {
+	Visible,
+	Hidden, // takes up its space, but is not drawn ("collapse" too)
+}
+
+// The marker of list items. Alphabetic and roman styles are drawn as numbers.
+List_Style :: enum {
+	Disc,
+	Circle,
+	Square,
+	Decimal,
+	None,
+}
+
+// Absolute and fixed elements are taken out of the flow; we don't place them
+// yet, so they are not drawn at all. Relative and sticky act like static.
+Position :: enum {
+	Static,
+	Relative,
+	Absolute,
+	Fixed,
+	Sticky,
 }
 
 Display :: enum {
@@ -66,6 +93,8 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		font_size   = parent.font_size,
 		font_weight = parent.font_weight,
 		text_align  = parent.text_align,
+		visibility  = parent.visibility,
+		list_style  = parent.list_style,
 		width       = AUTO,
 		height      = AUTO,
 		max_width   = AUTO,
@@ -105,6 +134,10 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		style.color = LINK_COLOR
 	case "center":
 		style.text_align = .Center
+	case "ol":
+		style.list_style = .Decimal
+	case "ul":
+		style.list_style = .Disc
 	}
 	return style
 }
@@ -168,6 +201,36 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 		case "right", "end":
 			style.text_align = .Right
 		}
+	case "visibility":
+		switch value {
+		case "inherit", "unset":
+			style.visibility = parent.visibility
+		case "visible", "initial":
+			style.visibility = .Visible
+		case "hidden", "collapse":
+			style.visibility = .Hidden
+		}
+	case "position":
+		switch value {
+		case "static", "initial", "unset":
+			style.position = .Static
+		case "relative":
+			style.position = .Relative
+		case "absolute":
+			style.position = .Absolute
+		case "fixed":
+			style.position = .Fixed
+		case "sticky":
+			style.position = .Sticky
+		case "inherit":
+			style.position = parent.position
+		}
+	case "list-style", "list-style-type":
+		if value == "inherit" || value == "unset" {
+			style.list_style = parent.list_style
+		} else if list_style, ok := parse_list_style(value); ok {
+			style.list_style = list_style
+		}
 	case:
 		apply_box_declaration(style, property, value)
 	}
@@ -181,6 +244,7 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 // font-size comes before the box properties, because em in margins refers to it.
 STYLE_PROPERTIES :: [?]string {
 	"display", "color", "font-size", "font-weight", "text-align",
+	"visibility", "position", "list-style", "list-style-type",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
 	"width", "height", "max-width",
@@ -229,4 +293,26 @@ parse_display :: proc(value: string) -> (display: Display, ok: bool) {
 		return .Inline, true
 	}
 	return .Inline, false
+}
+
+// list-style-type, or the list-style shorthand ("none", "square inside", ...):
+// we look for the type and ignore position and image.
+parse_list_style :: proc(value: string) -> (list_style: List_Style, ok: bool) {
+	rest := value
+	for word in strings.fields_iterator(&rest) {
+		switch word {
+		case "none":
+			return .None, true
+		case "disc", "initial":
+			return .Disc, true
+		case "circle":
+			return .Circle, true
+		case "square":
+			return .Square, true
+		case "decimal", "decimal-leading-zero", "lower-alpha", "upper-alpha", "lower-latin",
+		     "upper-latin", "lower-roman", "upper-roman", "lower-greek":
+			return .Decimal, true
+		}
+	}
+	return .Disc, false
 }
