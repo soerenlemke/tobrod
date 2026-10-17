@@ -52,7 +52,7 @@ Stage 4 — HTML & CSS Parsing
    - [x] create/parse/destroy document (smoke-tested)
    - [x] traverse DOM nodes (first_child, next sibling)
    - [x] read node/element data (tag name, text content, attributes)
-- [ ] Build a DOM tree from parsed HTML
+- [x] Build a DOM tree from parsed HTML
 - [ ] CSS parsing and CSSOM construction
 - [ ] Selector matching
 
