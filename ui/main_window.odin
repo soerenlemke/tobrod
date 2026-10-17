@@ -30,7 +30,7 @@ init :: proc(window_settings: WindowSettings) -> (MainWindow, Maybe(Error)) {
 	rl.SetConfigFlags({.WINDOW_RESIZABLE})
 	rl.InitWindow(window_settings.init_width, window_settings.init_height, name_cstring)
 
-	if err, has_err := fonts_init("assets/fonts/Inter_18pt-Regular.ttf").?; has_err {
+	if err, has_err := fonts_init().?; has_err {
 		rl.CloseWindow()
 		return {}, err
 	}

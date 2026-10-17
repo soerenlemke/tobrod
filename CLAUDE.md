@@ -25,7 +25,7 @@ odin test http             # Header-Parsing
 odin test layout           # Layout (mit Fake-Textmessung, ohne Fenster)
 ```
 
-**Immer aus dem Repo-Root starten**: Der Font wird über den relativen Pfad `assets/fonts/Inter_18pt-Regular.ttf` geladen ([ui/main_window.odin](ui/main_window.odin)).
+**Immer aus dem Repo-Root starten**: Die Fonts werden über relative Pfade (`assets/fonts/Inter_18pt-Regular.ttf`, `assets/fonts/Inter-Bold.ttf`) geladen ([ui/fonts.odin](ui/fonts.odin)).
 
 Stand 2026-10-17 auf macOS und Windows (Odin `dev-2026-05`, nach `setup.ps1`): `odin check .`, `odin build .` und `odin test vendor/lexbor` laufen erfolgreich durch.
 
@@ -82,7 +82,7 @@ vendor/curl/            eigene Kopie der Odin-curl-Bindings (Package vendor_curl
 vendor/curl-src/        git-Submodul: curl-Quellcode (nur für den Windows-Build)
 vendor/lexbor-src/      git-Submodul: lexbor-Quellcode v3.0.1 (nur für den Windows-Build)
 vendor/lexbor/          lexbor-Bindings + Tests (lexbor.odin: HTML/DOM, style.odin: CSS-Kaskade)
-assets/fonts/           Inter 18pt Regular (OFL-Lizenz)
+assets/fonts/           Inter 18pt Regular (Google Fonts) + Inter Bold (rsms/inter v4.1, extras/ttf), beide SIL OFL 1.1 (OFL.txt)
 testdata/               lokale Fixtures für den Testmodus
 setup.ps1               Windows-Setup (curl und lexbor bauen)
 ```
@@ -121,8 +121,8 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 **ui**
 - `MainWindow` besitzt `AddressBar`, `PageView` und den Submit-Callback.
 - `AddressBar`: Text in einem `strings.Builder`; Eingabefeld ist ein fest positioniertes Rect (x = 80, 80 px links/rechts für spätere Buttons reserviert). Fokusfarbe Blau `{66,133,244}`.
-- `PageView`: `rect` unterhalb der Adressleiste, `document` (gehört der PageView: `page_view_set_document` übernimmt es, `page_view_set_content` verpackt Text per `dom.from_plain_text`), `page_layout` (gecacht, `page_view_ensure_layout` baut nur neu, wenn sich die Breite ändert), `scroll_y`, `content_height` (= Layout-Höhe). `page_view_render` zeichnet nur Runs im sichtbaren Bereich (Scissor-Mode). `measure_text` ist die `Measure_Text`-Proc für das Layout (raylib). Fett ist **synthetisch**: Text wird um `SYNTHETIC_BOLD_OFFSET` (1 px) versetzt doppelt gezeichnet, es gibt noch keinen Bold-Font. Scrollen wird auf `[0, content_height - rect.height]` begrenzt (`clamp_scroll`).
-- `font` ist eine Package-globale Variable, einmal mit `FONT_LOAD_SIZE` (64) gerastert und beim Zeichnen auf die jeweilige Größe skaliert; Mipmaps + trilinearer Filter halten kleinen Text glatt. Geladen werden die Codepoints aus `font_codepoints` (ASCII, Latin-1, typografische Zeichen).
+- `PageView`: `rect` unterhalb der Adressleiste, `document` (gehört der PageView: `page_view_set_document` übernimmt es, `page_view_set_content` verpackt Text per `dom.from_plain_text`), `page_layout` (gecacht, `page_view_ensure_layout` baut nur neu, wenn sich die Breite ändert), `scroll_y`, `content_height` (= Layout-Höhe). `page_view_render` zeichnet nur Runs im sichtbaren Bereich (Scissor-Mode). `measure_text` ist die `Measure_Text`-Proc für das Layout (raylib). Fette Runs werden mit `font_bold` gezeichnet und gemessen (`font_for(bold)`). Scrollen wird auf `[0, content_height - rect.height]` begrenzt (`clamp_scroll`).
+- `font` und `font_bold` sind Package-globale Variablen (`fonts_init` lädt beide, Pfade in `FONT_REGULAR_PATH`/`FONT_BOLD_PATH`), jeweils einmal mit `FONT_LOAD_SIZE` (64) gerastert und beim Zeichnen auf die jeweilige Größe skaliert; Mipmaps + trilinearer Filter halten kleinen Text glatt. Geladen werden die Codepoints aus `font_codepoints` (ASCII, Latin-1, typografische Zeichen).
 
 **dom** ([dom/](dom/))
 - `parse(html) -> (^Document, Maybe(Parse_Error))`: parst mit lexbor, kopiert rekursiv in eigene `Node`s und zerstört das lexbor-Dokument sofort. Danach zeigt nichts mehr in lexbors Speicher.
@@ -187,6 +187,6 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 - Stage 1 HTTP-Client – erledigt
 - Stage 2 Fenster & UI – Fenster und Adressleiste stehen; offen: Schema-Ergänzung, Tabs, Navigation (zurück/vor/neu laden)
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
-- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt positionierte Text-Runs, die UI zeichnet sie mit Größe, Fett (synthetisch) und Farbe. Offen: echter Bold-Font, Links klickbar, Hintergründe/Boxen
+- Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt positionierte Text-Runs, die UI zeichnet sie mit Größe, Fett (Inter Bold) und Farbe. Offen: Links klickbar, Hintergründe/Boxen
 - Stage 5 Threads – HTTP in eigenen Thread, Ergebnis-Übergabe an die UI, Thread-Sicherheit des Clients
 - Stage 6 JavaScript – QuickJS anbinden

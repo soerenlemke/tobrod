@@ -7,6 +7,10 @@ tobrod - a toy browser in Odin
 - [raylib](https://www.raylib.com) (bundled via `vendor:raylib`, no separate download needed)
 - [lexbor](https://github.com/lexbor/lexbor)
 
+## Fonts
+
+tobrod ships the [Inter](https://github.com/rsms/inter) font (Regular and Bold) in `assets/fonts/`. The fonts are licensed under the SIL Open Font License 1.1, see [assets/fonts/OFL.txt](assets/fonts/OFL.txt); the MIT license of this project does not apply to them.
+
 ## Setup Windows
 
 Requires CMake and Visual Studio Build Tools (for the MSVC linker/compiler) to be installed beforehand.
@@ -61,7 +65,7 @@ Stage 4 — HTML & CSS Parsing
    - [x] inheritance and defaults for other properties (color, font-size, font-weight)
    - [x] render text with its style (font size, bold, color)
       - [x] layout: styled text runs with line wrapping, margins, lists (package `layout`)
-      - [x] draw the runs in the ui (bold is synthetic for now)
+      - [x] draw the runs in the ui (regular and bold Inter)
 
 Stage 5 - Threads
 - [ ] Run http requests in own thread
