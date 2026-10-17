@@ -402,3 +402,54 @@ test_replaced_elements :: proc(t: ^testing.T) {
 	// the <source> inside the video is not laid out as text
 	testing.expect_value(t, len(l.runs), 0)
 }
+
+@(test)
+test_block_height :: proc(t: ^testing.T) {
+	cases := []struct {
+		style:  string,
+		height: f32, // of the red box; one line of text is 20 high
+	} {
+		{"height: 100px", 100},
+		{"height: 10px", 10},   // the text overflows
+		{"height: 50%", 20},    // % of an auto height: like auto
+		{"height: 10vh", 60},   // viewport 600 high
+		{"height: 2em", 32},
+		{"min-height: 50px", 50},
+		{"min-height: 5px", 20},
+		{"max-height: 10px", 10},
+		{"max-height: 10px; min-height: 30px", 30}, // min wins
+		{"height: 100px; max-height: 40px", 40},
+	}
+	for c in cases {
+		html := fmt.tprintf(`<body style="margin: 0"><div style="background: red; %s">x</div><p style="margin: 0">after</p></body>`, c.style)
+		doc, l := build_html(t, html, 400)
+		defer dom.destroy(doc)
+		defer destroy(l)
+
+		if !testing.expectf(t, len(l.boxes) == 1 && len(l.runs) == 2, "%s: %d boxes, %d runs", c.style, len(l.boxes), len(l.runs)) {
+			continue
+		}
+		testing.expectf(t, l.boxes[0].height == c.height, "%s: box height %v, want %v", c.style, l.boxes[0].height, c.height)
+		// the next block starts below the box, even if the text overflows it
+		testing.expectf(t, l.runs[1].y == c.height + 2, "%s: next line at %v, want %v", c.style, l.runs[1].y, c.height + 2)
+	}
+}
+
+@(test)
+test_block_height_margins :: proc(t: ^testing.T) {
+	// an empty block with a height takes room; the bottom margin of the last
+	// child stays inside a box with a height and doesn't collapse with it
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="height: 40px; margin-bottom: 10px; background: red"></div>
+		<div style="height: 50px; margin-bottom: 10px; background: blue"><p style="margin: 0 0 30px">x</p></div>
+		<p style="margin: 0">after</p></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.boxes) != 2 do return
+	testing.expect_value(t, l.boxes[0].y, 0)
+	testing.expect_value(t, l.boxes[0].height, 40)
+	testing.expect_value(t, l.boxes[1].y, 50)
+	testing.expect_value(t, l.boxes[1].height, 50)
+	testing.expect_value(t, l.runs[1].y, 50 + 50 + 10 + 2)
+}

@@ -264,8 +264,8 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	layout_block(b, node)
 }
 
-// A block or list item: the CSS box model, simplified (no height,
-// box-sizing is always content-box).
+// A block or list item: the CSS box model, simplified (box-sizing is
+// always content-box).
 @(private)
 layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	finish_line(b)
@@ -362,6 +362,7 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	if style.display == .List_Item {
 		b.pending_marker = nil // an empty list item: no line got the marker
 	}
+	apply_block_height(b, style, inset[.Top], available)
 	if inset[.Bottom] > 0 {
 		flush_margin(b) // the bottom margin of the last child stays inside
 		b.y += inset[.Bottom]
@@ -382,6 +383,43 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	b.left, b.right, b.text_align = old_left, old_right, old_align
 	b.x = b.left
 	add_margin(b, margin[.Bottom])
+}
+
+// height, min-height and max-height: moves y to the bottom of the content box.
+// Content taller than the box overflows (it stays visible, like overflow:
+// visible), the next block then starts at the box's bottom.
+@(private)
+apply_block_height :: proc(b: ^Builder, style: dom.Style, inset_top, available: f32) {
+	height, has_height := block_height(b, style, style.height, available)
+	min_height, has_min := block_height(b, style, style.min_height, available)
+	max_height, has_max := block_height(b, style, style.max_height, available)
+	has_min = has_min && min_height > 0
+	if !has_height && !has_min && !has_max {
+		return
+	}
+	// a box with a height keeps the bottom margin of its last child inside;
+	// this also fixes the top of the box if it is still empty
+	flush_margin(b)
+	content_top := b.block_tops[len(b.block_tops) - 1].y + inset_top
+	h := height if has_height else b.y - content_top
+	if has_max {
+		h = min(h, max_height)
+	}
+	if has_min {
+		h = max(h, min_height) // min-height wins over max-height
+	}
+	b.y = content_top + max(h, 0)
+}
+
+// A height in px, or false for auto. Percentages would refer to the height
+// of the containing block, which is usually not known (auto), so they count
+// as auto.
+@(private)
+block_height :: proc(b: ^Builder, style: dom.Style, length: dom.Length, available: f32) -> (f32, bool) {
+	if length.unit == .Auto || length.unit == .Percent {
+		return 0, false
+	}
+	return dom.resolve_length(length, style.font_size, available, b.viewport), true
 }
 
 // Normal text: whitespace collapses to single spaces, lines wrap at spaces.
