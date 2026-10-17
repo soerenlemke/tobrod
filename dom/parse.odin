@@ -22,7 +22,8 @@ Stylesheet_Loader :: struct {
 // @media blocks (which lexbor skips) are evaluated for the given viewport,
 // in external stylesheets and in <style> elements, see media.odin.
 // The lexbor document is destroyed before returning, so nothing points into it.
-parse :: proc(html: string, stylesheets: Stylesheet_Loader = {}, media := DEFAULT_MEDIA) -> (doc: ^Document, err: Maybe(Parse_Error)) {
+// report: if given, the CSS we don't support is counted there (css_report.odin).
+parse :: proc(html: string, stylesheets: Stylesheet_Loader = {}, media := DEFAULT_MEDIA, report: ^Css_Report = nil) -> (doc: ^Document, err: Maybe(Parse_Error)) {
 	lxb_doc := lxb.lxb_html_document_create()
 	if lxb_doc == nil {
 		return nil, Parse_Error{"lexbor: could not create document"}
@@ -106,7 +107,7 @@ parse :: proc(html: string, stylesheets: Stylesheet_Loader = {}, media := DEFAUL
 	doc.root.children.allocator = allocator
 	doc.root.style = ROOT_STYLE
 	root_props := make(Custom_Props, allocator = context.temp_allocator)
-	copy_children(lxb_doc, lxb.document_node(lxb_doc), doc.root, &root_props, allocator)
+	copy_children(lxb_doc, lxb.document_node(lxb_doc), doc.root, &root_props, allocator, report)
 	return doc, nil
 }
 
@@ -114,7 +115,7 @@ parse :: proc(html: string, stylesheets: Stylesheet_Loader = {}, media := DEFAUL
 // could exhaust the stack.
 @(private)
 // props: the custom properties (CSS variables) inherited from the parent.
-copy_children :: proc(lxb_doc: ^lxb.Html_Document, from: ^lxb.Dom_Node, to: ^Node, props: ^Custom_Props, allocator: mem.Allocator) {
+copy_children :: proc(lxb_doc: ^lxb.Html_Document, from: ^lxb.Dom_Node, to: ^Node, props: ^Custom_Props, allocator: mem.Allocator, report: ^Css_Report) {
 	for child := lxb.lxb_dom_node_first_child_noi(from); child != nil; child = lxb.lxb_dom_node_next_noi(child) {
 		node: ^Node
 		#partial switch lxb.lxb_dom_node_type_noi(child) {
@@ -124,8 +125,8 @@ copy_children :: proc(lxb_doc: ^lxb.Html_Document, from: ^lxb.Dom_Node, to: ^Nod
 			node.tag = strings.clone(lxb.element_name(element), allocator)
 			node.attributes = copy_attributes(element, allocator)
 			own_props: ^Custom_Props
-			node.style, own_props = compute_style(node, element, to.style, props)
-			copy_children(lxb_doc, child, node, own_props, allocator)
+			node.style, own_props = compute_style(node, element, to.style, props, report)
+			copy_children(lxb_doc, child, node, own_props, allocator, report)
 		case .Text:
 			node = new_node(.Text, to, allocator)
 			node.text = lxb.node_text_content(lxb_doc, child, allocator)
@@ -170,12 +171,15 @@ copy_attributes :: proc(element: ^lxb.Dom_Element, allocator: mem.Allocator) -> 
 // Inherited values and tag defaults, overridden by whatever the CSS cascade
 // decided. Parents are computed before their children, so parent is final.
 @(private)
-compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inherited_props: ^Custom_Props) -> (style: Style, props: ^Custom_Props) {
+compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inherited_props: ^Custom_Props, report: ^Css_Report = nil) -> (style: Style, props: ^Custom_Props) {
 	_, hidden := attribute(node, "hidden")
 	style = default_style(node.tag, hidden, parent)
 
 	// custom properties and declarations with var(), see custom_props.odin
 	declared := walk_declarations(element)
+	if report != nil {
+		report_element(report, element, &declared)
+	}
 	props = element_custom_props(inherited_props, &declared)
 	raw_values := winning_raw_declarations(&declared, props)
 

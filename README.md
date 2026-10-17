@@ -91,6 +91,17 @@ odin test ui
 odin test vendor/lexbor  # the lexbor bindings
 ```
 
+## Measuring progress
+
+Two tools compare tobrod with a real browser on the pages in [tools/pages.txt](tools/pages.txt):
+
+```sh
+odin build . && python tools/compare.py tools/pages.txt   # Firefox and tobrod side by side (needs Firefox and Pillow)
+odin run tools/cssreport -- @tools/pages.txt              # the CSS these pages use that tobrod ignores
+```
+
+What they found, ordered by impact, is in [docs/rendering-gaps.md](docs/rendering-gaps.md).
+
 ## How it fits together
 
 ```
@@ -110,6 +121,8 @@ main → browser → ui → layout → dom → vendor/lexbor
 The detailed developer notes (in German) are in [CLAUDE.md](CLAUDE.md).
 
 ## Known limitations
+
+The full list, measured against Firefox on real pages, is in [docs/rendering-gaps.md](docs/rendering-gaps.md). In short:
 
 - no JavaScript yet
 - no SVG or WebP images (their place stays empty, like a broken image; no `alt` text yet), no video playback (the poster image is shown)

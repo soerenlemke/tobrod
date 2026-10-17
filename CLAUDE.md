@@ -50,6 +50,13 @@ odin build . && mkdir -p screenshots
 
 `screenshots/` und das Binary `tobrod` sind in `.gitignore`.
 
+### Vergleich mit einem echten Browser
+
+Was als Nächstes fehlt, messen zwei Werkzeuge auf den Seiten in [tools/pages.txt](tools/pages.txt). Das Ergebnis mit priorisierter Liste steht in [docs/rendering-gaps.md](docs/rendering-gaps.md) (Englisch, öffentlich); nach größeren Schritten neu laufen lassen und die Liste anpassen.
+
+- `python tools/compare.py tools/pages.txt` (oder einzelne URLs): rendert jede Seite mit Firefox (headless, eigenes Profil im Temp-Ordner mit `javascript.enabled = false` und hellem Theme, `-wait-for-browser`, 1024 × 732 = unsere Seitenansicht) und mit tobrod (Screenshot ohne Adressleiste) und schreibt `screenshots/compare/index.html`: beide Bilder plus ein Differenzbild. Die Prozentzahl ist wegen der unterschiedlichen Schriften nur grob. Braucht Firefox (`FIREFOX` setzen, falls nicht am Standardort) und Pillow; das ist ein Entwickler-Werkzeug, keine Abhängigkeit von tobrod.
+- `odin run tools/cssreport -- @tools/pages.txt` (oder URLs): lädt die Seiten wie tobrod (Stylesheets, `@media` für 1024 × 732) und übergibt `dom.parse` einen `Css_Report` (`dom/css_report.odin`). `compute_style` zählt pro Element die Properties aus der Kaskade, die nicht in `STYLE_PROPERTIES` stehen, und Werte, die wir nur annähern (`display`-Modi außerhalb von `SUPPORTED_DISPLAY`, `position: sticky`, `calc()`; auch Rohwerte, die lexbor nicht typisieren kann). Ausgabe: Markdown-Tabelle nach Anzahl Seiten, Properties ohne sichtbare Wirkung (`NO_VISIBLE_EFFECT`: `cursor`, `transition`, …) separat. HTML-Attribute wie `bgcolor` sieht der Report nicht, nur der Bildvergleich.
+
 ### Abhängigkeiten pro Plattform
 
 | Lib | macOS | Windows | Linux |
@@ -79,6 +86,7 @@ dom/                    Package dom: eigener DOM-Baum (Parsen über lexbor, dann
   border_style.odin       Rahmen: Border/Borders, border-Kurzschreibweisen (Teile in beliebiger Reihenfolge)
   flex_style.odin         Flexbox-Properties (Flex-Struct, flex-Kurzform)
   media.odin              @media: Queries auswerten, passende Blöcke im CSS-Text auspacken (Mini-CSS-Scanner)
+  css_report.odin         Css_Report: nicht unterstütztes CSS zählen (für tools/cssreport)
   custom_props.odin       CSS-Variablen: Deklarationen per lexbor-Walk sammeln, Custom Properties vererben, var() ersetzen
   plain_text.odin         from_plain_text: Text → Dokument html/body/pre (wie Chrome bei text/plain)
 loader/loader.odin      Package loader: lädt + parst Seiten und lädt Ressourcen (Bilder) in einem Worker-Thread
@@ -106,6 +114,10 @@ vendor/lexbor/          lexbor-Bindings + Tests (lexbor.odin: HTML/DOM, style.od
 assets/fonts/           Inter 18pt Regular (Google Fonts) + Inter Bold (rsms/inter v4.1, extras/ttf), beide SIL OFL 1.1 (OFL.txt)
 testdata/               lokale Fixtures für den Testmodus
 setup.ps1               Windows-Setup (curl und lexbor bauen)
+tools/compare.py        Vergleich mit Firefox: Screenshots nebeneinander + Differenz (screenshots/compare/)
+tools/cssreport/        Programm: zählt CSS, das tobrod auf echten Seiten ignoriert (über dom.Css_Report)
+tools/pages.txt         Liste echter Seiten für beide Werkzeuge
+docs/rendering-gaps.md  Ergebnis: priorisierte Liste, was noch anders aussieht
 ```
 
 Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
