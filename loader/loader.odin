@@ -254,7 +254,18 @@ fetch :: proc(l: ^Loader, request: Request) -> (result: Result, finished: bool) 
 
 	parse_err: Maybe(dom.Parse_Error)
 	if strings.has_prefix(content_type, "text/html") {
-		result.document, parse_err = dom.parse(response.body)
+		// external stylesheets are fetched during parsing, with the same client.
+		// That reuses the response buffers: response must not be used after this.
+		fetcher := Stylesheet_Fetch{loader = l, base = result.url}
+		result.document, parse_err = dom.parse(response.body, {load = load_stylesheet, ctx = &fetcher})
+		if fetcher.aborted {
+			// a newer request came in while we were loading the stylesheets
+			if result.document != nil {
+				dom.destroy(result.document)
+			}
+			delete(result.url)
+			return {}, false
+		}
 	} else {
 		result.document, parse_err = dom.from_plain_text(response.body)
 	}
@@ -262,4 +273,32 @@ fetch :: proc(l: ^Loader, request: Request) -> (result: Result, finished: bool) 
 		result.error = strings.clone(e.message)
 	}
 	return result, true
+}
+
+@(private)
+Stylesheet_Fetch :: struct {
+	loader:  ^Loader,
+	base:    string, // URL of the page, stylesheet hrefs are relative to it
+	aborted: bool,
+}
+
+// dom.Stylesheet_Loader callback: downloads one stylesheet on the worker thread.
+@(private)
+load_stylesheet :: proc(ctx: rawptr, href: string) -> (css: string, ok: bool) {
+	fetcher := cast(^Stylesheet_Fetch)ctx
+	if fetcher.aborted {
+		return "", false
+	}
+	url := http.resolve_url(fetcher.base, href, context.temp_allocator) or_return
+	if !http.is_loadable_url(url) {
+		return "", false
+	}
+	response, err := http.get(&fetcher.loader.client, url, &fetcher.loader.abort)
+	if e, failed := err.?; failed {
+		fetcher.aborted = e.code == .E_ABORTED_BY_CALLBACK
+		return "", false
+	}
+	// points into the client's buffer: valid until the next request, which is
+	// after dom.parse has parsed this stylesheet
+	return response.body, true
 }

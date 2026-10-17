@@ -61,6 +61,9 @@ Stage 4 — HTML & CSS Parsing
 - [x] Show HTML pages as plain text (hidden elements, whitespace collapsing, block line breaks)
 - [x] CSS parsing and CSSOM construction (via lexbor's css/style modules)
 - [x] Selector matching and cascade (via lexbor: specificity, `!important`, inline styles)
+- [x] External stylesheets (`<link rel="stylesheet">`, render-blocking)
+- [ ] `@media` queries
+- [ ] CSS custom properties (`var()`)
 - [ ] Use computed styles in our DOM and when rendering
    - [x] `display` (UA defaults + CSS, `display: none` hides elements)
    - [x] inheritance and defaults for other properties (color, font-size, font-weight)
