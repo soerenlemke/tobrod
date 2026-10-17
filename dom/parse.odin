@@ -7,7 +7,9 @@ import lxb "../vendor/lexbor"
 
 // Fetches an external stylesheet for parse. href is written like in the page
 // (relative), resolving and loading it is up to the caller, so dom stays free
-// of networking. The returned text only has to live until the call returns.
+// of networking. href is only valid during the call (it points into lexbor's
+// memory), copy it to keep it. The returned text only has to live until the
+// call returns.
 Stylesheet_Loader :: struct {
 	load: proc(ctx: rawptr, href: string) -> (css: string, ok: bool),
 	ctx:  rawptr,

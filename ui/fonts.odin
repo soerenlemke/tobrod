@@ -57,6 +57,8 @@ font_codepoints :: proc() -> [dynamic]rune {
 	}
 	// – — ‘ ’ ‚ “ ” „ • … €
 	append(&codepoints, 0x2013, 0x2014, 0x2018, 0x2019, 0x201A, 0x201C, 0x201D, 0x201E, 0x2022, 0x2026, 0x20AC)
+	// list markers for list-style circle and square: ◦ ▪
+	append(&codepoints, 0x25E6, 0x25AA)
 	return codepoints
 }
 

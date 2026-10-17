@@ -63,6 +63,7 @@ Stage 4 — HTML & CSS Parsing
 - [x] Selector matching and cascade (via lexbor: specificity, `!important`, inline styles)
 - [x] External stylesheets (`<link rel="stylesheet">`, render-blocking)
 - [x] `@media` queries (evaluated for the viewport at load time)
+- [x] `visibility`, `list-style`, `position: absolute/fixed` (taken out of the flow, not placed yet)
 - [ ] CSS custom properties (`var()`)
 - [ ] Use computed styles in our DOM and when rendering
    - [x] `display` (UA defaults + CSS, `display: none` hides elements)

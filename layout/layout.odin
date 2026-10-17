@@ -25,6 +25,7 @@ Text_Run :: struct {
 	bold:      bool,
 	color:     dom.Color,
 	link:      string, // href of the surrounding <a>, as written in the page; "" if none
+	hidden:    bool,   // visibility: hidden - takes up space, but is dropped in finish_line
 }
 
 // A block box: background (alpha 0 = none) and borders. x/y/width/height is
@@ -42,6 +43,7 @@ Image_Item :: struct {
 	src:                 string, // as written in the page, also the key for Image_Sizes
 	x, y, width, height: f32,
 	link:                string, // href of the surrounding <a>, "" if none
+	hidden:              bool,   // visibility: hidden
 }
 
 // Natural sizes of the images that are already loaded, by src as written in
@@ -150,12 +152,22 @@ Builder :: struct {
 	viewport:       [2]f32,
 	text_align:     dom.Text_Align,      // of the block the current line belongs to
 	line_images:    [dynamic]Image_Item, // images of the current line, y is set in finish_line
+	pending_marker: Maybe(Pending_Marker), // list marker waiting for the first line of its li
 	image_sizes:    Image_Sizes,
 }
 
 // The top edge of an open block. It is only known once the collapsed margin
 // above it is applied (the top margin of the block may still collapse with
 // the one of its first child), so it stays unresolved until then.
+// A list marker belongs to the first line of its list item, which may be deep
+// inside nested blocks (<li><div><a>...). So it waits until a line starts.
+@(private)
+Pending_Marker :: struct {
+	text:  string,
+	right: f32, // the content edge of the li: the marker hangs left of it
+	style: dom.Style,
+}
+
 @(private)
 Block_Top :: struct {
 	y:        f32,
@@ -186,6 +198,11 @@ layout_node :: proc(b: ^Builder, node: ^dom.Node) {
 layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	style := node.style
 	if style.display == .None {
+		return
+	}
+	// out of the normal flow: placing them is not supported yet, so they are
+	// skipped (often they are dropdowns or visually hidden helper text anyway)
+	if style.position == .Absolute || style.position == .Fixed {
 		return
 	}
 	if node.tag == "br" {
@@ -288,7 +305,7 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	// reserve the box slot now: parents are drawn before their children
 	has_border := border[.Top] > 0 || border[.Right] > 0 || border[.Bottom] > 0 || border[.Left] > 0
 	box_index := -1
-	if box_background[3] > 0 || has_border {
+	if (box_background[3] > 0 || has_border) && style.visibility == .Visible {
 		append(&b.layout.boxes, Box{})
 		box_index = len(b.layout.boxes) - 1
 	}
@@ -300,13 +317,16 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	b.text_align = style.text_align
 
 	if style.display == .List_Item {
-		add_marker(b, node)
+		set_pending_marker(b, node)
 	}
 	for child in node.children {
 		layout_node(b, child)
 	}
 
 	finish_line(b)
+	if style.display == .List_Item {
+		b.pending_marker = nil // an empty list item: no line got the marker
+	}
 	if inset[.Bottom] > 0 {
 		flush_margin(b) // the bottom margin of the last child stays inside
 		b.y += inset[.Bottom]
@@ -420,7 +440,7 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 	// same style as the previous run: extend it instead of starting a new one
 	if b.can_extend && len(b.line) > 0 {
 		last := &b.line[len(b.line) - 1]
-		if b.can_extend && same_style(last^, style) && last.link == b.link {
+		if b.can_extend && same_style(last^, style) && last.link == b.link && last.hidden == (style.visibility == .Hidden) {
 			separator := " " if space_width > 0 else ""
 			last.text = strings.concatenate({last.text, separator, word}, b.allocator)
 			b.x += space_width + width
@@ -438,6 +458,7 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 		bold      = bold,
 		color     = style.color,
 		link      = b.link,
+		hidden    = style.visibility == .Hidden,
 	})
 	b.x += space_width + width
 	b.pending_space = false
@@ -455,28 +476,43 @@ place_spaces :: proc(b: ^Builder, spaces: string, style: dom.Style) {
 	b.can_extend = false // the run would lose the exact spacing
 }
 
-// The list marker hangs left of the text, like list-style-position: outside.
+// The marker of a list item, placed on its first line (see start_line).
 @(private)
-add_marker :: proc(b: ^Builder, node: ^dom.Node) {
-	marker := "•"
-	if node.parent != nil && node.parent.tag == "ol" {
-		marker = fmt.tprintf("%d.", list_index(node))
-	}
+set_pending_marker :: proc(b: ^Builder, node: ^dom.Node) {
 	style := node.style
+	marker: string
+	switch style.list_style {
+	case .Disc:
+		marker = "•"
+	case .Circle:
+		marker = "◦"
+	case .Square:
+		marker = "▪"
+	case .Decimal:
+		marker = fmt.aprintf("%d.", list_index(node), allocator = b.allocator)
+	case .None:
+		b.pending_marker = nil
+		return
+	}
+	b.pending_marker = Pending_Marker{marker, b.left, style}
+}
+
+// The marker hangs left of the content, like list-style-position: outside.
+@(private)
+place_marker :: proc(b: ^Builder, marker: Pending_Marker) {
+	style := marker.style
 	bold := style.font_weight >= BOLD_WEIGHT
 	gap := b.measure(" ", style.font_size, bold)
-	width := b.measure(marker, style.font_size, bold)
-
-	start_line(b)
+	width := b.measure(marker.text, style.font_size, bold)
 	append(&b.line, Text_Run {
-		text      = strings.clone(marker, b.allocator),
-		x         = b.left - gap - width,
+		text      = marker.text,
+		x         = marker.right - gap - width,
 		width     = width,
 		font_size = style.font_size,
 		bold      = bold,
 		color     = style.color,
+		hidden    = style.visibility == .Hidden,
 	})
-	b.can_extend = false // the marker is positioned on its own
 }
 
 // A <br> or a newline in <pre>: ends the line; on an empty line it adds an empty one.
@@ -500,6 +536,10 @@ start_line :: proc(b: ^Builder) {
 	flush_margin(b)
 	b.x = b.left
 	b.can_extend = false
+	if marker, ok := b.pending_marker.?; ok {
+		b.pending_marker = nil
+		place_marker(b, marker)
+	}
 }
 
 // Applies the collapsed margin. Now the top edges of all blocks that were
@@ -561,12 +601,16 @@ finish_line :: proc(b: ^Builder) {
 		// bottom-align smaller text, centered in its own line box
 		own_height := run.font_size * LINE_HEIGHT_FACTOR
 		run.y = b.y + (line_height - own_height) + (own_height - run.font_size) / 2
-		append(&b.layout.runs, run)
+		if !run.hidden {
+			append(&b.layout.runs, run)
+		}
 	}
 	// images sit on the bottom of the line, like text
 	for &image in b.line_images {
 		image.y = b.y + line_height - image.height
-		append(&b.layout.images, image)
+		if !image.hidden {
+			append(&b.layout.images, image)
+		}
 	}
 	clear(&b.line)
 	clear(&b.line_images)
@@ -606,6 +650,7 @@ layout_image :: proc(b: ^Builder, node: ^dom.Node) {
 		width  = width,
 		height = height,
 		link   = b.link,
+		hidden = node.style.visibility == .Hidden,
 	})
 	b.x += space_width + width
 	b.pending_space = false
