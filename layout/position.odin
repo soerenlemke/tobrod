@@ -39,10 +39,12 @@ Waiting_Absolute :: struct {
 	static_pos: [2]f32,
 }
 
+// The border box of a block, table or flex container that was laid out.
 @(private)
 Placed_Box :: struct {
 	x, y, width, height: f32,
 	border:              [dom.Edge]f32,
+	index:               int, // of its own Box in the display list, -1 if it has none
 }
 
 @(private)
@@ -124,7 +126,7 @@ place_fixed :: proc(b: ^Builder) {
 	l.images = make([dynamic]Image_Item, b.allocator)
 	b.positioned = make([dynamic][2]int, b.allocator)
 
-	viewport := Placed_Box{width = b.viewport.x, height = b.viewport.y}
+	viewport := Placed_Box{width = b.viewport.x, height = b.viewport.y, index = -1}
 	for w in b.fixed_waiting {
 		layout_absolute(b, w, viewport)
 	}

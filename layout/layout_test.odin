@@ -649,3 +649,80 @@ test_position_fixed_links :: proc(t: ^testing.T) {
 	link, ok = link_at(l, 5, 5 + 1000, 0)
 	testing.expect(t, !ok, "nothing on the page there")
 }
+
+@(private = "file")
+expect_clip :: proc(t: ^testing.T, l: ^Layout, clip: Clip, want: [4]f32, loc := #caller_location) {
+	r, ok := clip_rect(l, clip)
+	testing.expectf(t, ok && [4]f32{r.x, r.y, r.width, r.height} == want, "clip %v: got %v (%v), want %v", clip, r, ok, want, loc = loc)
+}
+
+@(test)
+test_overflow_hidden :: proc(t: ^testing.T) {
+	// the border box is 112 x 32 at 0,0; the clip is its padding box
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="overflow: hidden; width: 100px; height: 20px; padding: 5px; border: 1px solid; background: red">
+			<p style="margin: 0">a</p><div style="background: blue">b</div>
+		</div><p style="margin: 0">after</p></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.boxes) != 2 || len(l.runs) != 3 do return
+	testing.expect_value(t, l.boxes[0].clip, Clip(0)) // its own box is not clipped
+	testing.expect_value(t, l.boxes[1].clip, Clip(1))
+	testing.expect_value(t, l.runs[0].clip, Clip(1))
+	testing.expect_value(t, l.runs[1].clip, Clip(1)) // "b" sticks out below, it is cut off
+	testing.expect_value(t, l.runs[2].clip, Clip(0))
+	expect_clip(t, l, 1, {1, 1, 110, 30})
+}
+
+@(test)
+test_overflow_nested_and_axes :: proc(t: ^testing.T) {
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="overflow: hidden; width: 100px">
+			<div style="overflow: hidden; margin-left: 50px; width: 200px">x</div>
+		</div>
+		<div style="overflow-x: hidden">y: visible becomes auto, so both axes clip</div>
+		<div style="overflow-x: clip">z: clip leaves the other axis visible</div></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.runs) != 3 do return
+	// the inner clip is cut down to the outer one: x 50..100
+	expect_clip(t, l, l.runs[0].clip, {50, 0, 50, 20})
+	expect_clip(t, l, l.runs[1].clip, {0, 20, 400, 20})
+	expect_clip(t, l, l.runs[2].clip, {0, -1e9, 400, 2e9})
+}
+
+@(test)
+test_overflow_absolute_and_relative :: proc(t: ^testing.T) {
+	// an absolute child is only clipped if its containing block is inside;
+	// a relative shift moves the clip along
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="overflow: hidden; height: 10px"><span style="position: absolute; top: 50px">free</span></div>
+		<div style="overflow: hidden; height: 10px; position: relative; left: 7px"><span style="position: absolute; top: 50px">cut</span></div>
+	</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.runs) != 2 do return
+	free, cut := l.runs[0], l.runs[1]
+	if free.text != "free" {
+		free, cut = cut, free
+	}
+	testing.expect_value(t, free.clip, Clip(0))
+	expect_clip(t, l, cut.clip, {7, 10, 400, 10})
+}
+
+@(test)
+test_overflow_links :: proc(t: ^testing.T) {
+	// the second line of the link is cut off: clicking there hits nothing
+	doc, l := build_html(t, `<body style="margin: 0"><div style="overflow: hidden; height: 20px; width: 40px">
+		<a href="x">aaaa bbbb</a></div></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	_, ok := link_at(l, 5, 10)
+	testing.expect(t, ok, "visible part of the link")
+	_, ok = link_at(l, 5, 30)
+	testing.expect(t, !ok, "clipped part of the link")
+}

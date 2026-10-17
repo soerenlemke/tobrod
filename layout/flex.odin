@@ -25,10 +25,7 @@ Flex_Item :: struct {
 	base, min_size:  f32, // main size of the border box (without margins)
 	size:            f32, // after growing/shrinking
 	height:          f32, // laid out, including margins
-	// what the item added to the display list: [first, end) per list
-	first_run, end_run:     int,
-	first_image, end_image: int,
-	first_box, end_box:     int,
+	using drawn:     Display_Range, // what the item added to the display list
 }
 
 @(private)
@@ -228,7 +225,7 @@ layout_flex_column :: proc(b: ^Builder, container: ^dom.Node, items: []Flex_Item
 // added to the display list. main_size >= 0 forces the width of its border box.
 @(private)
 lay_out_flex_item :: proc(b: ^Builder, item: ^Flex_Item, x, outer, top, main_size: f32) {
-	item.first_run, item.first_image, item.first_box = len(b.layout.runs), len(b.layout.images), len(b.layout.boxes)
+	item.drawn = display_range_start(b)
 
 	// the grown/shrunk size wins over a width set on the item
 	style := &item.node.style
@@ -240,7 +237,7 @@ lay_out_flex_item :: proc(b: ^Builder, item: ^Flex_Item, x, outer, top, main_siz
 	style.width = old_width
 
 	item.height = bottom - top
-	item.end_run, item.end_image, item.end_box = len(b.layout.runs), len(b.layout.images), len(b.layout.boxes)
+	item.drawn = display_range_end(b, item.drawn)
 }
 
 // align-items / align-self on the cross axis of a row.
@@ -264,7 +261,7 @@ align_flex_item :: proc(b: ^Builder, item: ^Flex_Item, container: ^dom.Node, lin
 		}
 	}
 	if offset > 0 {
-		shift_items(b, item^, offset)
+		shift_items(b, item.drawn, offset)
 	}
 }
 

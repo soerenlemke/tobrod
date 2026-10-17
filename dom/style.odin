@@ -17,6 +17,7 @@ Style :: struct {
 	position:    Position,   // not inherited
 	offset:      Edges,      // top, right, bottom, left (the "inset" properties); .Auto by default
 	clip:        Maybe(Edges), // clip: rect(top, right, bottom, left) of absolute elements, auto = that edge of the box
+	overflow:    [2]Overflow,  // x, y; not inherited
 	float:       Float,      // not inherited
 	clear:       Clear,      // not inherited
 	vertical_align:  Vertical_Align, // table cells only
@@ -70,14 +71,23 @@ Clear :: enum {
 	Both,
 }
 
-// Absolute and fixed elements are taken out of the flow; we don't place them
-// yet, so they are not drawn at all. Relative and sticky act like static.
+// Relative elements are moved after the layout, absolute and fixed ones are
+// taken out of the flow (layout/position.odin). Sticky acts like static.
 Position :: enum {
 	Static,
 	Relative,
 	Absolute,
 	Fixed,
 	Sticky,
+}
+
+// What happens to content that doesn't fit into the box, per axis. Hidden
+// stands for everything that clips: hidden, and also scroll and auto (we
+// can't scroll inside a box, so we clip there, too).
+Overflow :: enum {
+	Visible,
+	Hidden,
+	Clip, // like hidden, but doesn't turn visible on the other axis into auto
 }
 
 Display :: enum {
@@ -258,6 +268,23 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 		case "hidden", "collapse":
 			style.visibility = .Hidden
 		}
+	case "overflow":
+		// one value for both axes, or "x y"
+		words := strings.fields(value, context.temp_allocator)
+		if len(words) >= 1 {
+			if o, ok := parse_overflow(words[0]); ok {
+				style.overflow = {o, o}
+			}
+		}
+		if len(words) >= 2 {
+			if o, ok := parse_overflow(words[1]); ok {
+				style.overflow.y = o
+			}
+		}
+	case "overflow-x":
+		style.overflow.x = parse_overflow(value) or_else style.overflow.x
+	case "overflow-y":
+		style.overflow.y = parse_overflow(value) or_else style.overflow.y
 	case "position":
 		switch value {
 		case "static", "initial", "unset":
@@ -344,7 +371,7 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 // font-size comes before the box properties, because em in margins refers to it.
 STYLE_PROPERTIES :: [?]string {
 	"display", "color", "font-size", "font-weight", "text-align",
-	"visibility", "position", "inset", "top", "right", "bottom", "left", "clip", "float", "clear", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
+	"visibility", "position", "inset", "top", "right", "bottom", "left", "clip", "overflow", "overflow-x", "overflow-y", "float", "clear", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
 	"width", "height", "min-height", "max-height", "max-width",
@@ -442,4 +469,17 @@ parse_list_style :: proc(value: string) -> (list_style: List_Style, ok: bool) {
 		}
 	}
 	return .Disc, false
+}
+
+@(private)
+parse_overflow :: proc(value: string) -> (Overflow, bool) {
+	switch value {
+	case "visible", "initial", "unset":
+		return .Visible, true
+	case "hidden", "scroll", "auto", "overlay":
+		return .Hidden, true
+	case "clip":
+		return .Clip, true
+	}
+	return .Visible, false
 }

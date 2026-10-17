@@ -170,11 +170,9 @@ layout_table :: proc(b: ^Builder, node: ^dom.Node) {
 
 		// what one cell added to the display list: [first, end) per list
 		Placed :: struct {
-			box_index:            int,
-			x, width, height:     f32,
-			first_run, end_run:   int,
-			first_image, end_image: int,
-			first_box, end_box:   int,
+			box_index:        int,
+			x, width, height: f32,
+			using drawn:      Display_Range,
 		}
 		placed := make([dynamic]Placed, context.temp_allocator)
 		row_height: f32 = 0
@@ -187,10 +185,10 @@ layout_table :: proc(b: ^Builder, node: ^dom.Node) {
 
 			p := Placed{x = x, width = width}
 			p.box_index = reserve_box(b, cell_style, cell_border)
-			p.first_run, p.first_image, p.first_box = len(b.layout.runs), len(b.layout.images), len(b.layout.boxes)
+			p.drawn = display_range_start(b)
 
 			bottom := layout_cell_contents(b, cell.node, x + cell_inset[.Left], x + width - cell_inset[.Right], row_top + cell_inset[.Top])
-			p.end_run, p.end_image, p.end_box = len(b.layout.runs), len(b.layout.images), len(b.layout.boxes)
+			p.drawn = display_range_end(b, p.drawn)
 			p.height = bottom + cell_inset[.Bottom] - row_top
 			if cell_style.height.unit == .Px {
 				p.height = max(p.height, cell_style.height.value)
@@ -211,7 +209,7 @@ layout_table :: proc(b: ^Builder, node: ^dom.Node) {
 				offset = row_height - p.height
 			}
 			if offset > 0 {
-				shift_items(b, p, offset)
+				shift_items(b, p.drawn, offset)
 			}
 			_, _, cell_border, _ := box_edges(b, cell_style, p.width)
 			fill_box(b, p.box_index, cell_style, cell_border, p.x, row_top, p.width, row_height)
@@ -428,7 +426,7 @@ layout_cell_contents :: proc(b: ^Builder, node: ^dom.Node, left, right, top: f32
 // Moves what one cell added to the display list down (vertical-align). Only
 // its own range: the cells after it are already in the lists too.
 @(private)
-shift_items :: proc(b: ^Builder, p: $T, dy: f32, dx: f32 = 0) {
+shift_items :: proc(b: ^Builder, p: Display_Range, dy: f32, dx: f32 = 0) {
 	for &run in b.layout.runs[p.first_run:p.end_run] {
 		run.x += dx
 		run.y += dy
@@ -441,6 +439,11 @@ shift_items :: proc(b: ^Builder, p: $T, dy: f32, dx: f32 = 0) {
 		box.x += dx
 		box.y += dy
 	}
+	// the clip rectangles made inside move along
+	for &clip in b.layout.clips[p.first_clip:p.end_clip] {
+		clip.x += dx
+		clip.y += dy
+	}
 }
 
 // What a part of the layout added to the display list: [first, end) per list.
@@ -449,17 +452,19 @@ Display_Range :: struct {
 	first_run, end_run:     int,
 	first_image, end_image: int,
 	first_box, end_box:     int,
+	first_clip, end_clip:   int, // clip rectangles (not items)
 }
 
 @(private)
 display_range_start :: proc(b: ^Builder) -> Display_Range {
-	return {first_run = len(b.layout.runs), first_image = len(b.layout.images), first_box = len(b.layout.boxes)}
+	l := b.layout
+	return {first_run = len(l.runs), first_image = len(l.images), first_box = len(l.boxes), first_clip = len(l.clips)}
 }
 
 @(private)
 display_range_end :: proc(b: ^Builder, r: Display_Range) -> Display_Range {
 	r := r
-	r.end_run, r.end_image, r.end_box = len(b.layout.runs), len(b.layout.images), len(b.layout.boxes)
+	r.end_run, r.end_image, r.end_box, r.end_clip = len(b.layout.runs), len(b.layout.images), len(b.layout.boxes), len(b.layout.clips)
 	return r
 }
 
@@ -489,11 +494,11 @@ reserve_box :: proc(b: ^Builder, style: dom.Style, border: [dom.Edge]f32) -> int
 
 @(private)
 fill_box :: proc(b: ^Builder, index: int, style: dom.Style, border: [dom.Edge]f32, x, y, width, height: f32) {
-	b.last_box = {x, y, width, height, border}
+	b.last_box = {x, y, width, height, border, index}
 	if index < 0 {
 		return
 	}
-	box := Box{x, y, width, height, style.background, border, {}}
+	box := Box{x, y, width, height, style.background, border, {}, 0}
 	for edge in dom.Edge {
 		box.border_color[edge] = dom.border_color(style.border[edge], style.color)
 	}
