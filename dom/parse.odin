@@ -17,8 +17,10 @@ Stylesheet_Loader :: struct {
 // With a stylesheet loader, <link rel="stylesheet"> files are fetched and take
 // part in the cascade; like in a browser they block until they are there
 // ("render-blocking"), so the page never shows up unstyled first.
+// @media blocks (which lexbor skips) are evaluated for the given viewport,
+// in external stylesheets and in <style> elements, see media.odin.
 // The lexbor document is destroyed before returning, so nothing points into it.
-parse :: proc(html: string, stylesheets: Stylesheet_Loader = {}) -> (doc: ^Document, err: Maybe(Parse_Error)) {
+parse :: proc(html: string, stylesheets: Stylesheet_Loader = {}, media := DEFAULT_MEDIA) -> (doc: ^Document, err: Maybe(Parse_Error)) {
 	lxb_doc := lxb.lxb_html_document_create()
 	if lxb_doc == nil {
 		return nil, Parse_Error{"lexbor: could not create document"}
@@ -50,6 +52,34 @@ parse :: proc(html: string, stylesheets: Stylesheet_Loader = {}) -> (doc: ^Docum
 			lxb.lxb_css_parser_destroy(css_parser, true)
 		}
 	}
+	add_sheet :: proc(lxb_doc: ^lxb.Html_Document, css_parser: ^^lxb.Css_Parser, sheets: ^[dynamic]^lxb.Css_Stylesheet, css: string) {
+		if css == "" {
+			return
+		}
+		if css_parser^ == nil {
+			css_parser^ = lxb.lxb_css_parser_create()
+			if lxb.lxb_css_parser_init(css_parser^, nil) != lxb.STATUS_OK {
+				return
+			}
+		}
+		sheet := lxb.lxb_css_stylesheet_create(nil)
+		if lxb.lxb_css_stylesheet_parse(sheet, css_parser^, raw_data(css), uint(len(css))) != lxb.STATUS_OK {
+			lxb.lxb_css_stylesheet_destroy(sheet, true)
+			return
+		}
+		lxb.lxb_html_document_stylesheet_attach_noi(lxb_doc, sheet)
+		append(sheets, sheet)
+	}
+
+	// <style> elements: lexbor applied them while parsing, but without their
+	// @media blocks. Add the contents of the matching ones.
+	style_texts := make([dynamic]string, context.temp_allocator)
+	find_style_elements(lxb_doc, lxb.document_node(lxb_doc), &style_texts)
+	for text in style_texts {
+		add_sheet(lxb_doc, &css_parser, &sheets, apply_media_queries(text, media, only_media = true, allocator = context.temp_allocator))
+	}
+
+	// external stylesheets, in document order
 	if stylesheets.load != nil {
 		hrefs := make([dynamic]string, context.temp_allocator)
 		find_stylesheet_links(lxb.document_node(lxb_doc), &hrefs)
@@ -58,19 +88,7 @@ parse :: proc(html: string, stylesheets: Stylesheet_Loader = {}) -> (doc: ^Docum
 			if !ok {
 				continue // a missing stylesheet doesn't stop the page
 			}
-			if css_parser == nil {
-				css_parser = lxb.lxb_css_parser_create()
-				if lxb.lxb_css_parser_init(css_parser, nil) != lxb.STATUS_OK {
-					break
-				}
-			}
-			sheet := lxb.lxb_css_stylesheet_create(nil)
-			if lxb.lxb_css_stylesheet_parse(sheet, css_parser, raw_data(css), uint(len(css))) != lxb.STATUS_OK {
-				lxb.lxb_css_stylesheet_destroy(sheet, true)
-				continue
-			}
-			lxb.lxb_html_document_stylesheet_attach_noi(lxb_doc, sheet)
-			append(&sheets, sheet)
+			add_sheet(lxb_doc, &css_parser, &sheets, apply_media_queries(css, media, allocator = context.temp_allocator))
 		}
 	}
 
@@ -194,4 +212,22 @@ is_stylesheet_link :: proc(element: ^lxb.Dom_Element) -> bool {
 	}
 	media, has_media := lxb.element_attribute(element, "media")
 	return !has_media || strings.to_lower(strings.trim_space(media), context.temp_allocator) != "print"
+}
+
+// Collects the text of <style> elements that contain @media (the others are
+// fully handled by lexbor already).
+@(private)
+find_style_elements :: proc(lxb_doc: ^lxb.Html_Document, node: ^lxb.Dom_Node, texts: ^[dynamic]string) {
+	for child := lxb.lxb_dom_node_first_child_noi(node); child != nil; child = lxb.lxb_dom_node_next_noi(child) {
+		if element := lxb.element_from_node(child); element != nil {
+			if lxb.element_name(element) == "style" {
+				text := lxb.node_text_content(lxb_doc, child, context.temp_allocator)
+				if strings.contains(strings.to_lower(text, context.temp_allocator), "@media") {
+					append(texts, text)
+				}
+				continue
+			}
+			find_style_elements(lxb_doc, child, texts)
+		}
+	}
 }

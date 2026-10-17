@@ -126,8 +126,9 @@ test_computed_styles :: proc(t: ^testing.T) {
 	testing.expect_value(t, h2.style.font_weight, 700)
 }
 
-// Depth-first search for the first element with the tag.
-@(private = "file")
+// Depth-first search for the first element with the tag (shared by the tests
+// of this package).
+@(private)
 find_element :: proc(node: ^Node, tag: string) -> ^Node {
 	for child in node.children {
 		if child.kind == .Element && child.tag == tag {

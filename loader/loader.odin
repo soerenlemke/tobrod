@@ -64,9 +64,10 @@ Loader :: struct {
 
 @(private)
 Request :: struct {
-	id:   Request_Id,
-	kind: Request_Kind,
-	url:  string,
+	id:    Request_Id,
+	kind:  Request_Kind,
+	url:   string,
+	media: dom.Media_Env, // pages only: viewport for @media
 }
 
 init :: proc(l: ^Loader, allocator := context.allocator) -> Maybe(http.Http_Error) {
@@ -109,8 +110,9 @@ destroy :: proc(l: ^Loader) {
 
 // Starts loading the page at url. Replaces a page request that is still
 // waiting, drops all queued resources and cancels what is in progress, so only
-// the newest navigation is worked on.
-load :: proc(l: ^Loader, url: string) -> Request_Id {
+// the newest navigation is worked on. media is the viewport the page is shown
+// in, for evaluating @media.
+load :: proc(l: ^Loader, url: string, media := dom.DEFAULT_MEDIA) -> Request_Id {
 	id := l.next_id
 	l.next_id += 1
 
@@ -120,7 +122,7 @@ load :: proc(l: ^Loader, url: string) -> Request_Id {
 	if old, ok := l.pending.?; ok {
 		delete(old.url, l.allocator)
 	}
-	l.pending = Request{id = id, kind = .Page, url = strings.clone(url, l.allocator)}
+	l.pending = Request{id = id, kind = .Page, url = strings.clone(url, l.allocator), media = media}
 	drop_resources(l)
 	sync.atomic_store(&l.abort, true)
 	sync.cond_signal(&l.cond)
@@ -257,7 +259,7 @@ fetch :: proc(l: ^Loader, request: Request) -> (result: Result, finished: bool) 
 		// external stylesheets are fetched during parsing, with the same client.
 		// That reuses the response buffers: response must not be used after this.
 		fetcher := Stylesheet_Fetch{loader = l, base = result.url}
-		result.document, parse_err = dom.parse(response.body, {load = load_stylesheet, ctx = &fetcher})
+		result.document, parse_err = dom.parse(response.body, {load = load_stylesheet, ctx = &fetcher}, request.media)
 		if fetcher.aborted {
 			// a newer request came in while we were loading the stylesheets
 			if result.document != nil {

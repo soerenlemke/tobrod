@@ -62,7 +62,7 @@ Stage 4 — HTML & CSS Parsing
 - [x] CSS parsing and CSSOM construction (via lexbor's css/style modules)
 - [x] Selector matching and cascade (via lexbor: specificity, `!important`, inline styles)
 - [x] External stylesheets (`<link rel="stylesheet">`, render-blocking)
-- [ ] `@media` queries
+- [x] `@media` queries (evaluated for the viewport at load time)
 - [ ] CSS custom properties (`var()`)
 - [ ] Use computed styles in our DOM and when rendering
    - [x] `display` (UA defaults + CSS, `display: none` hides elements)

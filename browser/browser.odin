@@ -126,7 +126,9 @@ open_current :: proc(b: ^Browser) {
 	// only starts loading; the page arrives later in receive_pages.
 	// The loader drops the queued images of the old page.
 	forget_image_requests(b)
-	b.loading_id = loader.load(&b.page_loader, url)
+	// @media is evaluated for the current size of the page view
+	page_rect := b.window.page_view.rect
+	b.loading_id = loader.load(&b.page_loader, url, {page_rect.width, page_rect.height})
 	ui.set_loading(&b.window, true)
 }
 
