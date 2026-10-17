@@ -24,6 +24,7 @@ Node :: struct {
 	tag:        string,      // Element only, lowercase (e.g. "div")
 	attributes: []Attribute, // Element only, in source order
 	text:       string,      // Text and Comment only
+	style:      Style,       // Element only, defaults + CSS (see style.odin)
 }
 
 // Owns the whole tree. Every node and string lives in the arena,

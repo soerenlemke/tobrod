@@ -4,7 +4,7 @@ import "core:strings"
 
 // Turns the tree into plain text for display. Not real layout yet, but it
 // follows the basic browser rules:
-// - invisible elements (head, script, style, template) are skipped
+// - elements with display: none are skipped (incl. head, script, style by default)
 // - whitespace in text collapses to single spaces, except inside <pre>
 // - block elements start on a new line, some of them with an empty line around
 // - <br> is a line break, list items get a bullet
@@ -41,7 +41,7 @@ write_display_text :: proc(w: ^Text_Writer, node: ^Node, in_pre: bool) {
 			write_collapsed(w, node.text)
 		}
 	case .Element:
-		if is_hidden(node.tag) {
+		if node.style.display == .None {
 			return
 		}
 		if node.tag == "br" {
@@ -49,9 +49,14 @@ write_display_text :: proc(w: ^Text_Writer, node: ^Node, in_pre: bool) {
 			return
 		}
 
-		breaks := block_breaks(node.tag)
+		breaks := 0
+		switch node.style.display {
+		case .Block, .List_Item:
+			breaks = 2 if has_vertical_margin(node.tag) else 1
+		case .Inline, .None:
+		}
 		request_breaks(w, breaks)
-		if node.tag == "li" {
+		if node.style.display == .List_Item {
 			write_text(w, "• ")
 		}
 
@@ -135,23 +140,13 @@ is_space :: proc(c: u8) -> bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'
 }
 
+// Stand-in for the default top/bottom margin of these elements until we have
+// real layout: they get an empty line around them instead of just a line break.
 @(private)
-is_hidden :: proc(tag: string) -> bool {
+has_vertical_margin :: proc(tag: string) -> bool {
 	switch tag {
-	case "head", "script", "style", "template":
+	case "p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "dl", "pre", "blockquote", "table", "hr", "figure":
 		return true
 	}
 	return false
-}
-
-// Number of line breaks around a block element; 0 means inline.
-@(private)
-block_breaks :: proc(tag: string) -> int {
-	switch tag {
-	case "p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "dl", "pre", "blockquote", "table", "hr", "figure":
-		return 2
-	case "div", "li", "dt", "dd", "tr", "section", "article", "header", "footer", "nav", "main", "aside", "form", "address", "body", "html":
-		return 1
-	}
-	return 0
 }
