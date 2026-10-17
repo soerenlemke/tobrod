@@ -203,6 +203,7 @@ compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inh
 	if parent.display == .Flex {
 		style.float = .None
 	}
+	propagate_decoration(&style, parent)
 	return
 }
 

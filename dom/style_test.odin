@@ -475,3 +475,44 @@ test_style_element_media :: proc(t: ^testing.T) {
 	span := find_element(find_element(doc.root, "body"), "span")
 	testing.expect_value(t, span.style.color, Color{255, 0, 0, 255})
 }
+
+@(test)
+test_text_decoration :: proc(t: ^testing.T) {
+	doc, err := parse(`<html><head><style>
+		.plain { text-decoration: none }
+		.red { text-decoration: underline wavy red; color: blue }
+		.both { text-decoration-line: overline line-through }
+	</style></head><body>
+		<a href="x">link <b>bold</b></a>
+		<a class="plain" href="y">no line</a>
+		<u><span class="plain">still underlined</span></u>
+		<p class="red">red</p>
+		<del class="both">over and through</del>
+	</body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	body := find_element(doc.root, "body")
+	elements := make([dynamic]^Node, context.temp_allocator)
+	for child in body.children {
+		if child.kind == .Element {
+			append(&elements, child)
+		}
+	}
+	if len(elements) != 5 do return
+	link, plain, u, p, del := elements[0], elements[1], elements[2], elements[3], elements[4]
+
+	// UA: links are underlined in their color, and so is everything inside
+	testing.expect_value(t, link.style.decoration, Decoration{{.Underline}, LINK_COLOR})
+	testing.expect_value(t, find_element(link, "b").style.decoration, Decoration{{.Underline}, LINK_COLOR})
+	testing.expect_value(t, plain.style.decoration.lines, Decoration_Lines{})
+	// none on a child doesn't remove the line of its parent
+	span := find_element(u, "span")
+	testing.expect_value(t, span.style.decoration.lines, Decoration_Lines{.Underline})
+	// the shorthand with a style and a color
+	testing.expect_value(t, p.style.decoration, Decoration{{.Underline}, Color{255, 0, 0, 255}})
+	// the longhand replaces the UA line-through of del
+	testing.expect_value(t, del.style.decoration.lines, Decoration_Lines{.Overline, .Line_Through})
+}

@@ -778,3 +778,31 @@ test_inline_margins_and_markers :: proc(t: ^testing.T) {
 	testing.expect_value(t, l.boxes[0].x, 40)
 	testing.expect_value(t, l.boxes[0].width, 8)
 }
+
+@(test)
+test_text_decoration_runs :: proc(t: ^testing.T) {
+	// a link becomes its own run with the underline; text around it has none
+	doc, l := build_html(t, `<body style="margin: 0">a <a href="x">b c</a> d</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.runs) != 3 do return
+	testing.expect_value(t, l.runs[0].decoration.lines, dom.Decoration_Lines{})
+	testing.expect_value(t, l.runs[1].text, "b c")
+	testing.expect_value(t, l.runs[1].decoration.lines, dom.Decoration_Lines{.Underline})
+	testing.expect_value(t, l.runs[2].decoration.lines, dom.Decoration_Lines{})
+}
+
+@(test)
+test_text_decoration_spaces :: proc(t: ^testing.T) {
+	// the space inside the link is underlined with the next run, the one
+	// before the link is not
+	doc, l := build_html(t, `<body style="margin: 0">x <a href="y">a <b>b</b></a></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.runs) != 3 do return
+	testing.expect_value(t, l.runs[1].decoration_lead, 0)
+	testing.expect_value(t, l.runs[2].text, "b")
+	testing.expect_value(t, l.runs[2].decoration_lead, 8)
+}

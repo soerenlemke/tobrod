@@ -18,6 +18,11 @@ Style :: struct {
 	offset:      Edges,      // top, right, bottom, left (the "inset" properties); .Auto by default
 	clip:        Maybe(Edges), // clip: rect(top, right, bottom, left) of absolute elements, auto = that edge of the box
 	overflow:    [2]Overflow,  // x, y; not inherited
+	// text decoration, see text_style.odin: the element's own lines (not
+	// inherited) and the lines drawn through its text (own + ancestors')
+	text_decoration_line:  Decoration_Lines,
+	text_decoration_color: Maybe(Color), // nil = currentcolor
+	decoration:            Decoration,
 	float:       Float,      // not inherited
 	clear:       Clear,      // not inherited
 	vertical_align:  Vertical_Align, // table cells only
@@ -178,7 +183,7 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 	case "h6":
 		style.font_size = parent.font_size * 0.67
 		style.font_weight = 700
-	case "b", "strong", "dt":
+	case "b", "strong":
 		style.font_weight = 700
 	case "th":
 		style.font_weight = 700
@@ -188,6 +193,11 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		style.font_size = parent.font_size / 1.2
 	case "a":
 		style.color = LINK_COLOR
+		style.text_decoration_line = {.Underline}
+	case "u", "ins":
+		style.text_decoration_line = {.Underline}
+	case "s", "strike", "del":
+		style.text_decoration_line = {.Line_Through}
 	case "center":
 		style.text_align = .Center
 	case "ol":
@@ -355,6 +365,8 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 		} else if list_style, ok := parse_list_style(value); ok {
 			style.list_style = list_style
 		}
+	case "text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color":
+		apply_text_declaration(style, property, value)
 	case "flex", "flex-direction", "flex-wrap", "flex-flow", "justify-content", "align-items", "align-self",
 	     "gap", "row-gap", "column-gap", "flex-grow", "flex-shrink", "flex-basis":
 		apply_flex_declaration(style, property, value)
@@ -371,7 +383,8 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 // font-size comes before the box properties, because em in margins refers to it.
 STYLE_PROPERTIES :: [?]string {
 	"display", "color", "font-size", "font-weight", "text-align",
-	"visibility", "position", "inset", "top", "right", "bottom", "left", "clip", "overflow", "overflow-x", "overflow-y", "float", "clear", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
+	"visibility", "position", "inset", "top", "right", "bottom", "left", "clip",
+	"text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color", "overflow", "overflow-x", "overflow-y", "float", "clear", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
 	"width", "height", "min-height", "max-height", "max-width",

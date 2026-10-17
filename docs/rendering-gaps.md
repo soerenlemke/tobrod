@@ -22,7 +22,7 @@ Ordered by how much they change what a page looks like, weighed against how big 
 
 ### Text
 
-2. **`text-decoration`** (9 / 4260): links have no underline, not even the default one from the user agent stylesheet (CERN, danluu, Rust).
+2. ~~**`text-decoration`** (9 / 4260)~~: done. Underline, overline and line-through, propagated to the text inside, the UA underline of links.
 3. **`line-height`** (9 / 1980): every line is 1.25 × the font size. Pages that set their own line height look too tight or too loose.
 4. **`font-style: italic`** (5 / 209) and **`font-family`** (9 / 1650): we have one font, Inter, in regular and bold. Italic, a serif and a monospace font would each need another font file (OFL, like Inter). Web fonts (`@font-face`) are a bigger step after that.
 5. **`white-space`** (8 / 1202): `nowrap` and `pre` outside of `<pre>`; navigation bars and labels wrap where they shouldn't.
