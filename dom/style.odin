@@ -38,6 +38,8 @@ Style :: struct {
 	min_height:  Length, // 0 by default
 	max_height:  Length, // .Auto = none
 	max_width:   Length, // .Auto = none
+	min_width:   Length, // 0 by default
+	border_box:  bool,   // box-sizing: border-box - width/height include padding and border
 	background:  Color,  // alpha 0 = transparent
 	border:      Borders,
 	flex:        Flex,   // flexbox, see flex_style.odin
@@ -412,7 +414,7 @@ STYLE_PROPERTIES :: [?]string {
 	"text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color", "overflow", "overflow-x", "overflow-y", "float", "clear", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
-	"width", "height", "min-height", "max-height", "max-width",
+	"box-sizing", "width", "height", "min-width", "min-height", "max-height", "max-width",
 	"background", "background-color",
 	"flex-direction", "flex-wrap", "flex-flow", "justify-content", "align-items", "align-self",
 	"gap", "row-gap", "column-gap", "flex", "flex-grow", "flex-shrink", "flex-basis",

@@ -644,3 +644,22 @@ test_shorthand_specificity :: proc(t: ^testing.T) {
 	p := find_element(doc.root, "p")
 	testing.expect_value(t, p.style.padding, edges(px(1), px(1), px(1), px(9)))
 }
+
+@(test)
+test_box_sizing_and_min_width :: proc(t: ^testing.T) {
+	doc, err := parse(`<html><head><style>
+		* { box-sizing: border-box }
+		p { box-sizing: content-box; min-width: 10em }
+	</style></head><body><div>x</div><p>y</p></body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	div := find_element(doc.root, "div")
+	testing.expect(t, div.style.border_box, "* { box-sizing: border-box }")
+	testing.expect_value(t, div.style.min_width, Length{})
+	p := find_element(doc.root, "p")
+	testing.expect(t, !p.style.border_box, "content-box on p")
+	testing.expect_value(t, p.style.min_width, em(10))
+}

@@ -30,17 +30,18 @@ layout_inline_block :: proc(b: ^Builder, node: ^dom.Node) {
 	margin, _, _, inset := box_edges(b, style, available)
 
 	// width of the margin box: width, or shrink-to-fit like a float
+	inset_x := inset[.Left] + inset[.Right]
+	extra := inset_x + margin[.Left] + margin[.Right]
 	outer: f32
-	if style.width.unit != .Auto {
-		outer = dom.resolve_length(style.width, style.font_size, available, b.viewport) +
-			inset[.Left] + inset[.Right] + margin[.Left] + margin[.Right]
+	if w, ok := specified_width(b, style, available, inset_x); ok {
+		outer = w + extra
 	} else {
 		right_extra := inset[.Right] + margin[.Right]
 		max_content := measure_node(b, node, MAX_CONTENT_WIDTH) + right_extra
 		min_content := measure_node(b, node, 0) + right_extra
 		outer = min(max(min_content, available), max_content)
 	}
-	outer = max(outer, 0)
+	outer = clamp_outer_width(b, style, available, inset_x, extra, outer)
 
 	// into the line like a word: wrap if it doesn't fit
 	space_width: f32 = 0

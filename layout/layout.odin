@@ -426,16 +426,12 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	}
 
 	// horizontal: content width first, then auto margins take what is left
-	width: f32
-	if style.width.unit == .Auto {
-		width = available - margin[.Left] - margin[.Right] - inset[.Left] - inset[.Right]
-	} else {
-		width = dom.resolve_length(style.width, font_size, available, b.viewport)
+	inset_x := inset[.Left] + inset[.Right]
+	width, has_width := specified_width(b, style, available, inset_x)
+	if !has_width {
+		width = available - margin[.Left] - margin[.Right] - inset_x
 	}
-	if style.max_width.unit != .Auto {
-		width = min(width, dom.resolve_length(style.max_width, font_size, available, b.viewport))
-	}
-	width = max(width, 0)
+	width = clamp_width(b, style, available, inset_x, width)
 
 	left_auto := style.margin[.Left].unit == .Auto
 	right_auto := style.margin[.Right].unit == .Auto
@@ -502,7 +498,7 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	if style.display == .List_Item {
 		b.pending_marker = nil // an empty list item: no line got the marker
 	}
-	apply_block_height(b, style, inset[.Top], available)
+	apply_block_height(b, style, inset[.Top], inset[.Top] + inset[.Bottom], available)
 	if inset[.Bottom] > 0 {
 		flush_margin(b) // the bottom margin of the last child stays inside
 		b.y += inset[.Bottom]
@@ -530,10 +526,10 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 // Content taller than the box overflows (it stays visible, like overflow:
 // visible), the next block then starts at the box's bottom.
 @(private)
-apply_block_height :: proc(b: ^Builder, style: dom.Style, inset_top, available: f32) {
-	height, has_height := block_height(b, style, style.height, available)
-	min_height, has_min := block_height(b, style, style.min_height, available)
-	max_height, has_max := block_height(b, style, style.max_height, available)
+apply_block_height :: proc(b: ^Builder, style: dom.Style, inset_top, inset_y, available: f32) {
+	height, has_height := block_height(b, style, style.height, available, inset_y)
+	min_height, has_min := block_height(b, style, style.min_height, available, inset_y)
+	max_height, has_max := block_height(b, style, style.max_height, available, inset_y)
 	has_min = has_min && min_height > 0
 	if !has_height && !has_min && !has_max {
 		return
@@ -556,11 +552,11 @@ apply_block_height :: proc(b: ^Builder, style: dom.Style, inset_top, available: 
 // of the containing block, which is usually not known (auto), so they count
 // as auto.
 @(private)
-block_height :: proc(b: ^Builder, style: dom.Style, length: dom.Length, available: f32) -> (f32, bool) {
+block_height :: proc(b: ^Builder, style: dom.Style, length: dom.Length, available, inset_y: f32) -> (f32, bool) {
 	if length.unit == .Auto || length.unit == .Percent {
 		return 0, false
 	}
-	return dom.resolve_length(length, style.font_size, available, b.viewport), true
+	return content_size(b, style, length, available, inset_y), true // box-sizing
 }
 
 // Normal text: whitespace collapses to single spaces, lines wrap at spaces.

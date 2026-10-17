@@ -43,16 +43,12 @@ layout_flex :: proc(b: ^Builder, node: ^dom.Node) {
 	}
 
 	// container width like a block's
-	width: f32
-	if style.width.unit != .Auto {
-		width = dom.resolve_length(style.width, style.font_size, available, b.viewport)
-	} else {
-		width = available - margin[.Left] - margin[.Right] - inset[.Left] - inset[.Right]
+	inset_x := inset[.Left] + inset[.Right]
+	width, has_width := specified_width(b, style, available, inset_x)
+	if !has_width {
+		width = available - margin[.Left] - margin[.Right] - inset_x
 	}
-	if style.max_width.unit != .Auto {
-		width = min(width, dom.resolve_length(style.max_width, style.font_size, available, b.viewport))
-	}
-	width = max(width, 0)
+	width = clamp_width(b, style, available, inset_x, width)
 
 	main_gap := dom.resolve_length(flex.row_gap if column else flex.column_gap, style.font_size, width, b.viewport)
 	cross_gap := dom.resolve_length(flex.column_gap if column else flex.row_gap, style.font_size, width, b.viewport)
@@ -227,14 +223,16 @@ layout_flex_column :: proc(b: ^Builder, container: ^dom.Node, items: []Flex_Item
 lay_out_flex_item :: proc(b: ^Builder, item: ^Flex_Item, x, outer, top, main_size: f32) {
 	item.drawn = display_range_start(b)
 
-	// the grown/shrunk size wins over a width set on the item
+	// the grown/shrunk size wins over a width set on the item (as a content
+	// width, so for the moment it is content-box)
 	style := &item.node.style
-	old_width := style.width
+	old_width, old_border_box := style.width, style.border_box
 	if main_size >= 0 {
 		style.width = dom.px(max(main_size - item.inset[.Left] - item.inset[.Right], 0))
+		style.border_box = false
 	}
 	bottom := layout_in_own_context(b, item.node, x, x + outer, top, item.node)
-	style.width = old_width
+	style.width, style.border_box = old_width, old_border_box
 
 	item.height = bottom - top
 	item.drawn = display_range_end(b, item.drawn)
@@ -309,16 +307,21 @@ measure_flex_item :: proc(b: ^Builder, item: ^Flex_Item, container_width: f32, c
 	content_max := measure_node(b, item.node, MAX_CONTENT_WIDTH) - item.margin[.Left] + item.inset[.Right]
 	content_min := measure_node(b, item.node, 0) - item.margin[.Left] + item.inset[.Right]
 
+	// base and min size are border box sizes; box-sizing decides what
+	// flex-basis and width mean
 	switch {
 	case !column && style.flex.basis.unit != .Auto:
-		item.base = dom.resolve_length(style.flex.basis, style.font_size, container_width, b.viewport) + extra
+		item.base = content_size(b, style, style.flex.basis, container_width, extra) + extra
 	case style.width.unit != .Auto:
-		item.base = dom.resolve_length(style.width, style.font_size, container_width, b.viewport) + extra
+		item.base = content_size(b, style, style.width, container_width, extra) + extra
 	case:
 		item.base = content_max
 	}
 	// min-width: auto - an item doesn't shrink below its content
 	item.min_size = min(max(content_min, 0), item.base) if style.width.unit != .Auto else max(content_min, 0)
+	if style.min_width.unit != .Auto && style.min_width.value > 0 {
+		item.min_size = content_size(b, style, style.min_width, container_width, extra) + extra
+	}
 	item.base = max(item.base, 0)
 }
 
