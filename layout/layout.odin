@@ -248,6 +248,10 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 		layout_table(b, node)
 		return
 	}
+	if style.display == .Flex {
+		layout_flex(b, node)
+		return
+	}
 
 	// (table rows and cells outside of a table are laid out like blocks)
 	if style.display == .Inline {

@@ -189,9 +189,15 @@ compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inh
 			apply_declaration(&style, property, value, parent)
 		}
 	}
-	// a floated element is always block-level (CSS "blockification")
-	if style.float != .None && (style.display == .Inline || style.display == .Table_Cell || style.display == .Table_Row) {
-		style.display = .Block
+	// floated elements and the children of a flex container are always
+	// block-level (CSS "blockification"); floats don't apply to flex items
+	if style.float != .None || parent.display == .Flex {
+		if style.display == .Inline || style.display == .Table_Cell || style.display == .Table_Row {
+			style.display = .Block
+		}
+	}
+	if parent.display == .Flex {
+		style.float = .None
 	}
 	return
 }

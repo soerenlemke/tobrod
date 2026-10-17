@@ -347,3 +347,41 @@ test_position_visibility_list_style :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, ok_square, "list-style-type: square inherited by the li")
 }
+
+@(test)
+test_flex_properties :: proc(t: ^testing.T) {
+	doc, err := parse(`<html><head><style>
+		.box { display: flex; flex-flow: column wrap; justify-content: space-between; align-items: center; gap: 4px 8px }
+		.a { flex: 1 }
+		.b { flex: 2 0 100px; align-self: flex-end }
+		.c { flex: none }
+	</style></head><body><div class="box"><span class="a">a</span><div class="b">b</div><div class="c" style="float: left">c</div></div></body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	box := find_element(doc.root, "div")
+	f := box.style.flex
+	testing.expect_value(t, box.style.display, Display.Flex)
+	testing.expect_value(t, f.direction, Flex_Direction.Column)
+	testing.expect(t, f.wrap, "flex-flow: wrap")
+	testing.expect_value(t, f.justify, Justify.Space_Between)
+	testing.expect_value(t, f.align_items, Align.Center)
+	testing.expect_value(t, f.row_gap, px(4))
+	testing.expect_value(t, f.column_gap, px(8))
+
+	items := make([dynamic]^Node, context.temp_allocator)
+	for child in box.children {
+		if child.kind == .Element {
+			append(&items, child)
+		}
+	}
+	a, b, c := items[0], items[1], items[2]
+	testing.expect_value(t, a.style.display, Display.Block) // blockified
+	testing.expect(t, a.style.flex.grow == 1 && a.style.flex.shrink == 1 && a.style.flex.basis == px(0), "flex: 1")
+	testing.expect(t, b.style.flex.grow == 2 && b.style.flex.shrink == 0 && b.style.flex.basis == px(100), "flex: 2 0 100px")
+	testing.expect_value(t, b.style.flex.align_self, Align_Self.End)
+	testing.expect(t, c.style.flex.grow == 0 && c.style.flex.shrink == 0, "flex: none")
+	testing.expect_value(t, c.style.float, Float.None) // floats don't apply to flex items
+}

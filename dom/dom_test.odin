@@ -60,7 +60,7 @@ test_parse_display :: proc(t: ^testing.T) {
 	} {
 		{"none", .None, true},
 		{"block flow", .Block, true},
-		{"flex", .Block, true},
+		{"flex", .Flex, true},
 		{"inline-block", .Inline, true},
 		{"list-item", .List_Item, true},
 		{"ruby", .Inline, false},
