@@ -620,3 +620,27 @@ test_split_imports :: proc(t: ^testing.T) {
 	// an @import after other rules is not valid, it stays in the rest
 	testing.expect(t, strings.has_prefix(rest, "@media print"), "rest starts with the first rule")
 }
+
+@(test)
+test_shorthand_specificity :: proc(t: ^testing.T) {
+	// a more specific shorthand beats a less specific longhand, even though
+	// we apply longhands after shorthands; with the same specificity the
+	// longhand (written later here) wins
+	doc, err := parse(`<html><head><style>
+		.a.b { margin: 0 }
+		.a { margin-top: 5px }
+		.menu ul { list-style: none }
+		ul { list-style-type: disc }
+		.c { padding: 1px }
+		.c { padding-left: 9px }
+	</style></head><body><div class="a b">x</div><nav class="menu"><ul><li>y</li></ul></nav><p class="c">z</p></body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	testing.expect_value(t, find_element(doc.root, "div").style.margin[.Top], px(0))
+	testing.expect_value(t, find_element(doc.root, "ul").style.list_style, List_Style.None)
+	p := find_element(doc.root, "p")
+	testing.expect_value(t, p.style.padding, edges(px(1), px(1), px(1), px(9)))
+}

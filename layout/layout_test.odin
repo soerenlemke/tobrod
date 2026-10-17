@@ -830,3 +830,46 @@ test_line_height_inline_background :: proc(t: ^testing.T) {
 	testing.expect_value(t, l.runs[1].y, 12)
 	testing.expect_value(t, box_rect(l.boxes[0]), [4]f32{16, 10, 8, 20})
 }
+
+@(test)
+test_inline_block_baseline :: proc(t: ^testing.T) {
+	// shrink-to-fit: "bc" (16) + padding 2 x 4 = 24 wide; its text lines up
+	// with the text around it, the bottom padding hangs below the line's text
+	doc, l := build_html(t, `<body style="margin: 0">a <span style="display: inline-block; padding: 4px; background: red">bc</span> d</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, runs_to_string(l), "bc@20,6 16\na@0,6 16\nd@48,6 16\n")
+	if len(l.boxes) != 1 do return
+	testing.expect_value(t, box_rect(l.boxes[0]), [4]f32{16, 0, 24, 28})
+	testing.expect_value(t, l.height, 28)
+}
+
+@(test)
+test_inline_block_wraps_and_width :: proc(t: ^testing.T) {
+	// two 150px boxes don't fit next to each other in 200px
+	doc, l := build_html(t, `<body style="margin: 0">
+		<span style="display: inline-block; width: 150px; background: red">a</span>
+		<span style="display: inline-block; width: 150px; background: blue">b</span></body>`, 200)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.boxes) != 2 do return
+	testing.expect_value(t, box_rect(l.boxes[0]), [4]f32{0, 0, 150, 20})
+	testing.expect_value(t, box_rect(l.boxes[1]), [4]f32{0, 20, 150, 20})
+}
+
+@(test)
+test_inline_flex_and_empty_block :: proc(t: ^testing.T) {
+	// inline-flex: items side by side inside, the box in the line; an empty
+	// inline block sits on the baseline with its bottom edge
+	doc, l := build_html(t, `<body style="margin: 0">
+		<span style="display: inline-flex; gap: 10px"><span>a</span><span>b</span></span>
+		<span style="display: inline-block; width: 10px; height: 30px; background: red"></span>x</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, runs_to_string(l), "a@0,12 16\nb@18,12 16\nx@44,12 16\n")
+	if len(l.boxes) != 1 do return
+	testing.expect_value(t, box_rect(l.boxes[0]), [4]f32{34, 0, 10, 30})
+}

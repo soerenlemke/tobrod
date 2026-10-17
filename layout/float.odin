@@ -138,6 +138,7 @@ layout_in_own_context :: proc(b: ^Builder, node: ^dom.Node, left, right, top: f3
 	old_floats, old_float_top, old_unfloat := b.floats, b.last_float_top, b.unfloat
 	old_space, old_extend := b.pending_space, b.can_extend
 	old_fragments, old_inline_left, old_marker_run := b.inline_fragments, b.pending_inline_left, b.marker_run
+	old_line_blocks := b.line_blocks
 	defer {
 		b.left, b.right, b.x, b.y = old_left, old_right, old_x, old_y
 		b.line_left, b.line_right = old_line_left, old_line_right
@@ -146,6 +147,7 @@ layout_in_own_context :: proc(b: ^Builder, node: ^dom.Node, left, right, top: f3
 		b.floats, b.last_float_top, b.unfloat = old_floats, old_float_top, old_unfloat
 		b.pending_space, b.can_extend = old_space, old_extend
 		b.inline_fragments, b.pending_inline_left, b.marker_run = old_fragments, old_inline_left, old_marker_run
+		b.line_blocks = old_line_blocks
 	}
 
 	b.left, b.right, b.x, b.y = left, max(right, left), left, top
@@ -158,6 +160,7 @@ layout_in_own_context :: proc(b: ^Builder, node: ^dom.Node, left, right, top: f3
 	b.line_images = make([dynamic]Image_Item, b.allocator)
 	b.floats = make([dynamic]Float_Box, b.allocator)
 	b.inline_fragments = make([dynamic]Inline_Fragment, b.allocator)
+	b.line_blocks = make([dynamic]Inline_Block_Item, b.allocator)
 	b.pending_inline_left, b.marker_run = 0, 0
 	b.last_float_top = top
 	// a resolved entry: flush_margin must not resolve the blocks around us

@@ -160,6 +160,11 @@ compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inh
 	raw_values := winning_raw_declarations(&declared, props)
 
 	for property in STYLE_PROPERTIES {
+		// a longhand loses against a more specific shorthand that was applied
+		// before it (`.menu ul { list-style: none }` vs `ul { list-style-type: disc }`)
+		if loses_to_shorthand(&declared, property) {
+			continue
+		}
 		if value, ok := lxb.element_style(element, property, context.temp_allocator); ok {
 			apply_declaration(&style, property, value, parent)
 		}
@@ -171,12 +176,15 @@ compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inh
 	}
 	// floated elements and the children of a flex container are always
 	// block-level (CSS "blockification"); floats don't apply to flex items
-	if style.float != .None || parent.display == .Flex {
-		if style.display == .Inline || style.display == .Table_Cell || style.display == .Table_Row {
+	if style.float != .None || is_flex_container(parent.display) {
+		#partial switch style.display {
+		case .Inline, .Inline_Block, .Table_Cell, .Table_Row:
 			style.display = .Block
+		case .Inline_Flex:
+			style.display = .Flex
 		}
 	}
-	if parent.display == .Flex {
+	if is_flex_container(parent.display) {
 		style.float = .None
 	}
 	propagate_decoration(&style, parent)

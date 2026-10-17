@@ -261,3 +261,72 @@ index_outside_parens :: proc(s: string, c: u8) -> int {
 	}
 	return -1
 }
+
+// The specificity of the winning declaration of a property on the element
+// (0 if none). lexbor gives us only the winning value, the walk the rest.
+@(private)
+declared_spec :: proc(d: ^Declared, property: string) -> (spec: u32, ok: bool) {
+	if s, found := d.plain_spec[property]; found {
+		spec, ok = s, true
+	}
+	if raw, found := d.raw_values[property]; found {
+		spec, ok = max(spec, raw.spec), true
+	}
+	return
+}
+
+// The shorthands that also set a longhand, from the closest to the widest
+// ("" = no more).
+@(private)
+shorthands_of :: proc(property: string) -> [5]string {
+	switch property {
+	case "list-style-type":
+		return {0 = "list-style"}
+	case "margin-top", "margin-right", "margin-bottom", "margin-left":
+		return {0 = "margin"}
+	case "padding-top", "padding-right", "padding-bottom", "padding-left":
+		return {0 = "padding"}
+	case "background-color":
+		return {0 = "background"}
+	case "top", "right", "bottom", "left":
+		return {0 = "inset"}
+	case "overflow-x", "overflow-y":
+		return {0 = "overflow"}
+	case "row-gap", "column-gap":
+		return {0 = "gap"}
+	case "flex-grow", "flex-shrink", "flex-basis":
+		return {0 = "flex"}
+	case "flex-direction", "flex-wrap":
+		return {0 = "flex-flow"}
+	case "text-decoration-line", "text-decoration-color":
+		return {0 = "text-decoration"}
+	case "border-width", "border-style", "border-color", "border-top", "border-right", "border-bottom", "border-left":
+		return {0 = "border"}
+	case "border-top-width", "border-top-style", "border-top-color":
+		return {"border-top", "border-width", "border-style", "border-color", "border"}
+	case "border-right-width", "border-right-style", "border-right-color":
+		return {"border-right", "border-width", "border-style", "border-color", "border"}
+	case "border-bottom-width", "border-bottom-style", "border-bottom-color":
+		return {"border-bottom", "border-width", "border-style", "border-color", "border"}
+	case "border-left-width", "border-left-style", "border-left-color":
+		return {"border-left", "border-width", "border-style", "border-color", "border"}
+	}
+	return {}
+}
+
+// Whether a shorthand with a higher specificity than this longhand was
+// declared on the element; it was applied before, so the longhand must not
+// overwrite it.
+@(private)
+loses_to_shorthand :: proc(d: ^Declared, property: string) -> bool {
+	own := declared_spec(d, property) or_return
+	for shorthand in shorthands_of(property) {
+		if shorthand == "" {
+			break
+		}
+		if spec, ok := declared_spec(d, shorthand); ok && spec > own {
+			return true
+		}
+	}
+	return false
+}
