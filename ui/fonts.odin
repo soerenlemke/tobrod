@@ -1,30 +1,47 @@
 package ui
 
-import "core:strings"
 import rl "vendor:raylib"
 
-// Global font for text rendering, initialized once via fonts_init
+// Global fonts for text rendering, initialized once via fonts_init
 font: rl.Font
+font_bold: rl.Font
 
-fonts_init :: proc(font_path: string) -> Maybe(Error) {
-	font_c := strings.clone_to_cstring(font_path)
-	defer delete(font_c)
+FONT_REGULAR_PATH :: "assets/fonts/Inter_18pt-Regular.ttf"
+FONT_BOLD_PATH :: "assets/fonts/Inter-Bold.ttf"
 
+fonts_init :: proc() -> Maybe(Error) {
 	// raylib only bakes the 95 ASCII glyphs into the font texture by default,
 	// everything else would be drawn as '?'. So we pass the codepoints we want.
 	codepoints := font_codepoints()
 	defer delete(codepoints)
 
-	font = rl.LoadFontEx(font_c, FONT_LOAD_SIZE, raw_data(codepoints), i32(len(codepoints)))
-	if font.texture.id == 0 {
-		return Error{message = "could not load font"}
+	ok: bool
+	if font, ok = load_font(FONT_REGULAR_PATH, codepoints[:]); !ok {
+		return Error{message = "could not load font " + FONT_REGULAR_PATH}
+	}
+	if font_bold, ok = load_font(FONT_BOLD_PATH, codepoints[:]); !ok {
+		rl.UnloadFont(font)
+		return Error{message = "could not load font " + FONT_BOLD_PATH}
+	}
+	return nil
+}
+
+// Regular or bold font for a piece of text.
+font_for :: proc(bold: bool) -> rl.Font {
+	return font_bold if bold else font
+}
+
+@(private)
+load_font :: proc(path: cstring, codepoints: []rune) -> (rl.Font, bool) {
+	f := rl.LoadFontEx(path, FONT_LOAD_SIZE, raw_data(codepoints), i32(len(codepoints)))
+	if f.texture.id == 0 {
+		return f, false
 	}
 	// Text is mostly drawn smaller than it was rasterized. Mipmaps + trilinear
 	// filtering keep it smooth instead of blocky when scaled down.
-	rl.GenTextureMipmaps(&font.texture)
-	rl.SetTextureFilter(font.texture, .TRILINEAR)
-
-	return nil
+	rl.GenTextureMipmaps(&f.texture)
+	rl.SetTextureFilter(f.texture, .TRILINEAR)
+	return f, true
 }
 
 // ASCII, Latin-1 (umlauts, accents, ß) and common typographic characters.
@@ -45,4 +62,5 @@ font_codepoints :: proc() -> [dynamic]rune {
 
 fonts_close :: proc() {
 	rl.UnloadFont(font)
+	rl.UnloadFont(font_bold)
 }

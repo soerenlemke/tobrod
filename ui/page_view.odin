@@ -14,10 +14,6 @@ PageView :: struct {
 	content_height: f32,
 }
 
-// Synthetic bold: without a bold font face we draw the text a second time,
-// shifted by this many pixels. Browsers do the same when a font has no bold.
-SYNTHETIC_BOLD_OFFSET :: f32(1)
-
 page_view_init :: proc(window_width, window_height: i32) -> PageView {
 	return PageView {
 		rect = rl.Rectangle {
@@ -103,10 +99,7 @@ page_view_render :: proc(pv: ^PageView) {
 		text_c := strings.clone_to_cstring(run.text, context.temp_allocator)
 		pos := rl.Vector2{pv.rect.x + run.x, pv.rect.y + top}
 		color := rl.Color(run.color)
-		rl.DrawTextEx(font, text_c, pos, run.font_size, 0, color)
-		if run.bold {
-			rl.DrawTextEx(font, text_c, pos + {SYNTHETIC_BOLD_OFFSET, 0}, run.font_size, 0, color)
-		}
+		rl.DrawTextEx(font_for(run.bold), text_c, pos, run.font_size, 0, color)
 	}
 }
 
@@ -114,11 +107,7 @@ page_view_render :: proc(pv: ^PageView) {
 @(private)
 measure_text :: proc(text: string, font_size: f32, bold: bool) -> f32 {
 	text_c := strings.clone_to_cstring(text, context.temp_allocator)
-	width := rl.MeasureTextEx(font, text_c, font_size, 0).x
-	if bold {
-		width += SYNTHETIC_BOLD_OFFSET
-	}
-	return width
+	return rl.MeasureTextEx(font_for(bold), text_c, font_size, 0).x
 }
 
 page_view_handle_resize :: proc(pv: ^PageView, window_width, window_height: i32) {
