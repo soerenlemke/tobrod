@@ -94,7 +94,7 @@ register_fixed :: proc(b: ^Builder, node: ^dom.Node) {
 // Where an out-of-flow element would be in the normal flow.
 @(private)
 static_position :: proc(b: ^Builder, node: ^dom.Node) -> (pos: [2]f32) {
-	if node.style.display == .Inline {
+	if dom.is_inline_level(node.style.display) {
 		pos = {b.x, b.y if !line_empty(b) else b.y + b.pending_margin}
 		if b.pending_space && !line_empty(b) {
 			// after the space that waits for the next word

@@ -107,7 +107,21 @@ Display :: enum {
 	Table_Row,
 	Table_Cell,
 	Table_Caption,
-	Flex, // flexbox container (layout/flex.odin); inline-flex is treated like flex
+	Flex, // flexbox container (layout/flex.odin)
+	// inline-level boxes that are laid out inside like a block / a flex
+	// container and placed in the line as a whole (layout/inline_block.odin)
+	Inline_Block,
+	Inline_Flex,
+}
+
+// Whether the children of an element with this display are flex items.
+is_flex_container :: proc(display: Display) -> bool {
+	return display == .Flex || display == .Inline_Flex
+}
+
+// Inline-level: placed in a line (text, inline elements, inline blocks).
+is_inline_level :: proc(display: Display) -> bool {
+	return display == .Inline || display == .Inline_Block || display == .Inline_Flex
 }
 
 // Vertical position of the content in a table cell. baseline is drawn like top.
@@ -388,9 +402,9 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 
 // Properties we take from the cascade, in the order they are applied.
 // Shorthands come before their longhands, so a longhand wins over a shorthand
-// of the same element. (We only get the winning value per property from lexbor,
-// not its specificity, so `.a.b { margin: 0 }` vs `.a { margin-top: 5px }` comes
-// out wrong. Good enough for now.)
+// of the same element - unless the shorthand is more specific, then the
+// longhand is skipped (loses_to_shorthand). With the same specificity the
+// later declaration should win; we don't know the order, the longhand wins.
 // font-size comes before the box properties, because em in margins refers to it.
 STYLE_PROPERTIES :: [?]string {
 	"display", "color", "font-size", "font-weight", "line-height", "text-align",
@@ -439,7 +453,7 @@ default_display :: proc(tag: string) -> Display {
 
 // Maps a CSS display value as serialized by lexbor to our enum.
 // Layout modes we don't support yet fall back to their outer behavior:
-// flex/grid act like block, inline-block/inline-flex like inline.
+// grid acts like block, inline-grid like inline-block, contents like inline.
 parse_display :: proc(value: string) -> (display: Display, ok: bool) {
 	// newer CSS allows two keywords ("block flow"), the first one is the outer display
 	outer := strings.trim_space(value)
@@ -451,8 +465,12 @@ parse_display :: proc(value: string) -> (display: Display, ok: bool) {
 		return .None, true
 	case "list-item":
 		return .List_Item, true
-	case "flex", "inline-flex":
+	case "flex":
 		return .Flex, true
+	case "inline-flex":
+		return .Inline_Flex, true
+	case "inline-block", "inline-grid":
+		return .Inline_Block, true
 	case "block", "grid", "flow-root":
 		return .Block, true
 	case "table", "inline-table":
@@ -467,7 +485,7 @@ parse_display :: proc(value: string) -> (display: Display, ok: bool) {
 		return .Table_Caption, true
 	case "table-column", "table-column-group":
 		return .None, true
-	case "inline", "inline-block", "inline-grid", "contents":
+	case "inline", "contents":
 		return .Inline, true
 	}
 	return .Inline, false

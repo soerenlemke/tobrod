@@ -11,7 +11,7 @@ import lxb "../vendor/lexbor"
 // It counts per element, after the cascade matched the rules:
 // - properties we don't read at all (line-height, white-space, transform, ...)
 // - values of properties we do read, but only approximate or ignore:
-//   display modes we fall back from (grid, inline-block, ...), sticky, and
+//   display modes we fall back from (grid, contents, ...), sticky, and
 //   lengths with calc()
 Css_Report :: struct {
 	allocator:  mem.Allocator,
@@ -51,7 +51,7 @@ report_count :: proc(r: ^Css_Report, m: ^map[string]int, key: string) {
 // outer behavior (see parse_display).
 @(private)
 SUPPORTED_DISPLAY :: []string {
-	"none", "block", "inline", "list-item", "flex", "flow-root",
+	"none", "block", "inline", "list-item", "flex", "flow-root", "inline-block", "inline-flex",
 	"table", "table-row-group", "table-header-group", "table-footer-group",
 	"table-row", "table-cell", "table-caption",
 }

@@ -146,6 +146,7 @@ build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text, image
 	b.containing.allocator = allocator
 	b.fixed_waiting.allocator = allocator
 	b.inline_fragments.allocator = allocator
+	b.line_blocks.allocator = allocator
 
 	// the initial containing block: absolute elements without a positioned
 	// ancestor are placed against the first screen of the page
@@ -238,6 +239,7 @@ Builder :: struct {
 	inline_fragments: [dynamic]Inline_Fragment, // decorated inline elements on the current line, see inline.odin
 	pending_inline_left: f32, // room the left side of inline elements wants before the next word
 	marker_run:     int,  // index + 1 of the list marker in b.line, 0 = none
+	line_blocks:    [dynamic]Inline_Block_Item, // inline blocks of the current line, see inline_block.odin
 	last_box:       Placed_Box, // border box of the block (or table, flex container) laid out last
 	overflow:       f32,  // bottom of absolute elements: the page grows with them
 }
@@ -303,6 +305,11 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	}
 	if node.tag == "br" {
 		line_break(b, style)
+		return
+	}
+	// placed in the line as a whole; inside, laid out as its own root below
+	if (style.display == .Inline_Block || style.display == .Inline_Flex) && node != b.unfloat && !is_replaced_element(node.tag) {
+		layout_inline_block(b, node)
 		return
 	}
 
@@ -373,7 +380,7 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 		layout_table(b, node)
 		return
 	}
-	if style.display == .Flex {
+	if dom.is_flex_container(style.display) {
 		layout_flex(b, node)
 		return
 	}
@@ -784,8 +791,11 @@ finish_line :: proc(b: ^Builder) {
 	if line_empty(b) {
 		return
 	}
-	// as high as the largest font or image on it
-	line_height: f32 = 0
+	// as high as the largest font or image on it; text and images sit on the
+	// bottom of that, the "baseline" of the line. Inline blocks can hang
+	// below it (their padding and border under their last line of text).
+	block_above, below := line_block_extent(b)
+	line_height := block_above
 	for run in b.line {
 		line_height = max(line_height, run.line_height)
 	}
@@ -797,6 +807,7 @@ finish_line :: proc(b: ^Builder) {
 	// hang left of b.left and stay where they are.
 	// (not while measuring: centering in an "infinitely" wide trial layout
 	// would move the content far to the right and make it look huge)
+	align_shift: f32 = 0
 	if b.text_align != .Left && !b.measuring {
 		line_end := b.line_left
 		for run in b.line {
@@ -806,6 +817,9 @@ finish_line :: proc(b: ^Builder) {
 		}
 		for image in b.line_images {
 			line_end = max(line_end, image.x + image.width)
+		}
+		for item in b.line_blocks {
+			line_end = max(line_end, item.x + item.width)
 		}
 		shift := max(b.line_right - line_end, 0)
 		if b.text_align == .Center {
@@ -819,6 +833,7 @@ finish_line :: proc(b: ^Builder) {
 		for &image in b.line_images {
 			image.x += shift
 		}
+		align_shift = shift
 	}
 
 	for &run in b.line {
@@ -839,17 +854,18 @@ finish_line :: proc(b: ^Builder) {
 		}
 	}
 	place_inline_boxes(b, b.y, line_height)
+	place_line_blocks(b, align_shift, b.y + line_height)
 	clear(&b.line)
 	clear(&b.line_images)
 	b.marker_run = 0
-	b.y += line_height
+	b.y += line_height + below
 	b.x = b.left
 	b.pending_space = false
 }
 
 @(private)
 line_empty :: proc(b: ^Builder) -> bool {
-	return len(b.line) == 0 && len(b.line_images) == 0
+	return len(b.line) == 0 && len(b.line_images) == 0 && len(b.line_blocks) == 0
 }
 
 // An image is an inline box with a fixed size: it is placed in the line like

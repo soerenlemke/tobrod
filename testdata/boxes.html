@@ -21,6 +21,9 @@
     .clipped .wide { width: 150%; background: #fca5a5 }
     .chip { overflow: hidden; width: 160px; background: #dbeafe; padding: 4px; margin-top: 8px }
     .chip div { width: 400px; background: #93c5fd }
+    .btn { display: inline-block; padding: 6px 12px; border: 1px solid #2563eb; background: #dbeafe; margin-right: 6px }
+    .nav { display: inline-flex; gap: 12px; background: #f3f4f6; padding: 4px 8px }
+    .tile { display: inline-block; width: 120px; padding: 8px; margin: 4px; background: #fde68a; vertical-align: top }
   </style>
 </head>
 <body>
@@ -56,6 +59,13 @@
       <div class="wide">and this block is 150% wide, it is cut off on the right</div>
     </div>
     <div class="chip"><div>a 400px wide block inside a 160px box with overflow: hidden</div></div>
+  </div>
+  <div class="card">
+    <h2>inline-block</h2>
+    <p>Buttons in a line: <span class="btn">Save</span><span class="btn">Cancel</span> and text after them,
+       lined up on the text's baseline.</p>
+    <p>An inline-flex bar: <span class="nav"><a href="#">Home</a><a href="#">Docs</a><a href="#">Blog</a></span> in a sentence.</p>
+    <div><span class="tile">Tile one with a little text</span><span class="tile">Tile two</span><span class="tile">Tile three, a bit longer than the others</span><span class="tile">Tile four</span></div>
   </div>
 </body>
 </html>
