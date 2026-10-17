@@ -113,6 +113,18 @@ apply_box_declaration :: proc(style: ^Style, property, value: string) {
 		if length, ok := parse_length(value, true); ok {
 			style.height = length
 		}
+	case "min-height":
+		if value == "auto" {
+			style.min_height = {} // like 0 for blocks
+		} else if length, ok := parse_length(value, false); ok {
+			style.min_height = length
+		}
+	case "max-height":
+		if value == "none" {
+			style.max_height = AUTO
+		} else if length, ok := parse_length(value, false); ok {
+			style.max_height = length
+		}
 	case "max-width":
 		if value == "none" {
 			style.max_width = AUTO

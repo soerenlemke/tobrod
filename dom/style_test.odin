@@ -182,7 +182,7 @@ test_box_shorthands :: proc(t: ^testing.T) {
 test_box_styles_from_css :: proc(t: ^testing.T) {
 	doc, err := parse(`<html><head><style>
 		div { margin: 0 auto; max-width: 20em; padding: 4px 8px; background: #abc }
-		div { margin-top: 10px }
+		div { margin-top: 10px; height: 5em; min-height: 2rem; max-height: none }
 	</style></head><body><div>x</div><ul></ul></body></html>`)
 	if e, ok := err.?; ok {
 		testing.fail_now(t, e.message)
@@ -199,6 +199,9 @@ test_box_styles_from_css :: proc(t: ^testing.T) {
 	testing.expect_value(t, div.style.max_width, em(20))
 	testing.expect_value(t, div.style.width, AUTO)
 	testing.expect_value(t, div.style.background, Color{0xaa, 0xbb, 0xcc, 255})
+	testing.expect_value(t, div.style.height, em(5))
+	testing.expect_value(t, div.style.min_height, px(32))
+	testing.expect_value(t, div.style.max_height, AUTO)
 
 	ul := find_element(doc.root, "ul")
 	testing.expect_value(t, ul.style.padding[.Left], px(40))

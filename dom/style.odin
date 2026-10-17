@@ -25,7 +25,9 @@ Style :: struct {
 	margin:      Edges,
 	padding:     Edges,
 	width:       Length, // .Auto = fill the available width
-	height:      Length, // only used for images so far
+	height:      Length, // .Auto = as high as the content; % counts as auto
+	min_height:  Length, // 0 by default
+	max_height:  Length, // .Auto = none
 	max_width:   Length, // .Auto = none
 	background:  Color,  // alpha 0 = transparent
 	border:      Borders,
@@ -105,6 +107,7 @@ ROOT_STYLE :: Style {
 	font_weight = 400,
 	width       = AUTO,
 	height      = AUTO,
+	max_height  = AUTO,
 	max_width   = AUTO,
 	border      = INITIAL_BORDERS,
 	flex        = INITIAL_FLEX,
@@ -133,6 +136,7 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		caption_bottom  = parent.caption_bottom,
 		width       = AUTO,
 		height      = AUTO,
+		max_height  = AUTO,
 		max_width   = AUTO,
 		border      = INITIAL_BORDERS,
 		flex        = INITIAL_FLEX,
@@ -339,7 +343,7 @@ STYLE_PROPERTIES :: [?]string {
 	"visibility", "position", "float", "clear", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
-	"width", "height", "max-width",
+	"width", "height", "min-height", "max-height", "max-width",
 	"background", "background-color",
 	"flex-direction", "flex-wrap", "flex-flow", "justify-content", "align-items", "align-self",
 	"gap", "row-gap", "column-gap", "flex", "flex-grow", "flex-shrink", "flex-basis",

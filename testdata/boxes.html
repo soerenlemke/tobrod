@@ -13,6 +13,10 @@
     .bordered { border: 2px solid #3b82f6; border-left-width: 6px; padding: 8px 12px; margin: 12px 0 }
     .center { text-align: center }
     .right { text-align: right; border-top: 1px dashed #999; padding-top: 4px }
+    .fixed { height: 60px; background: #fde68a; margin-bottom: 8px }
+    .min { min-height: 40px; background: #bbf7d0; margin-bottom: 8px }
+    .max { max-height: 24px; background: #fecaca; margin-bottom: 8px }
+    .spacer { height: 2em; border: 1px dashed #999 }
   </style>
 </head>
 <body>
@@ -36,6 +40,13 @@
     <p>Second card, paragraphs without margins:</p>
     <p>line two</p>
     <div class="half">width: 50% with margin-left: auto (right half)</div>
+  </div>
+  <div class="card tight">
+    <div class="fixed">height: 60px</div>
+    <div class="min">min-height: 40px</div>
+    <div class="max">max-height: 24px – the text is longer than the box, so it overflows into the next one, like overflow: visible in a real browser.</div>
+    <div class="spacer"></div>
+    <p>below an empty div with height: 2em</p>
   </div>
 </body>
 </html>
