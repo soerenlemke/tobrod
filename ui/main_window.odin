@@ -18,6 +18,9 @@ MainWindow :: struct {
 	page_view:         PageView,
 	on_url_submit:     proc(url: string, ctx: rawptr),
 	on_url_submit_ctx: rawptr,
+	// href as written in the page; resolving it is up to the receiver
+	on_link_click:     proc(href: string, ctx: rawptr),
+	on_link_click_ctx: rawptr,
 }
 
 init :: proc(window_settings: WindowSettings) -> (MainWindow, Maybe(Error)) {
@@ -63,6 +66,7 @@ run :: proc(ui: ^MainWindow, screenshot_path := "") -> Maybe(Error) {
 		}
 
 		address_bar_handle_input(ui, &ui.address_bar)
+		page_view_handle_mouse(ui, &ui.page_view)
 
 		if wheel := rl.GetMouseWheelMove(); wheel != 0 {
 			page_view_handle_scroll(&ui.page_view, wheel)

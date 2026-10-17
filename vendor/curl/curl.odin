@@ -3,7 +3,10 @@ package vendor_curl
 import c "core:c/libc"
 
 when ODIN_OS == .Windows {
-	@(export)
+	// libcurl is built with the dynamic CRT (/MD, see setup.ps1). Odin links the
+	// static CRT (libcmt) by default, so drop it – same trick as vendor:raylib.
+	// Without it, standalone builds like `odin test http` fail to link.
+	@(export, extra_linker_flags = "/NODEFAULTLIB:libcmt")
 	foreign import lib {
 		"../curl-src/build/lib/Release/libcurl.lib",
 		"system:Advapi32.lib",

@@ -143,3 +143,29 @@ test_display_from_css :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+@(test)
+test_links :: proc(t: ^testing.T) {
+	doc, l := build_html(t, `<p>go <a href="next.html">to <b>next</b></a> page</p>`, 800)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	// "go" | "to" | "next" (bold) | "page": runs split at link and style borders
+	testing.expect_value(t, len(l.runs), 4)
+	if len(l.runs) != 4 do return
+	testing.expect_value(t, l.runs[0].link, "")
+	testing.expect_value(t, l.runs[1].link, "next.html")
+	testing.expect_value(t, l.runs[2].link, "next.html")
+	testing.expect_value(t, l.runs[3].link, "")
+	testing.expect_value(t, l.runs[1].width, 16) // "to" = 2 chars * 8px
+
+	// hit test inside "to", inside the bold "next" and outside the link
+	link, ok := link_at(l, l.runs[1].x + 1, l.runs[1].y + 1)
+	testing.expect(t, ok && link == "next.html", "expected hit on 'to'")
+	link, ok = link_at(l, l.runs[2].x + l.runs[2].width - 1, l.runs[2].y + 8)
+	testing.expect(t, ok && link == "next.html", "expected hit on 'next'")
+	_, ok = link_at(l, l.runs[0].x + 1, l.runs[0].y + 1)
+	testing.expect(t, !ok, "expected no link on 'go'")
+	_, ok = link_at(l, l.runs[1].x + 1, l.runs[1].y + 100)
+	testing.expect(t, !ok, "expected no link below the line")
+}

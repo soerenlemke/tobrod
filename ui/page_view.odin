@@ -110,6 +110,31 @@ measure_text :: proc(text: string, font_size: f32, bold: bool) -> f32 {
 	return rl.MeasureTextEx(font_for(bold), text_c, font_size, 0).x
 }
 
+// Hand cursor over links, a left click on a link goes to on_link_click.
+page_view_handle_mouse :: proc(ui: ^MainWindow, pv: ^PageView) {
+	if pv.page_layout == nil {
+		return
+	}
+	mouse := rl.GetMousePosition()
+	if !rl.CheckCollisionPointRec(mouse, pv.rect) {
+		return
+	}
+
+	// window coordinates -> page coordinates
+	x := mouse.x - pv.rect.x
+	y := mouse.y - pv.rect.y + pv.scroll_y
+	link, on_link := layout.link_at(pv.page_layout, x, y)
+
+	rl.SetMouseCursor(.POINTING_HAND if on_link else .DEFAULT)
+
+	if on_link && rl.IsMouseButtonPressed(.LEFT) && ui.on_link_click != nil {
+		// The callback usually loads a new page, which destroys the layout the
+		// link string lives in. So hand over a copy that lives until frame end.
+		href := strings.clone(link, context.temp_allocator)
+		ui.on_link_click(href, ui.on_link_click_ctx)
+	}
+}
+
 page_view_handle_resize :: proc(pv: ^PageView, window_width, window_height: i32) {
 	pv.rect.width = f32(window_width)
 	pv.rect.height = f32(window_height) - ADDRESS_BAR_HEIGHT

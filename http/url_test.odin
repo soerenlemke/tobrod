@@ -1,0 +1,34 @@
+package http
+
+import "core:testing"
+
+@(test)
+test_resolve_url :: proc(t: ^testing.T) {
+	base := "http://example.com/docs/guide/page.html?x=1#top"
+	cases := []struct {
+		reference: string,
+		expected:  string,
+	} {
+		{"other.html", "http://example.com/docs/guide/other.html"},
+		{"../index.html", "http://example.com/docs/index.html"},
+		{"/root.txt", "http://example.com/root.txt"},
+		{"?q=2", "http://example.com/docs/guide/page.html?q=2"},
+		{"#section", "http://example.com/docs/guide/page.html?x=1#section"},
+		{"//cdn.example.org/a.js", "http://cdn.example.org/a.js"},
+		{"https://other.org/", "https://other.org/"},
+		{"  spaced.html  ", "http://example.com/docs/guide/spaced.html"},
+	}
+	for c in cases {
+		url, ok := resolve_url(base, c.reference)
+		defer delete(url)
+		testing.expectf(t, ok && url == c.expected, "%q: got %q (%v), want %q", c.reference, url, ok, c.expected)
+	}
+}
+
+@(test)
+test_is_loadable_url :: proc(t: ^testing.T) {
+	testing.expect(t, is_loadable_url("https://example.com/"))
+	testing.expect(t, is_loadable_url("http://127.0.0.1:8765/a"))
+	testing.expect(t, !is_loadable_url("mailto:someone@example.com"))
+	testing.expect(t, !is_loadable_url("javascript:void(0)"))
+}

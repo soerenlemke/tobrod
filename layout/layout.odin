@@ -18,9 +18,11 @@ import "../dom"
 Text_Run :: struct {
 	text:      string,
 	x, y:      f32,
+	width:     f32,
 	font_size: f32,
 	bold:      bool,
 	color:     dom.Color,
+	link:      string, // href of the surrounding <a>, as written in the page; "" if none
 }
 
 // Owns all runs and their strings; destroy frees everything at once.
@@ -70,6 +72,22 @@ destroy :: proc(l: ^Layout) {
 	free(l)
 }
 
+// The link under a point of the page (layout coordinates), "" if there is none.
+// The whole line box of a run counts, so clicks between the lines still hit.
+link_at :: proc(l: ^Layout, x, y: f32) -> (link: string, ok: bool) {
+	for run in l.runs {
+		if run.link == "" {
+			continue
+		}
+		line_height := run.font_size * LINE_HEIGHT_FACTOR
+		top := run.y - (line_height - run.font_size) / 2
+		if x >= run.x && x <= run.x + run.width && y >= top && y <= top + line_height {
+			return run.link, true
+		}
+	}
+	return "", false
+}
+
 @(private)
 Builder :: struct {
 	layout:         ^Layout,
@@ -83,6 +101,7 @@ Builder :: struct {
 	space_style:    dom.Style,           // style of that space (for its width)
 	pending_margin: f32,                 // collapsed vertical margin before the next line
 	can_extend:     bool,                // the next word may be appended to the last run
+	link:           string,              // href of the <a> we are in, "" outside of links
 }
 
 @(private)
@@ -115,6 +134,18 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 		line_break(b, style)
 		return
 	}
+
+	// Everything inside an <a href> belongs to that link (the innermost one wins).
+	// Note: defer is scoped to the block in Odin, so it must be at proc level here,
+	// inside the if it would restore the link right away.
+	outer_link := b.link
+	defer b.link = outer_link
+	if node.tag == "a" {
+		if href, ok := dom.attribute(node, "href"); ok {
+			b.link = strings.clone(href, b.allocator)
+		}
+	}
+
 	if style.display == .Inline {
 		for child in node.children {
 			layout_node(b, child)
@@ -235,10 +266,11 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 	// same style as the previous run: extend it instead of starting a new one
 	if len(b.line) > 0 {
 		last := &b.line[len(b.line) - 1]
-		if b.can_extend && same_style(last^, style) {
+		if b.can_extend && same_style(last^, style) && last.link == b.link {
 			separator := " " if space_width > 0 else ""
 			last.text = strings.concatenate({last.text, separator, word}, b.allocator)
 			b.x += space_width + width
+			last.width = b.x - last.x
 			b.pending_space = false
 			return
 		}
@@ -247,9 +279,11 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 	append(&b.line, Text_Run {
 		text      = strings.clone(word, b.allocator),
 		x         = b.x + space_width,
+		width     = width,
 		font_size = style.font_size,
 		bold      = bold,
 		color     = style.color,
+		link      = b.link,
 	})
 	b.x += space_width + width
 	b.pending_space = false
@@ -283,6 +317,7 @@ add_marker :: proc(b: ^Builder, node: ^dom.Node) {
 	append(&b.line, Text_Run {
 		text      = strings.clone(marker, b.allocator),
 		x         = b.left - gap - width,
+		width     = width,
 		font_size = style.font_size,
 		bold      = bold,
 		color     = style.color,
