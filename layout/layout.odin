@@ -140,6 +140,7 @@ build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text, image
 	b.positioned.allocator = allocator
 	b.containing.allocator = allocator
 	b.fixed_waiting.allocator = allocator
+	b.inline_fragments.allocator = allocator
 
 	// the initial containing block: absolute elements without a positioned
 	// ancestor are placed against the first screen of the page
@@ -230,6 +231,9 @@ Builder :: struct {
 	positioned:     [dynamic][2]int, // box ranges [first, end) of positioned elements, drawn last
 	containing:     [dynamic]Containing_Block, // open positioned elements, see position.odin
 	fixed_waiting:  [dynamic]Waiting_Absolute, // position: fixed, placed at the end
+	inline_fragments: [dynamic]Inline_Fragment, // decorated inline elements on the current line, see inline.odin
+	pending_inline_left: f32, // room the left side of inline elements wants before the next word
+	marker_run:     int,  // index + 1 of the list marker in b.line, 0 = none
 	last_box:       Placed_Box, // border box of the block (or table, flex container) laid out last
 	overflow:       f32,  // bottom of absolute elements: the page grows with them
 }
@@ -373,8 +377,15 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	// (table rows and cells outside of a table are laid out like blocks;
 	// absolute and fixed elements are blocks, too)
 	if style.display == .Inline && !out_of_flow {
+		decorated := inline_decorated(style)
+		if decorated {
+			begin_inline(b, node)
+		}
 		for child in node.children {
 			layout_node(b, child)
+		}
+		if decorated {
+			end_inline(b, node)
 		}
 		return
 	}
@@ -618,18 +629,20 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 	if b.pending_space {
 		space_width = b.measure(" ", b.space_style.font_size, b.space_style.font_weight >= BOLD_WEIGHT)
 	}
+	inline_left := b.pending_inline_left // padding etc. of inline elements starting here
 
 	// wrap; a word wider than the line stays alone on its line
-	if !line_empty(b) && b.x + space_width + width > b.line_right {
+	if !line_empty(b) && b.x + space_width + inline_left + width > b.line_right {
 		finish_line(b)
 		space_width = 0
 	}
 	if line_empty(b) {
 		line_height := style.font_size * LINE_HEIGHT_FACTOR
 		start_line(b, line_height)
-		fit_line(b, width, line_height) // below a float if it doesn't fit next to it
+		fit_line(b, inline_left + width, line_height) // below a float if it doesn't fit next to it
 		space_width = 0
 	}
+	space_width += take_inline_left(b)
 
 	// same style as the previous run: extend it instead of starting a new one
 	if b.can_extend && len(b.line) > 0 {
@@ -699,6 +712,7 @@ place_marker :: proc(b: ^Builder, marker: Pending_Marker) {
 	bold := style.font_weight >= BOLD_WEIGHT
 	gap := b.measure(" ", style.font_size, bold)
 	width := b.measure(marker.text, style.font_size, bold)
+	b.marker_run = len(b.line) + 1
 	append(&b.line, Text_Run {
 		text      = marker.text,
 		x         = marker.right - gap - width,
@@ -813,8 +827,10 @@ finish_line :: proc(b: ^Builder) {
 			append(&b.layout.images, image)
 		}
 	}
+	place_inline_boxes(b, b.y, line_height)
 	clear(&b.line)
 	clear(&b.line_images)
+	b.marker_run = 0
 	b.y += line_height
 	b.x = b.left
 	b.pending_space = false
@@ -836,15 +852,17 @@ layout_image :: proc(b: ^Builder, node: ^dom.Node) {
 	if b.pending_space {
 		space_width = b.measure(" ", b.space_style.font_size, b.space_style.font_weight >= BOLD_WEIGHT)
 	}
-	if !line_empty(b) && b.x + space_width + width > b.line_right {
+	inline_left := b.pending_inline_left
+	if !line_empty(b) && b.x + space_width + inline_left + width > b.line_right {
 		finish_line(b)
 		space_width = 0
 	}
 	if line_empty(b) {
 		start_line(b, height)
-		fit_line(b, width, height)
+		fit_line(b, inline_left + width, height)
 		space_width = 0
 	}
+	space_width += take_inline_left(b)
 
 	append(&b.line_images, Image_Item {
 		src    = strings.clone(src, b.allocator),

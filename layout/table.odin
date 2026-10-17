@@ -399,6 +399,7 @@ measure :: proc(b: ^Builder, node: ^dom.Node, width: f32, root: ^dom.Node) -> f3
 	trial.line_images.allocator = allocator
 	trial.block_tops.allocator = allocator
 	trial.floats.allocator = allocator
+	trial.inline_fragments.allocator = allocator
 
 	if root != nil {
 		layout_node(&trial, root)

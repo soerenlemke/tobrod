@@ -726,3 +726,55 @@ test_overflow_links :: proc(t: ^testing.T) {
 	_, ok = link_at(l, 5, 30)
 	testing.expect(t, !ok, "clipped part of the link")
 }
+
+@(private = "file")
+box_rect :: proc(box: Box) -> [4]f32 {
+	return {box.x, box.y, box.width, box.height}
+}
+
+@(test)
+test_inline_background :: proc(t: ^testing.T) {
+	// "a " is 16 wide; the padding makes room on both sides of "bc"; the box
+	// covers the line box of the font (20) plus the vertical padding
+	doc, l := build_html(t, `<body style="margin: 0">a <span style="background: red; padding: 2px 4px">bc</span> d</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, runs_to_string(l), "a@0,2 16\nbc@20,2 16\nd@48,2 16\n")
+	if len(l.boxes) != 1 do return
+	testing.expect_value(t, box_rect(l.boxes[0]), [4]f32{16, -2, 24, 24})
+	testing.expect_value(t, l.boxes[0].color, dom.Color{255, 0, 0, 255})
+	testing.expect_value(t, l.height, 20) // padding doesn't make the line higher
+}
+
+@(test)
+test_inline_background_wraps :: proc(t: ^testing.T) {
+	// one box per line; the left border only on the first, the right one
+	// only on the last
+	doc, l := build_html(t, `<body style="margin: 0"><span style="background: red; border: 1px solid">aaaa bbbb</span></body>`, 60)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, runs_to_string(l), "aaaa@1,2 16\nbbbb@0,22 16\n")
+	if len(l.boxes) != 2 do return
+	first, second := l.boxes[0], l.boxes[1]
+	testing.expect_value(t, box_rect(first), [4]f32{0, -1, 33, 22})
+	testing.expect_value(t, first.border, [dom.Edge]f32{.Top = 1, .Right = 0, .Bottom = 1, .Left = 1})
+	testing.expect_value(t, box_rect(second), [4]f32{0, 19, 33, 22})
+	testing.expect_value(t, second.border, [dom.Edge]f32{.Top = 1, .Right = 1, .Bottom = 1, .Left = 0})
+}
+
+@(test)
+test_inline_margins_and_markers :: proc(t: ^testing.T) {
+	// a margin only makes room; the list marker is not part of the span's box
+	doc, l := build_html(t, `<body style="margin: 0">x<span style="margin-left: 10px">y</span>z
+		<ul style="margin: 0; padding-left: 40px"><li><span style="background: red">a</span></li></ul></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.runs) < 3 || len(l.boxes) != 1 do return
+	testing.expect_value(t, l.runs[1].x, 18)
+	testing.expect_value(t, l.runs[2].x, 26)
+	testing.expect_value(t, l.boxes[0].x, 40)
+	testing.expect_value(t, l.boxes[0].width, 8)
+}

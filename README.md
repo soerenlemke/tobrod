@@ -20,7 +20,7 @@ It is a toy: it renders many real pages surprisingly well (try a Wikipedia artic
 - **Navigation**: address bar, clickable links, back / forward / reload with a session history (also Alt+←/→, F5, Ctrl+R, Escape to stop)
 - **HTML**: parsed by lexbor into tobrod's own DOM tree; plain text documents are shown like in Chrome
 - **CSS**: `<style>`, `style=""` and external stylesheets, `@media` queries, custom properties (`var()`), inheritance and the user agent defaults
-- **Layout**: block and inline layout with margin collapsing, the box model (margin, padding, borders, width / max-width, height / min-height / max-height, `margin: auto`), `overflow: hidden`, `position: relative`, `absolute` and `fixed`, backgrounds, `text-align`, lists, images, tables, floats and flexbox
+- **Layout**: block and inline layout with margin collapsing, the box model (margin, padding, borders, width / max-width, height / min-height / max-height, `margin: auto`), `overflow: hidden`, `position: relative`, `absolute` and `fixed`, backgrounds (also of inline elements like `code` or `mark`, one box per line), `text-align`, lists, images, tables, floats and flexbox
 - **Rendering**: text in regular and bold [Inter](https://github.com/rsms/inter) with sizes and colors, boxes, borders, images (PNG, JPG, GIF, BMP, QOI)
 
 See the [roadmap](#roadmap) for the details and [known limitations](#known-limitations) for what's missing.
@@ -150,6 +150,7 @@ Stage 4 — HTML & CSS
 - [x] Computed styles: display, colors, fonts, box model, visibility, list-style, position, float, flex
 - [x] Layout: blocks, inline text, margin collapsing, box model (incl. heights), backgrounds, borders, `text-align`, lists
 - [x] `overflow: hidden` (clip rectangles in the display list)
+- [x] Backgrounds, borders, padding and margins of inline elements
 - [x] Images (and other replaced elements like `video`, `iframe`)
 - [x] Tables
 - [x] Floats
