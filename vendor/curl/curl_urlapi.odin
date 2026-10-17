@@ -1,3 +1,4 @@
+// Copied from Odin's vendor:curl and modified for tobrod, see LICENSE-odin.
 package vendor_curl
 
 import c "core:c/libc"
