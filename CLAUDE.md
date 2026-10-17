@@ -123,7 +123,7 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
    - Mausrad → `page_view_handle_scroll`
    - `BeginDrawing` → `page_view_render`, dann `address_bar_render`, `nav_buttons_render` und beim Laden `loading_bar_render` (liegen oben drüber) → `EndDrawing`
    - `free_all(context.temp_allocator)` am Frame-Ende
-5. Enter in der Adressleiste, Linkklick oder `--url` → `navigate` → `history_push` → `open_current`: Adressleiste und Button-Zustand setzen, `loader.load(url)` → `loading_id` merken, `ui.set_loading(true)`. **Es wird nicht gewartet**, das Fenster bleibt bedienbar.
+5. Enter in der Adressleiste oder `--url` → `navigate_typed` (ergänzt das Schema per `http.complete_url`) → `navigate`; Linkklick → `navigate` direkt. `navigate` → `history_push` → `open_current`: Adressleiste und Button-Zustand setzen, `loader.load(url)` → `loading_id` merken, `ui.set_loading(true)`. **Es wird nicht gewartet**, das Fenster bleibt bedienbar.
    Pro Frame holt `receive_pages` Ergebnisse ab: Ergebnisse mit einer anderen ID als `loading_id` (veraltet) werden verworfen. Sonst `set_loading(false)`; bei Redirect `history_replace_current` + Adressleiste; Fehler → `page_view_set_content("Error: …")`, sonst `page_view_set_document` (Dokument wurde im Worker geparst). Beim Rendern baut die PageView bei Bedarf das Layout und zeichnet die Runs.
 6. Klick auf einen Link → `on_link_click(href)` → `http.resolve_url(aktueller History-Eintrag, href)` → nur `http(s)` wird geladen (`navigate`), `mailto:` usw. werden ignoriert.
 7. Zurück/Vor → `history_back`/`history_forward` + `open_current` (kein neuer Eintrag); Neu laden → `open_current`; Stopp → `loader.cancel`, `loading_id = 0`, `set_loading(false)`.
@@ -137,6 +137,7 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 **http** ([http/client.odin](http/client.odin))
 - `Client` hält ein wiederverwendetes curl-Easy-Handle (curl macht Connection-Reuse intern) und je einen Builder für Header und Body.
 - `header_value(raw, name)` sucht einen Header (case-insensitive); bei Redirects gewinnt der letzte Treffer.
+- `complete_url(input)` ergänzt Eingaben aus der Adressleiste (und `--url`) ohne Schema wie ein Browser: `example.com` → `https://example.com`; lokale Hosts (`localhost`, `*.localhost`, IPv4/IPv6-Adressen) bekommen `http://`, weil lokale Testserver selten TLS sprechen. Ein Doppelpunkt mit Ziffer dahinter ist ein Port, kein Schema (`localhost:8765`). Eingaben mit Schema bleiben unverändert. Eine Suche wie in echten Browsern gibt es nicht.
 - `resolve_url(base, ref)` nutzt curls URL-API (`curl_url_set` auf eine gesetzte URL löst relativ auf, RFC 3986). Die Binding von `url_get` war fehlerhaft (`-> ^Ucode`), korrigiert auf `-> Ucode` mit `part: ^cstring`; das Ergebnis mit `curl.free` freigeben.
 - `global_init`/`global_cleanup`: einmal pro Programm, **bevor** Threads curl benutzen (`curl_global_init` ist nicht thread-sicher). `init` prüft `easy_init` auf `nil` und liefert `Maybe(Http_Error)`. Ein `Client` gehört immer genau einem Thread.
 - `get(c, url, abort = nil)`: Mit `abort` (Pointer auf ein `bool`, atomar gesetzt von einem anderen Thread) bricht der Fortschritts-Callback (`XFERINFOFUNCTION`, mind. ~1×/s aufgerufen) den Transfer ab → Fehler `.E_ABORTED_BY_CALLBACK`.
@@ -256,7 +257,7 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 8. ~~Fokus-Klick prüft die ganze Adressleiste statt nur das Eingabefeld~~ – behoben (`address_bar_input_rect`).
 9. ~~Textumbruch läuft jeden Frame neu~~ – behoben: Das Layout wird gecacht und nur bei Breiten- oder Inhaltsänderung neu gebaut.
 10. ~~lexbor auf Windows~~ – behoben: wird von `setup.ps1` aus dem Submodul `vendor/lexbor-src` statisch gebaut. Weil Odin standardmäßig die statische CRT (`libcmt`) linkt, setzt das Binding wie `vendor:raylib` `/NODEFAULTLIB:libcmt` (sonst scheitert `odin test vendor/lexbor` an `__imp__dsign`).
-11. URL-Eingabe ohne Schema (`example.com`) wird nicht automatisch zu `http(s)://` ergänzt (steht als TODO in der Roadmap).
+11. ~~URL-Eingabe ohne Schema wird nicht ergänzt~~ – behoben: `http.complete_url`.
 12. Linux ist bisher weder dokumentiert noch getestet.
 13. ~~Nicht-ASCII-Zeichen werden als `?` gezeichnet~~ – behoben: `fonts_init` lädt ASCII, Latin-1 und ein paar typografische Zeichen (`– „“ … €`). Andere Schriften (z. B. Kyrillisch, CJK) erscheinen weiterhin als `?`; dafür bräuchte es Glyphen bei Bedarf.
 14. ~~Zeilenumbrüche im Inhalt gehen verloren~~ – behoben: Plain Text läuft als `<pre>` durchs Layout, Umbrüche bleiben erhalten.
@@ -264,7 +265,7 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 ## Roadmap (Kurzfassung, Details im README)
 
 - Stage 1 HTTP-Client – erledigt
-- Stage 2 Fenster & UI – Fenster, Adressleiste, klickbare Links und Navigation (zurück/vor/neu laden) stehen; offen: Schema-Ergänzung, Tabs
+- Stage 2 Fenster & UI – Fenster, Adressleiste, klickbare Links und Navigation (zurück/vor/neu laden) stehen; Schema-Ergänzung; offen: Tabs
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
 - Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt positionierte Text-Runs, die UI zeichnet sie mit Größe, Fett (Inter Bold) und Farbe. Links sind klickbar (relative URLs über curl). Box-Modell (margin, padding, width, max-width, auto-Zentrierung, Hintergründe, Rahmen), `text-align`, `vw`/`vh`, Bilder (PNG/JPG/GIF/BMP/QOI, laden im Hintergrund, Platzhalter). Externe Stylesheets, `@media`, `visibility`, `position: absolute/fixed` (übersprungen), `list-style`. CSS-Variablen (`var()`), Tabellen (ohne `rowspan`), Floats, Flexbox (Grundlagen). Offen: Grid, `height` für Blöcke, SVG/WebP, Inline-Hintergründe, echte Positionierung, `calc()` in Längen.
 - Stage 5 Threads – erledigt: Laden + Parsen im Worker-Thread (`loader`), Ergebnisse per Queue, eigener curl-Handle pro Thread, Abbrechen; Ladebalken + Stopp-Button

@@ -40,7 +40,7 @@ run :: proc(opts: Options) -> (ok: bool) {
 	browser.register_callbacks(b)
 
 	if opts.url != "" {
-		browser.navigate(b, opts.url)
+		browser.navigate_typed(b, opts.url)
 	}
 
 	if err, has_err := browser.run(b, opts.screenshot, opts.scroll).?; has_err {

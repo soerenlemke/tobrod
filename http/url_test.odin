@@ -32,3 +32,28 @@ test_is_loadable_url :: proc(t: ^testing.T) {
 	testing.expect(t, !is_loadable_url("mailto:someone@example.com"))
 	testing.expect(t, !is_loadable_url("javascript:void(0)"))
 }
+
+@(test)
+test_complete_url :: proc(t: ^testing.T) {
+	cases := []struct {
+		input:    string,
+		expected: string,
+	} {
+		{"example.com", "https://example.com"},
+		{"  de.wikipedia.org/wiki/Odin  ", "https://de.wikipedia.org/wiki/Odin"},
+		{"example.com:8443/a?b#c", "https://example.com:8443/a?b#c"},
+		{"localhost:8765/flex.html", "http://localhost:8765/flex.html"},
+		{"127.0.0.1:8765", "http://127.0.0.1:8765"},
+		{"[::1]:8080/", "http://[::1]:8080/"},
+		{"app.localhost", "http://app.localhost"},
+		{"http://example.com/", "http://example.com/"},
+		{"HTTPS://Example.com", "HTTPS://Example.com"},
+		{"mailto:someone@example.com", "mailto:someone@example.com"},
+		{"", ""},
+	}
+	for c in cases {
+		url := complete_url(c.input)
+		defer delete(url)
+		testing.expectf(t, url == c.expected, "%q: got %q, want %q", c.input, url, c.expected)
+	}
+}
