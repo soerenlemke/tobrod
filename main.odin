@@ -34,15 +34,15 @@ run :: proc(opts: Options) -> (ok: bool) {
 		fmt.eprintln("Error:", err.message)
 		return false
 	}
-	defer browser.destroy(&b)
+	defer browser.destroy(b)
 
-	browser.register_callbacks(&b)
+	browser.register_callbacks(b)
 
 	if opts.url != "" {
-		browser.navigate(&b, opts.url)
+		browser.navigate(b, opts.url)
 	}
 
-	if err, has_err := browser.run(&b, opts.screenshot).?; has_err {
+	if err, has_err := browser.run(b, opts.screenshot).?; has_err {
 		fmt.eprintln("Error:", err.message)
 		return false
 	}

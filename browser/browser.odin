@@ -1,41 +1,53 @@
 package browser
 
-import "../dom"
 import "../http"
+import "../loader"
 import "../ui"
 import "core:fmt"
 import "core:strings"
 
 Browser :: struct {
 	window:      ui.MainWindow,
-	http_client: http.Client,
-	history:     History, // the current entry is the base for relative links
+	page_loader: loader.Loader,  // field not named loader: that would hide the package
+	loading_id:  loader.Request_Id, // the request we are waiting for, 0 if none
+	history:     History,           // the current entry is the base for relative links
 }
 
-init :: proc(settings: ui.WindowSettings) -> (Browser, Maybe(ui.Error)) {
-	b: Browser
+init :: proc(settings: ui.WindowSettings) -> (b: ^Browser, err: Maybe(ui.Error)) {
+	// before any thread uses curl
+	if e, failed := http.global_init().?; failed {
+		return nil, ui.Error{message = fmt.tprintf("curl init failed: %v", e.message)}
+	}
+
+	// on the heap: the ui callbacks and the loader keep pointers to it,
+	// so it must not move (a returned struct would be copied)
+	b = new(Browser)
 	b.history = history_init()
 
 	main_window, ui_err := ui.init(settings)
-	if ui_err, ok := ui_err.?; ok {
-		return {}, ui_err
+	if e, failed := ui_err.?; failed {
+		free(b)
+		http.global_cleanup()
+		return nil, e
 	}
 	b.window = main_window
 
-	http_client, http_err := http.init()
-	if http_err, ok := http_err.?; ok {
+	if e, failed := loader.init(&b.page_loader).?; failed {
 		ui.destroy(&b.window)
-		return {}, ui.Error{message = fmt.tprintf("http client init failed: %v", http_err)}
+		free(b)
+		http.global_cleanup()
+		return nil, ui.Error{message = fmt.tprintf("http client init failed: %v", e.message)}
 	}
-	b.http_client = http_client
 
 	return b, nil
 }
 
 destroy :: proc(b: ^Browser) {
+	loader.destroy(&b.page_loader) // stops the worker before anything it uses goes away
 	ui.destroy(&b.window)
-	http.destroy(&b.http_client)
 	history_destroy(&b.history)
+	free(b)
+	http.global_cleanup()
 }
 
 // With a non-empty screenshot_path the window is captured to that file and run returns.
@@ -75,7 +87,15 @@ register_callbacks :: proc(b: ^Browser) {
 			}
 		case .Reload:
 			open_current(browser)
+		case .Stop:
+			stop_loading(browser)
 		}
+	}
+
+	b.window.on_frame_ctx = b
+	b.window.on_frame = proc(ctx: rawptr) {
+		browser := cast(^Browser)ctx
+		receive_pages(browser)
 	}
 }
 
@@ -87,7 +107,7 @@ navigate :: proc(b: ^Browser, url: string) {
 	open_current(b)
 }
 
-// Shows and loads the current history entry.
+// Shows the current history entry in the address bar and starts loading it.
 @(private)
 open_current :: proc(b: ^Browser) {
 	url, ok := history_current(&b.history)
@@ -95,36 +115,50 @@ open_current :: proc(b: ^Browser) {
 		return
 	}
 	ui.address_bar_set_text(&b.window.address_bar, url)
-	load_page(b, url)
 	ui.set_navigation_state(&b.window, history_can_back(&b.history), history_can_forward(&b.history))
+
+	// only starts loading; the page arrives later in receive_pages
+	b.loading_id = loader.load(&b.page_loader, url)
+	ui.set_loading(&b.window, true)
 }
 
 @(private)
-load_page :: proc(b: ^Browser, url: string) {
-	response, err := http.get(&b.http_client, url)
-	if http_err, ok := err.?; ok {
-		ui.page_view_set_content(&b.window.page_view, fmt.tprintf("Error: %v", http_err.message))
-		return
-	}
+stop_loading :: proc(b: ^Browser) {
+	loader.cancel(&b.page_loader)
+	b.loading_id = 0
+	ui.set_loading(&b.window, false)
+}
 
-	// after redirects we are somewhere else: remember and show that,
-	// links on the page are relative to it (url may be freed after this)
-	if response.url != "" && response.url != url {
-		history_replace_current(&b.history, response.url)
-		ui.address_bar_set_text(&b.window.address_bar, response.url)
-	}
-
-	content_type, _ := http.header_value(response.header, "Content-Type")
-	if strings.has_prefix(content_type, "text/html") {
-		doc, parse_err := dom.parse(response.body)
-		if e, ok := parse_err.?; ok {
-			ui.page_view_set_content(&b.window.page_view, fmt.tprintf("Error: %v", e.message))
+// Called once per frame: takes finished pages from the loader and shows the
+// one we are waiting for. Results of older requests are dropped.
+@(private)
+receive_pages :: proc(b: ^Browser) {
+	for {
+		result, ok := loader.poll(&b.page_loader)
+		if !ok {
 			return
 		}
-		// the page view owns the document from now on
-		ui.page_view_set_document(&b.window.page_view, doc)
-		return
-	}
+		if result.id != b.loading_id {
+			loader.result_destroy(&result)
+			continue
+		}
+		b.loading_id = 0
+		ui.set_loading(&b.window, false)
 
-	ui.page_view_set_content(&b.window.page_view, response.body)
+		// after redirects we are somewhere else: remember and show that,
+		// links on the page are relative to it
+		if current, _ := history_current(&b.history); result.url != "" && result.url != current {
+			history_replace_current(&b.history, result.url)
+			ui.address_bar_set_text(&b.window.address_bar, result.url)
+		}
+
+		if result.error != "" {
+			ui.page_view_set_content(&b.window.page_view, fmt.tprintf("Error: %s", result.error))
+		} else {
+			// the page view owns the document from now on
+			ui.page_view_set_document(&b.window.page_view, result.document)
+			result.document = nil
+		}
+		loader.result_destroy(&result)
+	}
 }

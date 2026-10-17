@@ -72,7 +72,7 @@ Stage 5 - Threads
 - [x] Run http requests in own thread (package `loader`: worker thread, also parses)
 - [x] how to send results back to ui? -> request/result queue with mutex + condition variable, ui polls once per frame
 - [x] http client is not thread safe... what to do? -> the worker owns its own client; cancelling via an atomic abort flag
-- [ ] use the loader in the browser + loading indicator
+- [x] use the loader in the browser + loading indicator (animated bar, stop button, Escape)
 
 Stage 6 — JavaScript Engine
 
