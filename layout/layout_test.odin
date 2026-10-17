@@ -453,3 +453,59 @@ test_block_height_margins :: proc(t: ^testing.T) {
 	testing.expect_value(t, l.boxes[1].height, 50)
 	testing.expect_value(t, l.runs[1].y, 50 + 50 + 10 + 2)
 }
+
+@(test)
+test_position_relative_block :: proc(t: ^testing.T) {
+	// the box and its text move, the next block stays where it would be
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="position: relative; top: 10px; left: 30px; background: red">a</div>
+		<div style="position: relative; bottom: 5px; right: 20px">b</div>
+		<p style="margin: 0">c</p></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.boxes) != 1 || len(l.runs) != 3 do return
+	testing.expect_value(t, l.boxes[0].x, 30)
+	testing.expect_value(t, l.boxes[0].y, 10)
+	testing.expect_value(t, runs_to_string(l), "a@30,12 16\nb@-20,17 16\nc@0,42 16\n")
+	testing.expect_value(t, l.height, 60)
+}
+
+@(test)
+test_position_relative_inline :: proc(t: ^testing.T) {
+	// "x " is 16 wide, "up " 24; the span moves, the text after it stays
+	doc, l := build_html(t, `<body style="margin: 0">x <span style="position: relative; top: -4px; left: 2px">up</span> y</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, runs_to_string(l), "x@0,2 16\nup@18,-2 16\ny@40,2 16\n")
+}
+
+@(test)
+test_position_relative_ignores_others :: proc(t: ^testing.T) {
+	// static and sticky elements are not moved, % of an unknown height is 0,
+	// left wins over right and top over bottom
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="top: 10px; left: 10px">a</div>
+		<div style="position: sticky; top: 10px">b</div>
+		<div style="position: relative; top: 50%; left: 10%">c</div>
+		<div style="position: relative; inset: 1px 2px 3px 4px">d</div></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, runs_to_string(l), "a@0,2 16\nb@0,22 16\nc@40,42 16\nd@4,63 16\n")
+}
+
+@(test)
+test_positioned_boxes_drawn_last :: proc(t: ^testing.T) {
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="position: relative; top: 10px; background: red"><div style="position: relative; background: green; left: 1px">a</div></div>
+		<div style="background: blue">b</div></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.boxes) != 3 do return
+	testing.expect_value(t, l.boxes[0].color, dom.Color{0, 0, 255, 255})
+	testing.expect_value(t, l.boxes[1].color, dom.Color{255, 0, 0, 255})
+	testing.expect_value(t, l.boxes[2].color, dom.Color{0, 128, 0, 255})
+}

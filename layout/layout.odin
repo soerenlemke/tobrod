@@ -104,9 +104,11 @@ build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text, image
 	b.line_images.allocator = allocator
 	b.floats.allocator = allocator
 	b.block_tops.allocator = allocator
+	b.positioned.allocator = allocator
 
 	layout_node(&b, doc.root)
 	finish_line(&b)
+	draw_positioned_last(&b)
 	l.height = b.y + b.pending_margin
 	for f in b.floats {
 		l.height = max(l.height, f.y + f.height) // the page grows with its floats
@@ -168,6 +170,8 @@ Builder :: struct {
 	floats:         [dynamic]Float_Box, // of the current block formatting context
 	last_float_top: f32,  // a float is never placed above an earlier one
 	unfloat:        ^dom.Node, // the float whose own box is being laid out right now
+	offset:         [2]f32, // of the open position: relative inline elements, see layout_element
+	positioned:     [dynamic][2]int, // box ranges [first, end) of positioned elements, drawn last
 }
 
 // The top edge of an open block. It is only known once the collapsed margin
@@ -226,6 +230,32 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	if node.tag == "br" {
 		line_break(b, style)
 		return
+	}
+
+	// position: relative moves the element after the layout, without changing
+	// the place of anything else. Blocks are moved as a whole when they are
+	// done; inline content is still waiting in the current line, so its runs
+	// and images remember the offset until finish_line places them.
+	// (defer is per block in Odin, so these are at proc level.)
+	offset := relative_offset(b, style)
+	moves_as_block := style.position == .Relative && (style.display != .Inline || style.float != .None) && !is_replaced_element(node.tag)
+	if moves_as_block && style.float == .None {
+		finish_line(b) // the lines before belong to the parent
+	}
+	moved := display_range_start(b)
+	defer if moves_as_block {
+		moved = display_range_end(b, moved)
+		shift_items(b, moved, offset.y, offset.x)
+		add_positioned(b, moved.first_box, moved.end_box)
+	}
+	inline_offset := offset if !moves_as_block else {}
+	if inline_offset != {} {
+		b.offset += inline_offset
+		b.can_extend = false // a run must not continue across the edge
+	}
+	defer if inline_offset != {} {
+		b.offset -= inline_offset
+		b.can_extend = false
 	}
 
 	// Everything inside an <a href> belongs to that link (the innermost one wins).
@@ -385,6 +415,66 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	add_margin(b, margin[.Bottom])
 }
 
+// Positioned elements are drawn on top of the normal flow (in document order,
+// like z-index: auto). Their boxes are collected here; inner ranges are
+// part of an outer one, which ends later.
+@(private)
+add_positioned :: proc(b: ^Builder, first, end: int) {
+	if first == end {
+		return
+	}
+	for len(b.positioned) > 0 && b.positioned[len(b.positioned) - 1][0] >= first {
+		pop(&b.positioned)
+	}
+	append(&b.positioned, [2]int{first, end})
+}
+
+// Moves the boxes of positioned elements to the end of the box list. Text and
+// images are drawn after all boxes anyway.
+@(private)
+draw_positioned_last :: proc(b: ^Builder) {
+	if len(b.positioned) == 0 {
+		return
+	}
+	boxes := make([dynamic]Box, 0, len(b.layout.boxes), b.allocator)
+	next := 0
+	for r in b.positioned {
+		append(&boxes, ..b.layout.boxes[next:r[0]])
+		next = r[1]
+	}
+	append(&boxes, ..b.layout.boxes[next:])
+	for r in b.positioned {
+		append(&boxes, ..b.layout.boxes[r[0]:r[1]])
+	}
+	b.layout.boxes = boxes
+}
+
+// The offset of a position: relative element: left wins over right, top over
+// bottom. Percentages of top/bottom would refer to a height that is usually
+// not known, so they count as 0.
+@(private)
+relative_offset :: proc(b: ^Builder, style: dom.Style) -> (offset: [2]f32) {
+	if style.position != .Relative {
+		return
+	}
+	available := b.right - b.left
+	resolve :: proc(b: ^Builder, style: dom.Style, length: dom.Length, available: f32) -> f32 {
+		return dom.resolve_length(length, style.font_size, available, b.viewport)
+	}
+	if style.offset[.Left].unit != .Auto {
+		offset.x = resolve(b, style, style.offset[.Left], available)
+	} else if style.offset[.Right].unit != .Auto {
+		offset.x = -resolve(b, style, style.offset[.Right], available)
+	}
+	top, bottom := style.offset[.Top], style.offset[.Bottom]
+	if top.unit != .Auto && top.unit != .Percent {
+		offset.y = resolve(b, style, top, available)
+	} else if top.unit == .Auto && bottom.unit != .Auto && bottom.unit != .Percent {
+		offset.y = -resolve(b, style, bottom, available)
+	}
+	return
+}
+
 // height, min-height and max-height: moves y to the bottom of the content box.
 // Content taller than the box overflows (it stays visible, like overflow:
 // visible), the next block then starts at the box's bottom.
@@ -527,7 +617,8 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 
 	append(&b.line, Text_Run {
 		text      = strings.clone(word, b.allocator),
-		x         = b.x + space_width,
+		x         = b.x + space_width + b.offset.x,
+		y         = b.offset.y, // the line's y is added in finish_line
 		width     = width,
 		font_size = style.font_size,
 		bold      = bold,
@@ -679,7 +770,7 @@ finish_line :: proc(b: ^Builder) {
 	for &run in b.line {
 		// bottom-align smaller text, centered in its own line box
 		own_height := run.font_size * LINE_HEIGHT_FACTOR
-		run.y = b.y + (line_height - own_height) + (own_height - run.font_size) / 2
+		run.y += b.y + (line_height - own_height) + (own_height - run.font_size) / 2
 		b.extent = max(b.extent, run.x + run.width)
 		if !run.hidden {
 			append(&b.layout.runs, run)
@@ -687,7 +778,7 @@ finish_line :: proc(b: ^Builder) {
 	}
 	// images sit on the bottom of the line, like text
 	for &image in b.line_images {
-		image.y = b.y + line_height - image.height
+		image.y += b.y + line_height - image.height
 		b.extent = max(b.extent, image.x + image.width)
 		if !image.hidden {
 			append(&b.layout.images, image)
@@ -728,7 +819,8 @@ layout_image :: proc(b: ^Builder, node: ^dom.Node) {
 
 	append(&b.line_images, Image_Item {
 		src    = strings.clone(src, b.allocator),
-		x      = b.x + space_width,
+		x      = b.x + space_width + b.offset.x,
+		y      = b.offset.y, // the line's y is added in finish_line
 		width  = width,
 		height = height,
 		link   = b.link,

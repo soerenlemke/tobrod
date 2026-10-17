@@ -24,6 +24,8 @@ Length_Unit :: enum {
 
 AUTO :: Length{unit = .Auto}
 
+AUTO_EDGES :: Edges{.Top = AUTO, .Right = AUTO, .Bottom = AUTO, .Left = AUTO}
+
 // top, right, bottom, left – the order CSS uses everywhere
 Edges :: [Edge]Length
 
@@ -112,6 +114,14 @@ apply_box_declaration :: proc(style: ^Style, property, value: string) {
 	case "height":
 		if length, ok := parse_length(value, true); ok {
 			style.height = length
+		}
+	case "inset":
+		if edges, ok := parse_edges(value, true); ok {
+			style.offset = edges
+		}
+	case "top", "right", "bottom", "left":
+		if length, ok := parse_length(value, true); ok {
+			style.offset[edge_of(property)] = length
 		}
 	case "min-height":
 		if value == "auto" {
@@ -218,11 +228,11 @@ background_color_of :: proc(value: string, current: Color) -> (color: Color, ok:
 @(private)
 edge_of :: proc(property: string) -> Edge {
 	switch {
-	case strings.has_suffix(property, "-top"):
+	case strings.has_suffix(property, "top"):
 		return .Top
-	case strings.has_suffix(property, "-right"):
+	case strings.has_suffix(property, "right"):
 		return .Right
-	case strings.has_suffix(property, "-bottom"):
+	case strings.has_suffix(property, "bottom"):
 		return .Bottom
 	}
 	return .Left

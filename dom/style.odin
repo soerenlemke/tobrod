@@ -15,6 +15,7 @@ Style :: struct {
 	visibility:  Visibility, // inherited, but a child can be visible again
 	list_style:  List_Style, // inherited from ul/ol to the li
 	position:    Position,   // not inherited
+	offset:      Edges,      // top, right, bottom, left (the "inset" properties); .Auto by default
 	float:       Float,      // not inherited
 	clear:       Clear,      // not inherited
 	vertical_align:  Vertical_Align, // table cells only
@@ -108,6 +109,7 @@ ROOT_STYLE :: Style {
 	width       = AUTO,
 	height      = AUTO,
 	max_height  = AUTO,
+	offset      = AUTO_EDGES,
 	max_width   = AUTO,
 	border      = INITIAL_BORDERS,
 	flex        = INITIAL_FLEX,
@@ -137,6 +139,7 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		width       = AUTO,
 		height      = AUTO,
 		max_height  = AUTO,
+		offset      = AUTO_EDGES,
 		max_width   = AUTO,
 		border      = INITIAL_BORDERS,
 		flex        = INITIAL_FLEX,
@@ -340,7 +343,7 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 // font-size comes before the box properties, because em in margins refers to it.
 STYLE_PROPERTIES :: [?]string {
 	"display", "color", "font-size", "font-weight", "text-align",
-	"visibility", "position", "float", "clear", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
+	"visibility", "position", "inset", "top", "right", "bottom", "left", "float", "clear", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
 	"width", "height", "min-height", "max-height", "max-width",

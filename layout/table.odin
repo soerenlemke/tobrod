@@ -428,16 +428,39 @@ layout_cell_contents :: proc(b: ^Builder, node: ^dom.Node, left, right, top: f32
 // Moves what one cell added to the display list down (vertical-align). Only
 // its own range: the cells after it are already in the lists too.
 @(private)
-shift_items :: proc(b: ^Builder, p: $T, dy: f32) {
+shift_items :: proc(b: ^Builder, p: $T, dy: f32, dx: f32 = 0) {
 	for &run in b.layout.runs[p.first_run:p.end_run] {
+		run.x += dx
 		run.y += dy
 	}
 	for &image in b.layout.images[p.first_image:p.end_image] {
+		image.x += dx
 		image.y += dy
 	}
 	for &box in b.layout.boxes[p.first_box:p.end_box] {
+		box.x += dx
 		box.y += dy
 	}
+}
+
+// What a part of the layout added to the display list: [first, end) per list.
+@(private)
+Display_Range :: struct {
+	first_run, end_run:     int,
+	first_image, end_image: int,
+	first_box, end_box:     int,
+}
+
+@(private)
+display_range_start :: proc(b: ^Builder) -> Display_Range {
+	return {first_run = len(b.layout.runs), first_image = len(b.layout.images), first_box = len(b.layout.boxes)}
+}
+
+@(private)
+display_range_end :: proc(b: ^Builder, r: Display_Range) -> Display_Range {
+	r := r
+	r.end_run, r.end_image, r.end_box = len(b.layout.runs), len(b.layout.images), len(b.layout.boxes)
+	return r
 }
 
 // Margins, padding, border and their sum (inset) of a box, in px.
