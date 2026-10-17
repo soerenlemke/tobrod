@@ -489,6 +489,7 @@ reserve_box :: proc(b: ^Builder, style: dom.Style, border: [dom.Edge]f32) -> int
 
 @(private)
 fill_box :: proc(b: ^Builder, index: int, style: dom.Style, border: [dom.Edge]f32, x, y, width, height: f32) {
+	b.last_box = {x, y, width, height, border}
 	if index < 0 {
 		return
 	}

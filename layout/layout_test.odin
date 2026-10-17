@@ -353,15 +353,18 @@ test_visibility_and_out_of_flow :: proc(t: ^testing.T) {
 		append(&texts, run.text)
 	}
 	// "hidden" is not drawn but still takes its space: "b" stays where it was
-	testing.expect_value(t, len(texts), 3)
-	if len(texts) == 3 {
+	testing.expect_value(t, len(texts), 4)
+	if len(texts) == 4 {
 		testing.expect_value(t, texts[0], "a")
 		testing.expect_value(t, texts[1], "b")
 		testing.expect_value(t, l.runs[1].x, 8 + 8 + 8 + 48 + 8) // a, space, hidden (6 chars), space
 		testing.expect_value(t, texts[2], "c")
+		// the absolute div takes no space: "c" follows the first p directly,
+		// and "gone" is drawn at its static position, on top of "c"
+		testing.expect_value(t, l.runs[2].y, 18 + 20 + 16)
+		testing.expect_value(t, texts[3], "gone")
+		testing.expect_value(t, l.runs[3].y, l.runs[2].y)
 	}
-	// the absolute div takes no space: "c" follows the first p directly
-	testing.expect_value(t, l.runs[2].y, 18 + 20 + 16)
 }
 
 @(test)
@@ -508,4 +511,97 @@ test_positioned_boxes_drawn_last :: proc(t: ^testing.T) {
 	testing.expect_value(t, l.boxes[0].color, dom.Color{0, 0, 255, 255})
 	testing.expect_value(t, l.boxes[1].color, dom.Color{255, 0, 0, 255})
 	testing.expect_value(t, l.boxes[2].color, dom.Color{0, 128, 0, 255})
+}
+
+@(test)
+test_position_absolute_containing_block :: proc(t: ^testing.T) {
+	// the padding box of the relative div: x 2..398, y 52..172 (100 + 2 * 10 padding)
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="position: relative; margin-top: 50px; padding: 10px; border: 2px solid; height: 100px">
+			<div style="position: absolute; top: 5px; left: 7px">a</div>
+			<div style="position: absolute; right: 0; bottom: 0; width: 40px">b</div>
+			in flow
+		</div></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	// "in flow" is laid out as if the absolute elements were not there
+	testing.expect_value(t, runs_to_string(l), "in flow@12,64 16\na@9,59 16\nb@358,154 16\n")
+}
+
+@(test)
+test_position_absolute_initial_containing_block :: proc(t: ^testing.T) {
+	// without a positioned ancestor: the first screen of the page (400 x 600)
+	doc, l := build_html(t, `<body>
+		<div style="position: absolute; bottom: 0; background: red">abcd</div>
+		<div style="position: absolute; left: 10px; right: 20px; top: 0; bottom: 0; background: blue"></div>
+		<div style="position: absolute; top: 1000px">far down</div></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.boxes) != 2 do return
+	// shrink-to-fit: as wide as "abcd", at the bottom of the screen
+	red := l.boxes[0]
+	testing.expect_value(t, [4]f32{red.x, red.y, red.width, red.height}, [4]f32{8, 580, 32, 20})
+	// stretched between left/right and top/bottom
+	blue := l.boxes[1]
+	testing.expect_value(t, [4]f32{blue.x, blue.y, blue.width, blue.height}, [4]f32{10, 0, 370, 600})
+	// the page grows with absolute elements
+	testing.expect_value(t, l.height, 1020)
+}
+
+@(test)
+test_position_absolute_static_position :: proc(t: ^testing.T) {
+	// auto offsets: where the element would be in the flow; an inline one
+	// stays in its line, the text after it doesn't make room
+	doc, l := build_html(t, `<body style="margin: 0">
+		<p style="margin: 0">x <span style="position: absolute; top: auto">abs</span>y</p>
+		<div style="position: absolute; left: 100px">block</div><p style="margin: 0">z</p></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, runs_to_string(l), "x y@0,2 16\nz@0,22 16\nabs@16,2 16\nblock@100,22 16\n")
+}
+
+@(test)
+test_position_absolute_drawn_on_top :: proc(t: ^testing.T) {
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="position: absolute; top: 0; background: red">a</div>
+		<div style="background: blue">b</div></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.boxes) != 2 do return
+	testing.expect_value(t, l.boxes[0].color, dom.Color{0, 0, 255, 255})
+	testing.expect_value(t, l.boxes[1].color, dom.Color{255, 0, 0, 255})
+}
+
+@(test)
+test_position_absolute_clipped_away :: proc(t: ^testing.T) {
+	// the usual "visually hidden" pattern; a clip rect with an area is ignored
+	doc, l := build_html(t, `<body>
+		<a style="position: absolute; clip: rect(1px, 1px, 1px, 1px); width: 1px; overflow: hidden" href="#c">Skip to content</a>
+		<div style="position: absolute; clip: rect(0 auto auto 0)">shown</div></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, len(l.runs), 1)
+	if len(l.runs) == 1 {
+		testing.expect_value(t, l.runs[0].text, "shown")
+	}
+}
+
+@(test)
+test_position_absolute_percent_height :: proc(t: ^testing.T) {
+	// a cover image: absolute, inset 0, 100% x 100% of the relative card
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="position: relative; height: 200px; width: 300px">
+			<img src="cover.png" style="position: absolute; inset: 0; width: 100%; height: 100%">
+		</div></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.images) != 1 do return
+	image := l.images[0]
+	testing.expect_value(t, [4]f32{image.x, image.y, image.width, image.height}, [4]f32{0, 0, 300, 200})
 }

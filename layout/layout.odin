@@ -105,11 +105,17 @@ build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text, image
 	b.floats.allocator = allocator
 	b.block_tops.allocator = allocator
 	b.positioned.allocator = allocator
+	b.containing.allocator = allocator
 
+	// the initial containing block: absolute elements without a positioned
+	// ancestor are placed against the first screen of the page
+	begin_containing_block(&b)
 	layout_node(&b, doc.root)
 	finish_line(&b)
+	b.last_box = {width = viewport.x, height = viewport.y}
+	end_containing_block(&b)
 	draw_positioned_last(&b)
-	l.height = b.y + b.pending_margin
+	l.height = max(b.y + b.pending_margin, b.overflow)
 	for f in b.floats {
 		l.height = max(l.height, f.y + f.height) // the page grows with its floats
 	}
@@ -172,6 +178,9 @@ Builder :: struct {
 	unfloat:        ^dom.Node, // the float whose own box is being laid out right now
 	offset:         [2]f32, // of the open position: relative inline elements, see layout_element
 	positioned:     [dynamic][2]int, // box ranges [first, end) of positioned elements, drawn last
+	containing:     [dynamic]Containing_Block, // open positioned elements, see position.odin
+	last_box:       Placed_Box, // border box of the block (or table, flex container) laid out last
+	overflow:       f32,  // bottom of absolute elements: the page grows with them
 }
 
 // The top edge of an open block. It is only known once the collapsed margin
@@ -218,9 +227,14 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	if style.display == .None {
 		return
 	}
-	// out of the normal flow: placing them is not supported yet, so they are
-	// skipped (often they are dropdowns or visually hidden helper text anyway)
-	if style.position == .Absolute || style.position == .Fixed {
+	// out of the normal flow: absolute elements are placed when their
+	// containing block is done (position.odin); fixed ones are not supported
+	// yet. b.unfloat is the element being laid out as its own root.
+	if style.position == .Absolute && node != b.unfloat {
+		register_absolute(b, node)
+		return
+	}
+	if style.position == .Fixed {
 		return
 	}
 	if style.float != .None && node != b.unfloat {
@@ -274,6 +288,18 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 		return
 	}
 
+	// a positioned element is the containing block of the absolute elements
+	// inside it; they are placed when it is done (before a relative shift,
+	// which then moves them along)
+	is_container := style.position != .Static && !b.measuring &&
+		(style.display != .Inline || style.position == .Absolute)
+	if is_container {
+		begin_containing_block(b)
+	}
+	defer if is_container {
+		end_containing_block(b)
+	}
+
 	if style.display == .Table {
 		layout_table(b, node)
 		return
@@ -283,8 +309,9 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 		return
 	}
 
-	// (table rows and cells outside of a table are laid out like blocks)
-	if style.display == .Inline {
+	// (table rows and cells outside of a table are laid out like blocks;
+	// absolute elements are blocks, too)
+	if style.display == .Inline && style.position != .Absolute {
 		for child in node.children {
 			layout_node(b, child)
 		}
@@ -402,6 +429,7 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	if !top.resolved {
 		top.y = b.y // no content and no padding: an empty box
 	}
+	b.last_box = {box_x, top.y, box_width, b.y - top.y, border}
 	if box_index >= 0 {
 		box := Box{box_x, top.y, box_width, b.y - top.y, box_background, border, {}}
 		for edge in dom.Edge {
@@ -413,66 +441,6 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	b.left, b.right, b.text_align = old_left, old_right, old_align
 	b.x = b.left
 	add_margin(b, margin[.Bottom])
-}
-
-// Positioned elements are drawn on top of the normal flow (in document order,
-// like z-index: auto). Their boxes are collected here; inner ranges are
-// part of an outer one, which ends later.
-@(private)
-add_positioned :: proc(b: ^Builder, first, end: int) {
-	if first == end {
-		return
-	}
-	for len(b.positioned) > 0 && b.positioned[len(b.positioned) - 1][0] >= first {
-		pop(&b.positioned)
-	}
-	append(&b.positioned, [2]int{first, end})
-}
-
-// Moves the boxes of positioned elements to the end of the box list. Text and
-// images are drawn after all boxes anyway.
-@(private)
-draw_positioned_last :: proc(b: ^Builder) {
-	if len(b.positioned) == 0 {
-		return
-	}
-	boxes := make([dynamic]Box, 0, len(b.layout.boxes), b.allocator)
-	next := 0
-	for r in b.positioned {
-		append(&boxes, ..b.layout.boxes[next:r[0]])
-		next = r[1]
-	}
-	append(&boxes, ..b.layout.boxes[next:])
-	for r in b.positioned {
-		append(&boxes, ..b.layout.boxes[r[0]:r[1]])
-	}
-	b.layout.boxes = boxes
-}
-
-// The offset of a position: relative element: left wins over right, top over
-// bottom. Percentages of top/bottom would refer to a height that is usually
-// not known, so they count as 0.
-@(private)
-relative_offset :: proc(b: ^Builder, style: dom.Style) -> (offset: [2]f32) {
-	if style.position != .Relative {
-		return
-	}
-	available := b.right - b.left
-	resolve :: proc(b: ^Builder, style: dom.Style, length: dom.Length, available: f32) -> f32 {
-		return dom.resolve_length(length, style.font_size, available, b.viewport)
-	}
-	if style.offset[.Left].unit != .Auto {
-		offset.x = resolve(b, style, style.offset[.Left], available)
-	} else if style.offset[.Right].unit != .Auto {
-		offset.x = -resolve(b, style, style.offset[.Right], available)
-	}
-	top, bottom := style.offset[.Top], style.offset[.Bottom]
-	if top.unit != .Auto && top.unit != .Percent {
-		offset.y = resolve(b, style, top, available)
-	} else if top.unit == .Auto && bottom.unit != .Auto && bottom.unit != .Percent {
-		offset.y = -resolve(b, style, bottom, available)
-	}
-	return
 }
 
 // height, min-height and max-height: moves y to the bottom of the content box.
