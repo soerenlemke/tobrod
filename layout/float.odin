@@ -26,16 +26,18 @@ layout_float :: proc(b: ^Builder, node: ^dom.Node) {
 	// width of the margin box: an explicit width, or "shrink-to-fit": as wide
 	// as the content wants (max-content), but not wider than the space, and
 	// never narrower than its narrowest form (min-content)
+	inset_x := inset[.Left] + inset[.Right]
+	extra := inset_x + margin[.Left] + margin[.Right]
 	width: f32
-	if style.width.unit != .Auto && style.display != .Table {
-		width = dom.resolve_length(style.width, style.font_size, available, b.viewport) +
-			inset[.Left] + inset[.Right] + margin[.Left] + margin[.Right]
+	if w, ok := specified_width(b, style, available, inset_x); ok && style.display != .Table {
+		width = w + extra
 	} else {
 		right_extra := inset[.Right] + margin[.Right]
 		max_content := measure_node(b, node, MAX_CONTENT_WIDTH) + right_extra
 		min_content := measure_node(b, node, 0) + right_extra
 		width = min(max(min_content, available), max_content)
 	}
+	width = clamp_outer_width(b, style, available, inset_x, extra, width)
 
 	// vertically where the next line would start, not above earlier floats
 	y := b.y if !line_empty(b) else b.y + b.pending_margin

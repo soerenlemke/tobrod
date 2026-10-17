@@ -873,3 +873,41 @@ test_inline_flex_and_empty_block :: proc(t: ^testing.T) {
 	if len(l.boxes) != 1 do return
 	testing.expect_value(t, box_rect(l.boxes[0]), [4]f32{34, 0, 10, 30})
 }
+
+@(test)
+test_box_sizing :: proc(t: ^testing.T) {
+	// border-box: width and height include padding (10) and border (5)
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="box-sizing: border-box; width: 100px; height: 50px; padding: 10px; border: 5px solid; background: red"></div>
+		<div style="width: 100px; height: 50px; padding: 10px; border: 5px solid; background: blue"></div>
+		<span style="box-sizing: border-box; display: inline-block; width: 60px; padding: 0 10px; background: green">a</span>
+		<div style="float: left; box-sizing: border-box; width: 60px; padding: 5px; background: yellow">b</div>
+		<div style="display: flex"><div style="box-sizing: border-box; width: 80px; padding: 10px; background: gray">c</div></div>
+	</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.boxes) != 5 do return
+	widths: [5]f32
+	for box, i in l.boxes {
+		widths[i] = box.width
+	}
+	testing.expect_value(t, l.boxes[0].height, 50)
+	testing.expect_value(t, l.boxes[1].height, 80) // content-box: 50 + 2 x 15
+	testing.expect_value(t, widths, [5]f32{100, 130, 60, 60, 80})
+}
+
+@(test)
+test_min_width :: proc(t: ^testing.T) {
+	// min-width wins over width and max-width, and widens shrink-to-fit boxes
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="width: 50px; max-width: 40px; min-width: 80px; background: red">a</div>
+		<span style="display: inline-block; min-width: 100px; background: blue">b</span>
+	</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.boxes) != 2 do return
+	testing.expect_value(t, l.boxes[0].width, 80)
+	testing.expect_value(t, l.boxes[1].width, 100)
+}

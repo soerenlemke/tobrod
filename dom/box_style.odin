@@ -141,6 +141,19 @@ apply_box_declaration :: proc(style: ^Style, property, value: string) {
 		} else if length, ok := parse_length(value, false); ok {
 			style.max_height = length
 		}
+	case "min-width":
+		if value == "auto" {
+			style.min_width = {} // like 0 outside of flex items
+		} else if length, ok := parse_length(value, false); ok {
+			style.min_width = length
+		}
+	case "box-sizing":
+		switch value {
+		case "border-box":
+			style.border_box = true
+		case "content-box", "initial":
+			style.border_box = false
+		}
 	case "max-width":
 		if value == "none" {
 			style.max_width = AUTO

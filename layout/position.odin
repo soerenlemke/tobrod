@@ -198,10 +198,11 @@ layout_absolute :: proc(b: ^Builder, w: Waiting_Absolute, cb: Placed_Box) {
 	}
 
 	// width of the margin box
-	extra := inset[.Left] + inset[.Right] + margin[.Left] + margin[.Right]
+	inset_x := inset[.Left] + inset[.Right]
+	extra := inset_x + margin[.Left] + margin[.Right]
 	width: f32
-	if style.width.unit != .Auto && style.display != .Table {
-		width = dom.resolve_length(style.width, style.font_size, cb.width, b.viewport) + extra
+	if w, ok := specified_width(b, style^, cb.width, inset_x); ok && style.display != .Table {
+		width = w + extra
 	} else if set[.Left] && set[.Right] {
 		width = cb.width - offset[.Left] - offset[.Right]
 	} else {
@@ -211,7 +212,7 @@ layout_absolute :: proc(b: ^Builder, w: Waiting_Absolute, cb: Placed_Box) {
 		min_content := measure_node(b, node, 0) + right_extra
 		width = min(max(min_content, available), max_content)
 	}
-	width = max(width, 0)
+	width = clamp_outer_width(b, style^, cb.width, inset_x, extra, width)
 
 	x := w.static_pos.x
 	if set[.Left] {
@@ -227,16 +228,21 @@ layout_absolute :: proc(b: ^Builder, w: Waiting_Absolute, cb: Placed_Box) {
 	// the height of the containing block is known here, so a percentage
 	// height works (in the flow it counts as auto); top and bottom with an
 	// auto height: stretched between them
-	old_height := style.height
+	old_height, old_border_box := style.height, style.border_box
 	if style.height.unit == .Percent {
 		style.height = dom.px(style.height.value / 100 * cb.height)
 	} else if set[.Top] && set[.Bottom] && style.height.unit == .Auto {
+		// a content height (the width stays as it is, the block resolves it
+		// again with the same box-sizing)
 		inner := cb.height - offset[.Top] - offset[.Bottom] - margin[.Top] - margin[.Bottom] - inset[.Top] - inset[.Bottom]
 		style.height = dom.px(max(inner, 0))
+		if style.border_box {
+			style.height = dom.px(max(inner, 0) + inset[.Top] + inset[.Bottom])
+		}
 	}
 	placed := display_range_start(b)
 	bottom := layout_in_own_context(b, node, x, x + width, y, node)
-	style.height = old_height
+	style.height, style.border_box = old_height, old_border_box
 	placed = display_range_end(b, placed)
 
 	// only bottom: the element is moved up so that it ends there

@@ -32,7 +32,7 @@ Ordered by how much they change what a page looks like, weighed against how big 
 ### Layout
 
 7. ~~**`display: inline-block`** (7 / 1963) and **`inline-flex`** (6 / 128)~~: done. Still missing: **`vertical-align`** for inline content (`top`, `middle`, ...), inline blocks sit on the baseline.
-8. **`box-sizing: border-box`** (7 / 251) and **`min-width`** (8 / 154): widths come out wrong wherever a page relies on them.
+8. ~~**`box-sizing: border-box`** (7 / 251) and **`min-width`** (8 / 154)~~: done.
 9. **`calc()`** in lengths (5 pages; margins, widths, heights): ignored, so the property keeps its default.
 10. **HTML attributes for presentation**: `bgcolor`, `width`, `align`, `valign`, `cellpadding` on tables (Hacker News is built with them), `<center>`, `<font color>`. They are not CSS, so the CSS report doesn't see them, but the comparison does.
 11. **CSS grid** (2 / 70): the page layout of Wikipedia (the table of contents on the left) and MDN.
