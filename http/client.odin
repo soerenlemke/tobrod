@@ -1,7 +1,9 @@
 package http
 
 import "base:runtime"
+import "core:c"
 import "core:strings"
+import "core:sync"
 import "../vendor/curl"
 
 STANDARD_READ_TIMEOUT :: 30
@@ -24,17 +26,36 @@ Client :: struct {
 	body_builder:   strings.Builder,
 }
 
-init :: proc() -> (Client, Maybe(runtime.Allocator_Error)) {
+// Call once at program start, before any thread uses curl: curl's global
+// setup is not thread-safe, so it must not happen lazily inside a thread.
+global_init :: proc() -> Maybe(Http_Error) {
+	if code := curl.global_init(curl.GLOBAL_DEFAULT); code != .E_OK {
+		return Http_Error{code = code, message = string(curl.easy_strerror(code))}
+	}
+	return nil
+}
+
+// Call once at program end, after all clients are destroyed.
+global_cleanup :: proc() {
+	curl.global_cleanup()
+}
+
+// A client may be used by one thread at a time; give every thread its own.
+init :: proc() -> (Client, Maybe(Http_Error)) {
 	c: Client
 	c.handle = curl.easy_init()
+	if c.handle == nil {
+		return {}, Http_Error{code = .E_FAILED_INIT, message = "curl_easy_init failed"}
+	}
 
-	_, err := strings.builder_init(&c.header_builder)
-	if err != .None do return {}, err
-
-	_, err2 := strings.builder_init(&c.body_builder)
-	if err2 != .None {
+	if _, err := strings.builder_init(&c.header_builder); err != .None {
+		curl.easy_cleanup(c.handle)
+		return {}, Http_Error{code = .E_OUT_OF_MEMORY, message = "out of memory"}
+	}
+	if _, err := strings.builder_init(&c.body_builder); err != .None {
 		strings.builder_destroy(&c.header_builder)
-		return {}, err2
+		curl.easy_cleanup(c.handle)
+		return {}, Http_Error{code = .E_OUT_OF_MEMORY, message = "out of memory"}
 	}
 
 	return c, nil
@@ -46,7 +67,9 @@ destroy :: proc(c: ^Client) {
 	strings.builder_destroy(&c.body_builder)
 }
 
-get :: proc(c: ^Client, url: string) -> (Http_Response, Maybe(Http_Error)) {
+// Blocking GET. If abort is given, another thread can set it (atomically) to
+// stop the transfer; get then returns an error with code .E_ABORTED_BY_CALLBACK.
+get :: proc(c: ^Client, url: string, abort: ^bool = nil) -> (Http_Response, Maybe(Http_Error)) {
 	strings.builder_reset(&c.header_builder)
 	strings.builder_reset(&c.body_builder)
 
@@ -61,6 +84,16 @@ get :: proc(c: ^Client, url: string) -> (Http_Response, Maybe(Http_Error)) {
 	curl.easy_setopt(c.handle, .TIMEOUT, STANDARD_READ_TIMEOUT)
 	curl.easy_setopt(c.handle, .FOLLOWLOCATION, 1)
 	curl.easy_setopt(c.handle, .MAXREDIRS, MAX_REDIRECTS)
+
+	// curl calls the progress callback regularly (at least once a second, even
+	// while waiting), which is our chance to cancel
+	if abort != nil {
+		curl.easy_setopt(c.handle, .NOPROGRESS, 0)
+		curl.easy_setopt(c.handle, .XFERINFOFUNCTION, abort_callback)
+		curl.easy_setopt(c.handle, .XFERINFODATA, abort)
+	} else {
+		curl.easy_setopt(c.handle, .NOPROGRESS, 1)
+	}
 
 	response_code := curl.easy_perform(c.handle)
 	if response_code != .E_OK {
@@ -77,6 +110,13 @@ get :: proc(c: ^Client, url: string) -> (Http_Response, Maybe(Http_Error)) {
 			body = strings.to_string(c.body_builder),
 		},
 		nil
+}
+
+// Returning non-zero makes curl stop the transfer.
+@(private)
+abort_callback :: proc "c" (clientp: rawptr, dltotal, dlnow, ultotal, ulnow: curl.off_t) -> c.int {
+	abort := cast(^bool)clientp
+	return 1 if sync.atomic_load(abort) else 0
 }
 
 write_callback :: proc "c" (ptr: rawptr, size, nmemb: uint, userdata: rawptr) -> uint {

@@ -69,9 +69,10 @@ Stage 4 — HTML & CSS Parsing
       - [x] draw the runs in the ui (regular and bold Inter)
 
 Stage 5 - Threads
-- [ ] Run http requests in own thread
-- [ ] how to send results back to ui?
-- [ ] http client is not thread safe... what to do?
+- [x] Run http requests in own thread (package `loader`: worker thread, also parses)
+- [x] how to send results back to ui? -> request/result queue with mutex + condition variable, ui polls once per frame
+- [x] http client is not thread safe... what to do? -> the worker owns its own client; cancelling via an atomic abort flag
+- [ ] use the loader in the browser + loading indicator
 
 Stage 6 — JavaScript Engine
 
