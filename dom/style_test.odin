@@ -201,3 +201,55 @@ test_box_styles_from_css :: proc(t: ^testing.T) {
 	ul := find_element(doc.root, "ul")
 	testing.expect_value(t, ul.style.padding[.Left], px(40))
 }
+
+@(test)
+test_border_parsing :: proc(t: ^testing.T) {
+	red := Color{255, 0, 0, 255}
+	b, ok := parse_border("1px solid red", {})
+	testing.expect(t, ok && b.width == px(1) && b.style == .Solid && b.color == red, "width style color")
+	b, ok = parse_border("red dashed thick", {})
+	testing.expect(t, ok && b.width == px(5) && b.style == .Solid && b.color == red, "any order, dashed drawn solid")
+	b, ok = parse_border("solid", {})
+	testing.expect(t, ok && b.width == px(3) && b.color == nil, "missing parts get initial values")
+	b, ok = parse_border("1px solid rgb(1, 2, 3)", {})
+	testing.expect(t, ok && b.color == Color{1, 2, 3, 255}, "spaces inside rgb() don't split")
+	_, ok = parse_border("1px solid red blue", {})
+	testing.expect(t, !ok, "at most three parts")
+	_, ok = parse_border_width("10%")
+	testing.expect(t, !ok, "no percentages for border widths")
+}
+
+@(test)
+test_borders_and_align_from_css :: proc(t: ^testing.T) {
+	doc, err := parse(`<html><head><style>
+		body { text-align: center }
+		div { border: 2px solid blue; border-left: none; border-bottom-color: red }
+		p { text-align: right }
+	</style></head><body><div><p>x</p><span>y</span></div><hr></body></html>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	div := find_element(doc.root, "div")
+	testing.expect_value(t, div.style.text_align, Text_Align.Center) // inherited from body
+	testing.expect_value(t, div.style.border[.Top].width, px(2))
+	testing.expect_value(t, div.style.border[.Left].style, Border_Style.None)
+	testing.expect_value(t, div.style.border[.Bottom].color.?, Color{255, 0, 0, 255})
+	testing.expect_value(t, div.style.border[.Right].color.?, Color{0, 0, 255, 255})
+
+	p := find_element(doc.root, "p")
+	testing.expect_value(t, p.style.text_align, Text_Align.Right)
+
+	hr := find_element(doc.root, "hr")
+	testing.expect_value(t, hr.style.border[.Top].style, Border_Style.Solid) // UA default
+}
+
+@(test)
+test_viewport_units :: proc(t: ^testing.T) {
+	length, ok := parse_length("25vh", false)
+	testing.expect(t, ok, "vh parses")
+	testing.expect_value(t, resolve_length(length, 16, 0, {1000, 600}), 150)
+	length, _ = parse_length("10vw", false)
+	testing.expect_value(t, resolve_length(length, 16, 0, {1000, 600}), 100)
+}

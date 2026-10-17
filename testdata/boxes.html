@@ -10,6 +10,9 @@
     .note { background: light-dark(#fff8dc, #333); padding: 8px 12px; margin: 12px 0 }
     .half { width: 50%; margin-left: auto; background: #dbeafe; padding: 8px }
     .tight p { margin: 0 }
+    .bordered { border: 2px solid #3b82f6; border-left-width: 6px; padding: 8px 12px; margin: 12px 0 }
+    .center { text-align: center }
+    .right { text-align: right; border-top: 1px dashed #999; padding-top: 4px }
   </style>
 </head>
 <body>
@@ -22,6 +25,12 @@
       <li>list inside a card</li>
       <li>markers hang into the padding of the ul</li>
     </ul>
+  </div>
+  <div class="card">
+    <h2 class="center">Centered heading</h2>
+    <div class="bordered">A box with a blue border, thicker on the left.</div>
+    <hr>
+    <p class="right">right aligned, with a dashed (drawn solid) top border</p>
   </div>
   <div class="card tight">
     <p>Second card, paragraphs without margins:</p>

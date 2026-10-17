@@ -17,6 +17,8 @@ Length_Unit :: enum {
 	Px,
 	Em,
 	Percent,
+	Vw, // percent of the viewport width
+	Vh, // percent of the viewport height
 	Auto,
 }
 
@@ -73,7 +75,11 @@ default_box :: proc(tag: string, style: ^Style) {
 	case "h6":
 		style.margin = edges(em(2.33), {}, em(2.33), {})
 	case "hr":
+		// a 1px grey line: an empty block with a top and bottom border
 		style.margin = edges(em(0.5), AUTO, em(0.5), AUTO)
+		for edge in Edge {
+			style.border[edge] = {px(1), .Solid, Color{128, 128, 128, 255}}
+		}
 	}
 }
 
@@ -117,6 +123,10 @@ apply_box_declaration :: proc(style: ^Style, property, value: string) {
 		if color, ok := background_color_of(value, style.color); ok {
 			style.background = color
 		}
+	case:
+		if strings.has_prefix(property, "border") {
+			apply_border_declaration(style, property, value)
+		}
 	}
 }
 
@@ -142,6 +152,10 @@ parse_length :: proc(value: string, allow_auto: bool) -> (length: Length, ok: bo
 		return {.Percent, n}, true
 	case "pt":
 		return px(n * 4 / 3), true
+	case "vw":
+		return {.Vw, n}, true
+	case "vh":
+		return {.Vh, n}, true
 	}
 	return {}, false
 }
@@ -173,28 +187,11 @@ parse_edges :: proc(value: string, allow_auto: bool) -> (result: Edges, ok: bool
 }
 
 // Finds the color in a background shorthand like "#222 url(x.png) no-repeat".
-// Splits at spaces outside of parentheses, so "rgb(1, 2, 3)" stays one part.
 @(private)
 background_color_of :: proc(value: string, current: Color) -> (color: Color, ok: bool) {
-	depth := 0
-	start := 0
-	for i := 0; i <= len(value); i += 1 {
-		at_end := i == len(value)
-		if !at_end {
-			switch value[i] {
-			case '(':
-				depth += 1
-			case ')':
-				depth -= 1
-			}
-		}
-		if at_end || (value[i] == ' ' && depth == 0) {
-			if part := value[start:i]; part != "" {
-				if color, ok = parse_color(part, current); ok {
-					return
-				}
-			}
-			start = i + 1
+	for part in split_outside_parens(value, context.temp_allocator) {
+		if color, ok = parse_color(part, current); ok {
+			return
 		}
 	}
 	return {}, false
@@ -214,8 +211,9 @@ edge_of :: proc(property: string) -> Edge {
 }
 
 // Resolves a length to px. em uses the element's font size, % the width of
-// the containing block. auto resolves to 0 here; the layout handles auto margins.
-resolve_length :: proc(length: Length, font_size, containing_width: f32) -> f32 {
+// the containing block, vw/vh the size of the viewport (the visible page area).
+// auto resolves to 0 here; the layout handles auto margins.
+resolve_length :: proc(length: Length, font_size, containing_width: f32, viewport: [2]f32) -> f32 {
 	switch length.unit {
 	case .Px:
 		return length.value
@@ -223,6 +221,10 @@ resolve_length :: proc(length: Length, font_size, containing_width: f32) -> f32 
 		return length.value * font_size
 	case .Percent:
 		return length.value / 100 * containing_width
+	case .Vw:
+		return length.value / 100 * viewport.x
+	case .Vh:
+		return length.value / 100 * viewport.y
 	case .Auto:
 		return 0
 	}

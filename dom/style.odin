@@ -11,6 +11,7 @@ Style :: struct {
 	color:       Color,
 	font_size:   f32, // px
 	font_weight: int, // 1..1000, 400 = normal, 700 = bold
+	text_align:  Text_Align,
 
 	// box model, not inherited (see box_style.odin)
 	margin:      Edges,
@@ -18,6 +19,14 @@ Style :: struct {
 	width:       Length, // .Auto = fill the available width
 	max_width:   Length, // .Auto = none
 	background:  Color,  // alpha 0 = transparent
+	border:      Borders,
+}
+
+// justify is drawn like left for now
+Text_Align :: enum {
+	Left,
+	Center,
+	Right,
 }
 
 Display :: enum {
@@ -35,6 +44,7 @@ ROOT_STYLE :: Style {
 	font_weight = 400,
 	width       = AUTO,
 	max_width   = AUTO,
+	border      = INITIAL_BORDERS,
 }
 
 // Initial value of display in CSS, used for "initial" and "unset".
@@ -53,8 +63,10 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		color       = parent.color,
 		font_size   = parent.font_size,
 		font_weight = parent.font_weight,
+		text_align  = parent.text_align,
 		width       = AUTO,
 		max_width   = AUTO,
+		border      = INITIAL_BORDERS,
 	}
 	default_box(tag, &style)
 	if has_hidden_attribute {
@@ -79,12 +91,17 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 	case "h6":
 		style.font_size = parent.font_size * 0.67
 		style.font_weight = 700
-	case "b", "strong", "th", "dt":
+	case "b", "strong", "dt":
 		style.font_weight = 700
+	case "th":
+		style.font_weight = 700
+		style.text_align = .Center
 	case "small":
 		style.font_size = parent.font_size / 1.2
 	case "a":
 		style.color = LINK_COLOR
+	case "center":
+		style.text_align = .Center
 	}
 	return style
 }
@@ -137,6 +154,17 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 				style.font_weight = weight
 			}
 		}
+	case "text-align":
+		switch value {
+		case "inherit", "unset":
+			style.text_align = parent.text_align
+		case "initial", "left", "start", "justify":
+			style.text_align = .Left
+		case "center":
+			style.text_align = .Center
+		case "right", "end":
+			style.text_align = .Right
+		}
 	case:
 		apply_box_declaration(style, property, value)
 	}
@@ -149,11 +177,16 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 // out wrong. Good enough for now.)
 // font-size comes before the box properties, because em in margins refers to it.
 STYLE_PROPERTIES :: [?]string {
-	"display", "color", "font-size", "font-weight",
+	"display", "color", "font-size", "font-weight", "text-align",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
 	"width", "max-width",
 	"background", "background-color",
+	"border", "border-width", "border-style", "border-color",
+	"border-top", "border-right", "border-bottom", "border-left",
+	"border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
+	"border-top-style", "border-right-style", "border-bottom-style", "border-left-style",
+	"border-top-color", "border-right-color", "border-bottom-color", "border-left-color",
 }
 
 @(private)

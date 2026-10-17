@@ -26,10 +26,13 @@ Text_Run :: struct {
 	link:      string, // href of the surrounding <a>, as written in the page; "" if none
 }
 
-// The background of a block box (border box = padding + content).
+// A block box: background (alpha 0 = none) and borders. x/y/width/height is
+// the border box (border + padding + content), the background fills all of it.
 Box :: struct {
 	x, y, width, height: f32,
 	color:               dom.Color,
+	border:              [dom.Edge]f32, // widths in px, 0 = none
+	border_color:        [dom.Edge]dom.Color,
 }
 
 // Owns all boxes, runs and their strings; destroy frees everything at once.
@@ -39,8 +42,8 @@ Layout :: struct {
 	background: dom.Color, // page background from <html> or <body> ("canvas")
 	boxes:      [dynamic]Box,
 	runs:       [dynamic]Text_Run,
-	width:      f32, // the width this layout was made for
-	height:     f32, // total content height
+	viewport:   [2]f32, // the size this layout was made for (width, height of the page view)
+	height:     f32,    // total content height
 }
 
 PAGE_BACKGROUND :: dom.Color{255, 255, 255, 255}
@@ -50,9 +53,12 @@ Measure_Text :: #type proc(text: string, font_size: f32, bold: bool) -> f32
 LINE_HEIGHT_FACTOR :: f32(1.25) // line height relative to the font size ("normal")
 BOLD_WEIGHT :: 600              // from this font-weight on we draw bold
 
-build :: proc(doc: ^dom.Document, width: f32, measure: Measure_Text) -> ^Layout {
+// viewport is the visible page area: its width is the page width, both
+// together resolve vw/vh.
+build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text) -> ^Layout {
 	l := new(Layout)
-	l.width = width
+	l.viewport = viewport
+	width := viewport.x
 	if err := virtual.arena_init_growing(&l.arena); err != nil {
 		// out of memory: an empty layout is the best we can do
 		return l
@@ -69,6 +75,7 @@ build :: proc(doc: ^dom.Document, width: f32, measure: Measure_Text) -> ^Layout 
 		measure   = measure,
 		left      = 0,
 		right     = width,
+		viewport  = viewport,
 	}
 	b.line.allocator = allocator
 	b.block_tops.allocator = allocator
@@ -116,6 +123,8 @@ Builder :: struct {
 	link:           string,              // href of the <a> we are in, "" outside of links
 	block_tops:     [dynamic]Block_Top,  // one per open block, see flush_margin
 	canvas_from_html: bool,              // <html> set the page background, <body> must not override it
+	viewport:       [2]f32,
+	text_align:     dom.Text_Align,      // of the block the current line belongs to
 }
 
 // The top edge of an open block. It is only known once the collapsed margin
@@ -179,8 +188,8 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	layout_block(b, node)
 }
 
-// A block or list item: the CSS box model, simplified (no borders yet,
-// no height, box-sizing is always content-box).
+// A block or list item: the CSS box model, simplified (no height,
+// box-sizing is always content-box).
 @(private)
 layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	finish_line(b)
@@ -189,27 +198,32 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	available := b.right - b.left // width of the containing block
 
 	// all percentages (even vertical ones) refer to the width of the containing block
-	margin, padding: [dom.Edge]f32
+	// padding and border both sit between the margin and the content; for the
+	// width calculation and margin collapsing they behave the same, so "inset"
+	// is their sum
+	margin, padding, border, inset: [dom.Edge]f32
 	for edge in dom.Edge {
-		margin[edge] = dom.resolve_length(style.margin[edge], font_size, available)
-		padding[edge] = dom.resolve_length(style.padding[edge], font_size, available)
+		margin[edge] = dom.resolve_length(style.margin[edge], font_size, available, b.viewport)
+		padding[edge] = dom.resolve_length(style.padding[edge], font_size, available, b.viewport)
+		border[edge] = dom.border_width_px(style.border[edge], font_size, b.viewport)
+		inset[edge] = padding[edge] + border[edge]
 	}
 
 	// horizontal: content width first, then auto margins take what is left
 	width: f32
 	if style.width.unit == .Auto {
-		width = available - margin[.Left] - margin[.Right] - padding[.Left] - padding[.Right]
+		width = available - margin[.Left] - margin[.Right] - inset[.Left] - inset[.Right]
 	} else {
-		width = dom.resolve_length(style.width, font_size, available)
+		width = dom.resolve_length(style.width, font_size, available, b.viewport)
 	}
 	if style.max_width.unit != .Auto {
-		width = min(width, dom.resolve_length(style.max_width, font_size, available))
+		width = min(width, dom.resolve_length(style.max_width, font_size, available, b.viewport))
 	}
 	width = max(width, 0)
 
 	left_auto := style.margin[.Left].unit == .Auto
 	right_auto := style.margin[.Right].unit == .Auto
-	free := available - width - padding[.Left] - padding[.Right] - margin[.Left] - margin[.Right]
+	free := available - width - inset[.Left] - inset[.Right] - margin[.Left] - margin[.Right]
 	if free > 0 {
 		if left_auto && right_auto {
 			margin[.Left] += free / 2 // margin: 0 auto -> centered
@@ -218,38 +232,41 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 		}
 	}
 	box_x := b.left + margin[.Left]
-	box_width := padding[.Left] + width + padding[.Right]
+	box_width := inset[.Left] + width + inset[.Right]
 
-	// vertical: the top margin joins the pending (collapsing) margin. Padding
-	// separates this block from its children, so then the margin is applied now.
+	// vertical: the top margin joins the pending (collapsing) margin. Padding or
+	// a border separates this block from its children, so then the margin is
+	// applied now.
 	add_margin(b, margin[.Top])
 	append(&b.block_tops, Block_Top{})
-	if padding[.Top] > 0 {
+	if inset[.Top] > 0 {
 		flush_margin(b)
-		b.y += padding[.Top]
+		b.y += inset[.Top]
 	}
 
-	// reserve the background slot now: parents are drawn before their children
-	box_index := -1
-	if style.background[3] > 0 {
-		switch node.tag {
-		case "html":
-			b.layout.background = style.background
-			b.canvas_from_html = true
-		case "body":
-			if !b.canvas_from_html {
-				b.layout.background = style.background
-			}
-		case:
-			append(&b.layout.boxes, Box{color = style.background})
-			box_index = len(b.layout.boxes) - 1
+	// html and body paint their background on the whole page ("canvas")
+	box_background := style.background
+	if box_background[3] > 0 && (node.tag == "html" || node.tag == "body") {
+		if node.tag == "html" || !b.canvas_from_html {
+			b.layout.background = box_background
 		}
+		b.canvas_from_html ||= node.tag == "html"
+		box_background = {}
 	}
 
-	old_left, old_right := b.left, b.right
-	b.left = box_x + padding[.Left]
+	// reserve the box slot now: parents are drawn before their children
+	has_border := border[.Top] > 0 || border[.Right] > 0 || border[.Bottom] > 0 || border[.Left] > 0
+	box_index := -1
+	if box_background[3] > 0 || has_border {
+		append(&b.layout.boxes, Box{})
+		box_index = len(b.layout.boxes) - 1
+	}
+
+	old_left, old_right, old_align := b.left, b.right, b.text_align
+	b.left = box_x + inset[.Left]
 	b.right = b.left + width
 	b.x = b.left
+	b.text_align = style.text_align
 
 	if style.display == .List_Item {
 		add_marker(b, node)
@@ -259,9 +276,9 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	}
 
 	finish_line(b)
-	if padding[.Bottom] > 0 {
+	if inset[.Bottom] > 0 {
 		flush_margin(b) // the bottom margin of the last child stays inside
-		b.y += padding[.Bottom]
+		b.y += inset[.Bottom]
 	}
 
 	top := pop(&b.block_tops)
@@ -269,10 +286,14 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 		top.y = b.y // no content and no padding: an empty box
 	}
 	if box_index >= 0 {
-		b.layout.boxes[box_index] = Box{box_x, top.y, box_width, b.y - top.y, style.background}
+		box := Box{box_x, top.y, box_width, b.y - top.y, box_background, border, {}}
+		for edge in dom.Edge {
+			box.border_color[edge] = dom.border_color(style.border[edge], style.color)
+		}
+		b.layout.boxes[box_index] = box
 	}
 
-	b.left, b.right = old_left, old_right
+	b.left, b.right, b.text_align = old_left, old_right, old_align
 	b.x = b.left
 	add_margin(b, margin[.Bottom])
 }
@@ -474,6 +495,27 @@ finish_line :: proc(b: ^Builder) {
 	for run in b.line {
 		line_height = max(line_height, run.font_size * LINE_HEIGHT_FACTOR)
 	}
+
+	// text-align: move the line by the free space (or half of it). List markers
+	// hang left of b.left and stay where they are.
+	if b.text_align != .Left {
+		line_end := b.left
+		for run in b.line {
+			if run.x >= b.left {
+				line_end = max(line_end, run.x + run.width)
+			}
+		}
+		shift := b.right - line_end
+		if b.text_align == .Center {
+			shift /= 2
+		}
+		for &run in b.line {
+			if run.x >= b.left {
+				run.x += max(shift, 0)
+			}
+		}
+	}
+
 	for &run in b.line {
 		// bottom-align smaller text, centered in its own line box
 		own_height := run.font_size * LINE_HEIGHT_FACTOR

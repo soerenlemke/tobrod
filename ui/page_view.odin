@@ -61,19 +61,21 @@ page_view_clear :: proc(pv: ^PageView) {
 	pv.content_height = 0
 }
 
-// Layout is expensive, so it only runs when there is none yet or the width changed.
+// Layout is expensive, so it only runs when there is none yet or the size of
+// the page view changed (the width wraps the text, the height resolves vh).
 @(private)
 page_view_ensure_layout :: proc(pv: ^PageView) {
 	if pv.document == nil {
 		return
 	}
-	if pv.page_layout != nil && pv.page_layout.width == pv.rect.width {
+	viewport := [2]f32{pv.rect.width, pv.rect.height}
+	if pv.page_layout != nil && pv.page_layout.viewport == viewport {
 		return
 	}
 	if pv.page_layout != nil {
 		layout.destroy(pv.page_layout)
 	}
-	pv.page_layout = layout.build(pv.document, pv.rect.width, measure_text)
+	pv.page_layout = layout.build(pv.document, viewport, measure_text)
 	pv.content_height = pv.page_layout.height
 	clamp_scroll(pv)
 }
@@ -96,8 +98,17 @@ page_view_render :: proc(pv: ^PageView) {
 		if top + box.height < 0 || top > pv.rect.height {
 			continue
 		}
-		rect := rl.Rectangle{pv.rect.x + box.x, pv.rect.y + top, box.width, box.height}
-		rl.DrawRectangleRec(rect, rl.Color(box.color))
+		x, y := pv.rect.x + box.x, pv.rect.y + top
+		if box.color[3] > 0 {
+			rl.DrawRectangleRec({x, y, box.width, box.height}, rl.Color(box.color))
+		}
+		// borders on top of the background: top and bottom over the full width,
+		// left and right in between
+		bt, br, bb, bl := box.border[.Top], box.border[.Right], box.border[.Bottom], box.border[.Left]
+		rl.DrawRectangleRec({x, y, box.width, bt}, rl.Color(box.border_color[.Top]))
+		rl.DrawRectangleRec({x, y + box.height - bb, box.width, bb}, rl.Color(box.border_color[.Bottom]))
+		rl.DrawRectangleRec({x, y + bt, bl, box.height - bt - bb}, rl.Color(box.border_color[.Left]))
+		rl.DrawRectangleRec({x + box.width - br, y + bt, br, box.height - bt - bb}, rl.Color(box.border_color[.Right]))
 	}
 
 	for run in pv.page_layout.runs {
