@@ -79,6 +79,7 @@ Stage 4 — HTML & CSS Parsing
          - [x] load (resource queue in the loader), decode (raylib: PNG, JPG, GIF, BMP, QOI) and draw
       - [x] tables: automatic column widths (min/max-content), colspan, captions, anonymous rows/cells, vertical-align, border-collapse
       - [x] floats: shrink-to-fit width, text flowing around them, clear
+      - [x] replaced elements: `video` (poster image), `iframe`, `canvas`, `embed`, `object` as boxes (300×150 by default)
 
 Stage 5 - Threads
 - [x] Run http requests in own thread (package `loader`: worker thread, also parses)

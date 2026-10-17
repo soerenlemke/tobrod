@@ -75,7 +75,10 @@ destroy :: proc(ui: ^MainWindow) {
 // With a non-empty screenshot_path, the window is captured once the page has
 // loaded (and a few frames have passed) and run returns instead of waiting
 // for the user to close it.
-run :: proc(ui: ^MainWindow, screenshot_path := "") -> Maybe(Error) {
+// screenshot_scroll scrolls down that far before the capture (to check parts
+// further down a page).
+run :: proc(ui: ^MainWindow, screenshot_path := "", screenshot_scroll: f32 = 0) -> Maybe(Error) {
+	scroll_pending := screenshot_scroll > 0
 	frame := 0
 	for !rl.WindowShouldClose() {
 		frame += 1
@@ -110,7 +113,13 @@ run :: proc(ui: ^MainWindow, screenshot_path := "") -> Maybe(Error) {
 		}
 
 		// wait until the page has arrived, otherwise we'd capture an empty window
-		if screenshot_path != "" && frame >= SCREENSHOT_AFTER_FRAMES && !ui.loading {
+		if screenshot_path != "" && frame >= SCREENSHOT_AFTER_FRAMES && !ui.loading && scroll_pending && ui.page_view.page_layout != nil {
+			// the layout exists now: scroll, and capture in one of the next frames
+			page_view_scroll_to(&ui.page_view, screenshot_scroll)
+			scroll_pending = false
+			frame = 0
+		}
+		if screenshot_path != "" && frame >= SCREENSHOT_AFTER_FRAMES && !ui.loading && !scroll_pending {
 			err := take_screenshot(screenshot_path)
 			rl.EndDrawing()
 			free_all(context.temp_allocator)
