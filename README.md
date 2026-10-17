@@ -69,7 +69,7 @@ Stage 4 — HTML & CSS Parsing
       - [x] draw the runs in the ui (regular and bold Inter)
    - [ ] more layout
       - [x] box model: margin, padding, width, max-width, `margin: auto` centering, background colors
-      - [ ] `text-align`, borders
+      - [x] `text-align`, borders, `vw`/`vh` units
       - [ ] images
 
 Stage 5 - Threads

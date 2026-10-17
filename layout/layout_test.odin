@@ -18,7 +18,7 @@ build_html :: proc(t: ^testing.T, html: string, width: f32) -> (doc: ^dom.Docume
 	if e, ok := err.?; ok {
 		testing.fail_now(t, e.message)
 	}
-	return doc, build(doc, width, fake_measure)
+	return doc, build(doc, {width, 600}, fake_measure)
 }
 
 // "text@x,y size bold" per run, one per line, for compact expectations.
@@ -107,7 +107,7 @@ test_plain_text :: proc(t: ^testing.T) {
 		testing.fail_now(t, e.message)
 	}
 	defer dom.destroy(doc)
-	l := build(doc, 800, fake_measure)
+	l := build(doc, {800, 600}, fake_measure)
 	defer destroy(l)
 
 	// separate runs per word in pre text (spaces are kept exactly)
@@ -223,4 +223,55 @@ test_percent_width :: proc(t: ^testing.T) {
 
 	// content 400 wide -> div 200 wide, auto left margin pushes it right
 	testing.expect_value(t, l.runs[0].x, 8 + 200)
+}
+
+@(test)
+test_text_align :: proc(t: ^testing.T) {
+	// body content: 8..408 (400 wide); "ab" = 16px
+	doc, l := build_html(t, `<p style="text-align: center">ab</p><p style="text-align: right">ab</p><ul style="text-align: right"><li>ab</li></ul>`, 416)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, l.runs[0].x, 8 + (400 - 16) / 2)
+	testing.expect_value(t, l.runs[1].x, 408 - 16)
+	// the list marker stays left of the content, only the text moves
+	testing.expect_value(t, l.runs[2].text, "•")
+	testing.expect_value(t, l.runs[2].x, 32)
+	testing.expect_value(t, l.runs[3].x, 408 - 16)
+}
+
+@(test)
+test_borders :: proc(t: ^testing.T) {
+	doc, l := build_html(t, `<div style="border: 2px solid red; padding: 3px"><p style="margin: 10px 0">x</p></div><hr>`, 416)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, len(l.boxes), 2)
+	if len(l.boxes) != 2 do return
+	div := l.boxes[0]
+	// the border adds to the box like padding: 400 = 2 + 3 + content + 3 + 2
+	testing.expect_value(t, div.x, 8)
+	testing.expect_value(t, div.width, 400)
+	testing.expect_value(t, div.border[.Top], 2)
+	testing.expect_value(t, div.border_color[.Left], dom.Color{255, 0, 0, 255})
+	// border + padding stop margin collapsing: the p margin stays inside
+	testing.expect_value(t, div.y, 8)
+	testing.expect_value(t, l.runs[0].x, 8 + 5)
+	testing.expect_value(t, l.runs[0].y, 8 + 5 + 10 + 2)
+	testing.expect_value(t, div.height, 5 + 10 + 20 + 10 + 5)
+
+	// hr: an empty box with a 1px grey border on all sides -> 2px high line
+	hr := l.boxes[1]
+	testing.expect_value(t, hr.height, 2)
+	testing.expect_value(t, hr.width, 400)
+	testing.expect_value(t, hr.border_color[.Top], dom.Color{128, 128, 128, 255})
+}
+
+@(test)
+test_vh_padding :: proc(t: ^testing.T) {
+	// viewport height 600 in the tests: 10vh = 60px
+	doc, l := build_html(t, `<body style="margin: 0; padding-top: 10vh">x</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+	testing.expect_value(t, l.runs[0].y, 60 + 2)
 }
