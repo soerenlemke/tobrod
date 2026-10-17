@@ -50,7 +50,7 @@ Stage 4 — HTML & CSS Parsing
 
 - [ ] Bind lexbor for HTML parsing
    - [x] create/parse/destroy document (smoke-tested)
-   - [ ] traverse DOM nodes (first_child, next sibling)
+   - [x] traverse DOM nodes (first_child, next sibling)
    - [ ] read node/element data (tag name, text content, attributes)
 - [ ] Build a DOM tree from parsed HTML
 - [ ] CSS parsing and CSSOM construction
