@@ -379,3 +379,26 @@ test_list_markers :: proc(t: ^testing.T) {
 	testing.expect_value(t, l.runs[2].text, "nested")
 	testing.expect_value(t, l.runs[1].y, l.runs[2].y)
 }
+
+@(test)
+test_replaced_elements :: proc(t: ^testing.T) {
+	doc, err := dom.parse(`<p><video poster="p.jpg" width="250" height="159"><source src="v.webm"></video><iframe src="x"></iframe><video></video></p>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer dom.destroy(doc)
+	l := build(doc, {1000, 600}, fake_measure)
+	defer destroy(l)
+
+	testing.expect_value(t, len(l.images), 3)
+	if len(l.images) != 3 do return
+	// video: its size attributes, its poster as the picture
+	testing.expect_value(t, l.images[0].src, "p.jpg")
+	testing.expect_value(t, l.images[0].width, 250)
+	testing.expect_value(t, l.images[0].height, 159)
+	// without sizes: the 300x150 default of replaced elements
+	testing.expect_value(t, l.images[1].width, 300)
+	testing.expect_value(t, l.images[2].height, 150)
+	// the <source> inside the video is not laid out as text
+	testing.expect_value(t, len(l.runs), 0)
+}

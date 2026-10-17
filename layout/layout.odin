@@ -69,6 +69,9 @@ Measure_Text :: #type proc(text: string, font_size: f32, bold: bool) -> f32
 
 LINE_HEIGHT_FACTOR :: f32(1.25) // line height relative to the font size ("normal")
 IMAGE_PLACEHOLDER_SIZE :: f32(16) // for an image whose size is not known (yet)
+// Other replaced elements (video, iframe, canvas, ...) are 300x150 by default,
+// like in every browser.
+REPLACED_DEFAULT_SIZE :: [2]f32{300, 150}
 BOLD_WEIGHT :: 600              // from this font-weight on we draw bold
 
 // viewport is the visible page area: its width is the page width, both
@@ -236,7 +239,7 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 		}
 	}
 
-	if node.tag == "img" && style.display != .None {
+	if is_replaced_element(node.tag) && style.display != .None {
 		layout_image(b, node)
 		return
 	}
@@ -664,7 +667,7 @@ line_empty :: proc(b: ^Builder) -> bool {
 // a (big) word, wraps like one, and makes the line as high as itself.
 @(private)
 layout_image :: proc(b: ^Builder, node: ^dom.Node) {
-	src, _ := dom.attribute(node, "src")
+	src := image_source(node)
 	width, height := image_size(b, node, src)
 
 	space_width: f32 = 0
@@ -729,8 +732,9 @@ image_size :: proc(b: ^Builder, node: ^dom.Node, src: string) -> (width, height:
 			w = h.? / ratio
 		}
 	}
-	width = w.? or_else IMAGE_PLACEHOLDER_SIZE
-	height = h.? or_else IMAGE_PLACEHOLDER_SIZE
+	placeholder := [2]f32{IMAGE_PLACEHOLDER_SIZE, IMAGE_PLACEHOLDER_SIZE} if node.tag == "img" else REPLACED_DEFAULT_SIZE
+	width = w.? or_else placeholder.x
+	height = h.? or_else placeholder.y
 
 	if style.max_width.unit != .Auto {
 		max_width := dom.resolve_length(style.max_width, style.font_size, available, b.viewport)
@@ -740,6 +744,31 @@ image_size :: proc(b: ^Builder, node: ^dom.Node, src: string) -> (width, height:
 		}
 	}
 	return max(width, 0), max(height, 0)
+}
+
+// "Replaced elements": their content comes from outside the page (an image, a
+// video, another page...), the layout only reserves a rectangle for them.
+is_replaced_element :: proc(tag: string) -> bool {
+	switch tag {
+	case "img", "video", "iframe", "canvas", "embed", "object":
+		return true
+	}
+	return false
+}
+
+// The picture to show for a replaced element: the image of <img>, the
+// preview of a <video> ("poster"); others get a placeholder. Also the key for
+// Image_Sizes.
+image_source :: proc(node: ^dom.Node) -> string {
+	switch node.tag {
+	case "img":
+		src, _ := dom.attribute(node, "src")
+		return src
+	case "video":
+		poster, _ := dom.attribute(node, "poster")
+		return poster
+	}
+	return ""
 }
 
 // width="200" -> 200. Percentages and junk are ignored.

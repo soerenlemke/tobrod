@@ -197,6 +197,11 @@ page_view_handle_resize :: proc(pv: ^PageView, window_width, window_height: i32)
 	// the layout notices the new width on the next render
 }
 
+page_view_scroll_to :: proc(pv: ^PageView, y: f32) {
+	pv.scroll_y = y
+	clamp_scroll(pv)
+}
+
 page_view_handle_scroll :: proc(pv: ^PageView, wheel_y: f32) {
 	pv.scroll_y -= wheel_y * PAGE_VIEW_SCROLL_SPEED
 	clamp_scroll(pv)

@@ -2,6 +2,7 @@ package browser
 
 import "../dom"
 import "../http"
+import "../layout"
 import "../loader"
 import "../ui"
 import "core:fmt"
@@ -56,9 +57,10 @@ destroy :: proc(b: ^Browser) {
 	http.global_cleanup()
 }
 
-// With a non-empty screenshot_path the window is captured to that file and run returns.
-run :: proc(b: ^Browser, screenshot_path := "") -> Maybe(ui.Error) {
-	return ui.run(&b.window, screenshot_path)
+// With a non-empty screenshot_path the window is captured to that file and run
+// returns, after scrolling down screenshot_scroll pixels.
+run :: proc(b: ^Browser, screenshot_path := "", screenshot_scroll: f32 = 0) -> Maybe(ui.Error) {
+	return ui.run(&b.window, screenshot_path, screenshot_scroll)
 }
 
 register_callbacks :: proc(b: ^Browser) {
@@ -190,15 +192,17 @@ show_page :: proc(b: ^Browser, result: ^loader.Result) {
 	request_images(b, doc)
 }
 
-// Queues every <img> of the page in the loader, each src only once.
+// Queues the pictures of the page in the loader (<img src>, <video poster>),
+// each src only once.
 @(private)
 request_images :: proc(b: ^Browser, doc: ^dom.Document) {
 	base, _ := history_current(&b.history)
 	requested := make(map[string]bool, allocator = context.temp_allocator)
 
 	request :: proc(b: ^Browser, node: ^dom.Node, base: string, requested: ^map[string]bool) {
-		if node.kind == .Element && node.tag == "img" {
-			if src, ok := dom.attribute(node, "src"); ok && src != "" && !(src in requested) {
+		// <img src> and the preview picture of <video poster>
+		if node.kind == .Element && layout.is_replaced_element(node.tag) {
+			if src := layout.image_source(node); src != "" && !(src in requested) {
 				requested[src] = true
 				url, resolved := http.resolve_url(base, src, context.temp_allocator)
 				if resolved && http.is_loadable_url(url) {

@@ -10,6 +10,7 @@ import "ui"
 Options :: struct {
 	url:        string `usage:"URL to load on startup."`,
 	screenshot: string `usage:"Save a PNG of the window to this path, then exit."`,
+	scroll:     f32    `usage:"With --screenshot: scroll down this many pixels first."`,
 }
 
 main :: proc() {
@@ -42,7 +43,7 @@ run :: proc(opts: Options) -> (ok: bool) {
 		browser.navigate(b, opts.url)
 	}
 
-	if err, has_err := browser.run(b, opts.screenshot).?; has_err {
+	if err, has_err := browser.run(b, opts.screenshot, opts.scroll).?; has_err {
 		fmt.eprintln("Error:", err.message)
 		return false
 	}
