@@ -21,8 +21,8 @@ ELEMENT_GAPS :: [?][2]string {
 	{"progress", "form control, nothing is drawn"},
 	{"meter", "form control, nothing is drawn"},
 	{"svg", "inline SVG, needs an SVG renderer"},
-	{"img: SVG", "<img> with an SVG source, we can't decode it"},
 	{"img: WebP", "<img> with a WebP source, we can't decode it"},
+	{"img: data URL", "<img> with the image in its src (data:), we don't load those"},
 	{"math", "MathML"},
 	{"canvas", "drawn by JavaScript"},
 	{"iframe", "another document, we draw an empty box"},
@@ -119,9 +119,9 @@ element_gap :: proc(node: ^Node) -> (key: string, ok: bool) {
 			src = src[:i]
 		}
 		switch {
-		case strings.has_suffix(src, ".svg") || strings.has_prefix(src, "data:image/svg"):
-			return "img: SVG", true
-		case strings.has_suffix(src, ".webp") || strings.has_prefix(src, "data:image/webp"):
+		case strings.has_prefix(src, "data:"):
+			return "img: data URL", true
+		case strings.has_suffix(src, ".webp"):
 			return "img: WebP", true
 		}
 		return "", false

@@ -25,7 +25,7 @@ test_element_report :: proc(t: ^testing.T) {
 	testing.expect_value(t, report.elements["input: range"], 1) // the other inputs are drawn
 	testing.expect(t, !("button" in report.elements), "buttons are drawn")
 	testing.expect(t, !("em" in report.elements), "italic is drawn")
-	testing.expect_value(t, report.elements["img: SVG"], 1)
+	testing.expect(t, !("img: SVG" in report.elements), "SVG images are drawn")
 	testing.expect_value(t, report.elements["img: WebP"], 1)
 	testing.expect_value(t, report.elements["dialog"], 1) // not open
 	testing.expect_value(t, report.elements["noscript"], 1)

@@ -294,8 +294,8 @@ test_image_sizes :: proc(t: ^testing.T) {
 
 	sizes := make(Image_Sizes)
 	defer delete(sizes)
-	sizes["loaded.png"] = {80, 60}
-	sizes["big.png"] = {2000, 1000}
+	sizes["loaded.png"] = {size = {80, 60}}
+	sizes["big.png"] = {size = {2000, 1000}}
 
 	l := build(doc, {416, 600}, fake_measure, sizes)
 	defer destroy(l)
@@ -1166,4 +1166,26 @@ test_shrink_to_fit_counts_inner_padding :: proc(t: ^testing.T) {
 	testing.expect_value(t, runs_to_string(l), "Home@8,2 16\n")
 	if len(l.boxes) != 1 do return
 	testing.expect_value(t, l.boxes[0].width, 8 + 32 + 8)
+}
+
+@(test)
+test_image_with_only_a_ratio :: proc(t: ^testing.T) {
+	// an SVG with only a viewBox: as wide as the containing block, unless the
+	// page gives it a size
+	err: Maybe(dom.Parse_Error)
+	doc: ^dom.Document
+	doc, err = dom.parse(`<body style="margin: 0"><img src="icon.svg"><img src="icon.svg" width="32"></body>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer dom.destroy(doc)
+	sizes := make(Image_Sizes)
+	defer delete(sizes)
+	sizes["icon.svg"] = {size = {24, 12}, ratio_only = true}
+
+	l := build(doc, {400, 600}, fake_measure, sizes)
+	defer destroy(l)
+	if len(l.images) != 2 do return
+	testing.expect_value(t, [2]f32{l.images[0].width, l.images[0].height}, [2]f32{400, 200})
+	testing.expect_value(t, [2]f32{l.images[1].width, l.images[1].height}, [2]f32{32, 16})
 }

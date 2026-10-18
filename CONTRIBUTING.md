@@ -38,6 +38,7 @@ odin check .   # quick type check
    odin test loader
    odin test browser
    odin test ui
+   odin test svg
    odin test vendor/lexbor
    ```
 
