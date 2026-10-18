@@ -47,11 +47,11 @@ parse_line_height :: proc(value: string, font_size: f32) -> (Line_Height, bool) 
 	}
 	#partial switch length.unit {
 	case .Px:
-		return {.Px, max(length.value, 0)}, true
+		return {unit = .Px, value = max(length.value, 0)}, true
 	case .Em:
-		return {.Px, max(length.value * font_size, 0)}, true
+		return {unit = .Px, value = max(length.value * font_size, 0)}, true
 	case .Percent:
-		return {.Px, max(length.value / 100 * font_size, 0)}, true
+		return {unit = .Px, value = max(length.value / 100 * font_size, 0)}, true
 	}
 	return {}, false // vw/vh: not supported here
 }

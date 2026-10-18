@@ -11,6 +11,7 @@ import "core:strings"
 Length :: struct {
 	unit:  Length_Unit,
 	value: f32,
+	calc:  [Length_Unit]f32, // only for .Calc: the length is the sum of these (calc.odin)
 }
 
 Length_Unit :: enum {
@@ -20,6 +21,7 @@ Length_Unit :: enum {
 	Vw, // percent of the viewport width
 	Vh, // percent of the viewport height
 	Auto,
+	Calc, // a calc() that mixes units, like calc(100% - 2em)
 }
 
 AUTO :: Length{unit = .Auto}
@@ -42,11 +44,11 @@ edges :: proc(top, right, bottom, left: Length) -> Edges {
 }
 
 px :: proc(v: f32) -> Length {
-	return {.Px, v}
+	return {unit = .Px, value = v}
 }
 
 em :: proc(v: f32) -> Length {
-	return {.Em, v}
+	return {unit = .Em, value = v}
 }
 
 // Default margins and paddings of the user agent stylesheet (HTML spec,
@@ -183,26 +185,36 @@ parse_length :: proc(value: string, allow_auto: bool) -> (length: Length, ok: bo
 	if value == "auto" {
 		return AUTO, allow_auto
 	}
+	if strings.has_prefix(value, "calc(") {
+		return parse_calc(value)
+	}
 	number, unit := split_number(value)
 	n := strconv.parse_f32(number) or_return
+	if unit == "" {
+		// a bare number is only valid for 0
+		return px(0), n == 0
+	}
+	return length_with_unit(n, unit)
+}
+
+// A number with a unit, like 2 and "em". rem and pt are converted to px.
+@(private)
+length_with_unit :: proc(n: f32, unit: string) -> (length: Length, ok: bool) {
 	switch unit {
 	case "px":
 		return px(n), true
-	case "":
-		// a bare number is only valid for 0
-		return px(0), n == 0
 	case "em":
 		return em(n), true
 	case "rem":
 		return px(n * ROOT_FONT_SIZE), true
 	case "%":
-		return {.Percent, n}, true
+		return {unit = .Percent, value = n}, true
 	case "pt":
 		return px(n * 4 / 3), true
 	case "vw":
-		return {.Vw, n}, true
+		return {unit = .Vw, value = n}, true
 	case "vh":
-		return {.Vh, n}, true
+		return {unit = .Vh, value = n}, true
 	}
 	return {}, false
 }
@@ -212,8 +224,7 @@ parse_length :: proc(value: string, allow_auto: bool) -> (length: Length, ok: bo
 parse_edges :: proc(value: string, allow_auto: bool) -> (result: Edges, ok: bool) {
 	parts: [4]Length
 	count := 0
-	rest := value
-	for word in strings.fields_iterator(&rest) {
+	for word in split_outside_parens(value, context.temp_allocator) {
 		if count == 4 {
 			return {}, false
 		}
@@ -284,6 +295,14 @@ resolve_length :: proc(length: Length, font_size, containing_width: f32, viewpor
 		return length.value / 100 * viewport.y
 	case .Auto:
 		return 0
+	case .Calc:
+		sum: f32 = 0
+		for value, unit in length.calc {
+			if value != 0 {
+				sum += resolve_length({unit = unit, value = value}, font_size, containing_width, viewport)
+			}
+		}
+		return sum
 	}
 	return 0
 }

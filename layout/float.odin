@@ -57,7 +57,9 @@ layout_float :: proc(b: ^Builder, node: ^dom.Node) {
 		y = next_float_bottom(b, y, 1) or_break
 	}
 
+	old_style := fix_percentages(b, &node.style, available)
 	bottom := layout_in_own_context(b, node, x, x + width, y, node)
+	node.style = old_style
 	append(&b.floats, Float_Box{x, y, width, bottom - y, style.float})
 	b.last_float_top = y
 }

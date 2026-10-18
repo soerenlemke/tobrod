@@ -911,3 +911,45 @@ test_min_width :: proc(t: ^testing.T) {
 	testing.expect_value(t, l.boxes[0].width, 80)
 	testing.expect_value(t, l.boxes[1].width, 100)
 }
+
+@(test)
+test_calc_lengths :: proc(t: ^testing.T) {
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="width: calc(50% - 2em); margin-left: calc(25% + 10px); height: calc(1em + 4px); background: red"></div>
+		<div style="width: calc(100% - 40px); padding: 0 calc(10px - 1em); height: calc(100% - 10px); background: blue">a</div>
+		<div style="display: flex"><div style="flex-basis: calc(30% + 30px); background: green">b</div></div>
+	</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.boxes) != 3 do return
+	red := l.boxes[0]
+	testing.expect_value(t, red.width, 168) // 200 - 32
+	testing.expect_value(t, red.x, 110)
+	testing.expect_value(t, red.height, 20)
+	blue := l.boxes[1]
+	testing.expect_value(t, blue.width, 360) // negative padding counts as 0
+	testing.expect_value(t, blue.height, 20) // % in calc(): auto, like a percentage height
+	testing.expect_value(t, l.boxes[2].width, 150)
+}
+
+@(test)
+test_percentages_in_own_context :: proc(t: ^testing.T) {
+	// percentages of floats, inline blocks and absolute elements refer to the
+	// containing block, not to the box they are laid out in
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="float: left; width: 50%; padding-left: 10%; background: red">a</div>
+		<div style="clear: both"><span style="display: inline-block; box-sizing: border-box; width: calc(50% - 6px); padding: 0 5%; background: blue">b</span></div>
+		<div style="position: relative; height: 40px"><div style="position: absolute; width: 25%; margin-left: 10%; background: green">c</div></div>
+	</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.boxes) != 3 do return
+	testing.expect_value(t, l.boxes[0].width, 240) // 200 + 40 padding
+	testing.expect_value(t, l.runs[0].x, 40)
+	testing.expect_value(t, l.boxes[1].width, 194)
+	testing.expect_value(t, l.runs[1].x, 20)
+	testing.expect_value(t, l.boxes[2].width, 100)
+	testing.expect_value(t, l.boxes[2].x, 40)
+}

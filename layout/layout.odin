@@ -420,7 +420,7 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	margin, padding, border, inset: [dom.Edge]f32
 	for edge in dom.Edge {
 		margin[edge] = dom.resolve_length(style.margin[edge], font_size, available, b.viewport)
-		padding[edge] = dom.resolve_length(style.padding[edge], font_size, available, b.viewport)
+		padding[edge] = max(dom.resolve_length(style.padding[edge], font_size, available, b.viewport), 0) // calc() can be negative
 		border[edge] = dom.border_width_px(style.border[edge], font_size, b.viewport)
 		inset[edge] = padding[edge] + border[edge]
 	}
@@ -553,7 +553,7 @@ apply_block_height :: proc(b: ^Builder, style: dom.Style, inset_top, inset_y, av
 // as auto.
 @(private)
 block_height :: proc(b: ^Builder, style: dom.Style, length: dom.Length, available, inset_y: f32) -> (f32, bool) {
-	if length.unit == .Auto || length.unit == .Percent {
+	if length.unit == .Auto || dom.has_percent(length) {
 		return 0, false
 	}
 	return content_size(b, style, length, available, inset_y), true // box-sizing
@@ -918,7 +918,7 @@ image_size :: proc(b: ^Builder, node: ^dom.Node, src: string) -> (width, height:
 		w = v
 	}
 	// percentages of a height would need the height of the containing block
-	if style.height.unit != .Auto && style.height.unit != .Percent {
+	if style.height.unit != .Auto && !dom.has_percent(style.height) {
 		h = dom.resolve_length(style.height, style.font_size, available, b.viewport)
 	} else if v, ok := attribute_px(node, "height"); ok {
 		h = v

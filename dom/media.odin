@@ -174,27 +174,18 @@ media_feature_matches :: proc(feature: string, env: Media_Env) -> bool {
 	return false // unknown features never match
 }
 
-// A length in a media query: px, em/rem (16px) or a simple calc() with + and -,
-// like Wikipedia's "calc(1120px - 1px)".
+// A length in a media query: px, em/rem (16px) or a calc() of them, like
+// Wikipedia's "calc(1120px - 1px)".
 @(private)
 media_length :: proc(value: string) -> (px: f32, ok: bool) {
 	v := strings.trim_space(value)
-	if strings.has_prefix(v, "calc(") && strings.has_suffix(v, ")") {
-		v = v[len("calc("):len(v) - 1]
-		total: f32 = 0
-		sign: f32 = 1
-		rest := v
-		for word in strings.fields_iterator(&rest) {
-			switch word {
-			case "+":
-				sign = 1
-			case "-":
-				sign = -1
-			case:
-				total += sign * (media_length(word) or_return)
-			}
+	if strings.has_prefix(v, "calc(") {
+		length := parse_calc(v) or_return
+		// % and vw/vh have nothing to refer to here
+		if has_percent(length) || length.unit == .Vw || length.unit == .Vh || (length.unit == .Calc && (length.calc[.Vw] != 0 || length.calc[.Vh] != 0)) {
+			return 0, false
 		}
-		return total, true
+		return resolve_length(length, ROOT_FONT_SIZE, 0, {}), true
 	}
 	number, unit := split_number(v)
 	n := strconv.parse_f32(number) or_return

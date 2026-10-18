@@ -319,7 +319,7 @@ measure_flex_item :: proc(b: ^Builder, item: ^Flex_Item, container_width: f32, c
 	}
 	// min-width: auto - an item doesn't shrink below its content
 	item.min_size = min(max(content_min, 0), item.base) if style.width.unit != .Auto else max(content_min, 0)
-	if style.min_width.unit != .Auto && style.min_width.value > 0 {
+	if style.min_width.unit != .Auto && !dom.is_zero(style.min_width) {
 		item.min_size = content_size(b, style, style.min_width, container_width, extra) + extra
 	}
 	item.base = max(item.base, 0)

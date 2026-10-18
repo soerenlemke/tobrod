@@ -229,8 +229,8 @@ layout_absolute :: proc(b: ^Builder, w: Waiting_Absolute, cb: Placed_Box) {
 	// height works (in the flow it counts as auto); top and bottom with an
 	// auto height: stretched between them
 	old_height, old_border_box := style.height, style.border_box
-	if style.height.unit == .Percent {
-		style.height = dom.px(style.height.value / 100 * cb.height)
+	if dom.has_percent(style.height) {
+		style.height = dom.px(dom.resolve_length(style.height, style.font_size, cb.height, b.viewport))
 	} else if set[.Top] && set[.Bottom] && style.height.unit == .Auto {
 		// a content height (the width stays as it is, the block resolves it
 		// again with the same box-sizing)
@@ -241,7 +241,9 @@ layout_absolute :: proc(b: ^Builder, w: Waiting_Absolute, cb: Placed_Box) {
 		}
 	}
 	placed := display_range_start(b)
+	old_style := fix_percentages(b, style, cb.width)
 	bottom := layout_in_own_context(b, node, x, x + width, y, node)
+	style^ = old_style
 	style.height, style.border_box = old_height, old_border_box
 	placed = display_range_end(b, placed)
 
@@ -307,9 +309,9 @@ relative_offset :: proc(b: ^Builder, style: dom.Style) -> (offset: [2]f32) {
 		offset.x = -resolve(b, style, style.offset[.Right], available)
 	}
 	top, bottom := style.offset[.Top], style.offset[.Bottom]
-	if top.unit != .Auto && top.unit != .Percent {
+	if top.unit != .Auto && !dom.has_percent(top) {
 		offset.y = resolve(b, style, top, available)
-	} else if top.unit == .Auto && bottom.unit != .Auto && bottom.unit != .Percent {
+	} else if top.unit == .Auto && bottom.unit != .Auto && !dom.has_percent(bottom) {
 		offset.y = -resolve(b, style, bottom, available)
 	}
 	return

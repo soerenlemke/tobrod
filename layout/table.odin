@@ -475,7 +475,7 @@ display_range_end :: proc(b: ^Builder, r: Display_Range) -> Display_Range {
 box_edges :: proc(b: ^Builder, style: dom.Style, available: f32) -> (margin, padding, border, inset: [dom.Edge]f32) {
 	for edge in dom.Edge {
 		margin[edge] = dom.resolve_length(style.margin[edge], style.font_size, available, b.viewport)
-		padding[edge] = dom.resolve_length(style.padding[edge], style.font_size, available, b.viewport)
+		padding[edge] = max(dom.resolve_length(style.padding[edge], style.font_size, available, b.viewport), 0) // calc() can be negative
 		border[edge] = dom.border_width_px(style.border[edge], style.font_size, b.viewport)
 		inset[edge] = padding[edge] + border[edge]
 	}

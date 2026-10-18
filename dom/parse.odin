@@ -153,10 +153,10 @@ compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inh
 
 	// custom properties and declarations with var(), see custom_props.odin
 	declared := walk_declarations(element)
-	if report != nil {
-		report_element(report, element, &declared)
-	}
 	props = element_custom_props(inherited_props, &declared)
+	if report != nil {
+		report_element(report, element, &declared, props)
+	}
 	raw_values := winning_raw_declarations(&declared, props)
 
 	for property in STYLE_PROPERTIES {
