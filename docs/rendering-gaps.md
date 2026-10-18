@@ -49,7 +49,7 @@ Ordered by how much they change what a page looks like, weighed against how big 
 
 ### Forms
 
-19. **`<input>` (5 / 12), `<button>` (3 / 28), `<select>`, `<textarea>`**: they show their text (or all options of a `<select>`) instead of a control (Rust, Python docs, Wikipedia search).
+19. ~~**`<input>` (5 / 12), `<button>` (3 / 28), `<select>`, `<textarea>`**~~: drawn like Firefox draws them (text fields with value or placeholder, buttons, checkboxes, radios, selects with their selected option, textareas, file inputs). Only to look at: nothing can be typed or clicked yet. `range`, `color` and date inputs are drawn as text fields.
 
 ### Not visible on a static page
 

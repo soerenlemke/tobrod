@@ -7,7 +7,7 @@ test_element_report :: proc(t: ^testing.T) {
 	report := css_report_init()
 	defer css_report_destroy(&report)
 	doc, err := parse(`<html><body bgcolor="#eee">
-		<form><input name="q"><input type="hidden" name="t"><button>Go</button></form>
+		<form><input name="q"><input type="hidden" name="t"><input type="range"><button>Go</button></form>
 		<p>Some <em>italic</em> and <code>code</code>, x<sup>2</sup>.</p>
 		<img src="logo.svg?v=2" width="20" height="20"><img src="photo.webp"><img src="a.png">
 		<details><summary>More</summary>hidden</details><details open>shown</details>
@@ -22,10 +22,9 @@ test_element_report :: proc(t: ^testing.T) {
 	}
 	defer destroy(doc)
 
-	testing.expect_value(t, report.elements["input"], 1) // not the hidden one
-	testing.expect_value(t, report.elements["button"], 1)
-	testing.expect_value(t, report.elements["em"], 1)
-	testing.expect_value(t, report.elements["code"], 1)
+	testing.expect_value(t, report.elements["input: range"], 1) // the other inputs are drawn
+	testing.expect(t, !("button" in report.elements), "buttons are drawn")
+	testing.expect(t, !("em" in report.elements), "italic is drawn")
 	testing.expect_value(t, report.elements["img: SVG"], 1)
 	testing.expect_value(t, report.elements["img: WebP"], 1)
 	testing.expect_value(t, report.elements["dialog"], 1) // not open
@@ -44,5 +43,5 @@ test_element_report :: proc(t: ^testing.T) {
 	testing.expect_value(t, report.elements["svg"], 1)
 	testing.expect(t, !("rect[width]" in report.attributes), "parts of an SVG")
 
-	testing.expect_value(t, element_gap_reason("select"), "form control, all options as text")
+	testing.expect_value(t, element_gap_reason("svg"), "inline SVG, needs an SVG renderer")
 }

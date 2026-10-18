@@ -106,6 +106,7 @@ copy_children :: proc(lxb_doc: ^lxb.Html_Document, from: ^lxb.Dom_Node, to: ^Nod
 				report_node(report, node)
 			}
 			copy_children(lxb_doc, child, node, own_props, allocator, report)
+			add_form_content(node, allocator)
 		case .Text:
 			node = new_node(.Text, to, allocator)
 			node.text = lxb.node_text_content(lxb_doc, child, allocator)
@@ -153,6 +154,7 @@ copy_attributes :: proc(element: ^lxb.Dom_Element, allocator: mem.Allocator) -> 
 compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inherited_props: ^Custom_Props, report: ^Css_Report = nil) -> (style: Style, props: ^Custom_Props) {
 	_, hidden := attribute(node, "hidden")
 	style = default_style(node.tag, hidden, parent)
+	form_control_style(node, &style)
 	apply_html_hints(node, &style, parent) // before the CSS, which wins over them
 
 	// custom properties and declarations with var(), see custom_props.odin

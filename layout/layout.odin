@@ -1034,7 +1034,7 @@ same_style :: proc(run: Text_Run, style: dom.Style) -> bool {
 @(private)
 in_pre :: proc(node: ^dom.Node) -> bool {
 	for n := node.parent; n != nil; n = n.parent {
-		if n.kind == .Element && n.tag == "pre" {
+		if n.kind == .Element && (n.tag == "pre" || n.tag == "textarea") {
 			return true
 		}
 	}

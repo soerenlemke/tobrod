@@ -133,7 +133,7 @@ The full list, measured against Firefox on real pages, is in [docs/rendering-gap
 - fonts: only Latin characters (Latin-1 and a few more); other scripts show `?`
 - layout: no CSS grid, no percentage heights in the flow, no `z-index`, no scrolling inside boxes (`overflow: scroll/auto` just clip), `position: sticky` behaves like `static`, no `rowspan`
 - `@media` queries are evaluated once, for the window size at load time
-- no forms, no text selection, no tabs, no cookies
+- form controls are drawn, but can't be used yet; no text selection, no tabs, no cookies
 
 ## Roadmap
 
@@ -174,6 +174,7 @@ Stage 4 — HTML & CSS
 - [x] Images (and other replaced elements like `video`, `iframe`)
 - [x] Tables
 - [x] HTML without CSS: presentational attributes, `<center>`, `<details>`, `<sup>`/`<sub>`
+- [x] Form controls (drawn only: `<input>`, `<button>`, `<select>`, `<textarea>`)
 - [x] Floats
 - [x] Flexbox
 - [ ] CSS grid

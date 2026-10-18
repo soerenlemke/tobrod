@@ -25,6 +25,7 @@ Node :: struct {
 	attributes: []Attribute, // Element only, in source order
 	text:       string,      // Text and Comment only
 	style:      Style,       // Element only, defaults + CSS (see style.odin)
+	generated:  bool,        // made by us to draw a form control, not from the page (form_controls.odin)
 }
 
 // Owns the whole tree. Every node and string lives in the arena,
