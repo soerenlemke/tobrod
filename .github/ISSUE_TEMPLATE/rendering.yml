@@ -1,0 +1,43 @@
+name: A page looks wrong
+description: tobrod draws a page differently than a real browser
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! tobrod has no JavaScript yet, so please compare with a browser that has JavaScript turned off (in Firefox: `about:config` → `javascript.enabled` = false). [docs/rendering-gaps.md](https://github.com/soerenlemke/tobrod/blob/main/docs/rendering-gaps.md) lists what is already known to be missing.
+  - type: input
+    id: url
+    attributes:
+      label: URL
+      description: The page (or a small HTML file that shows the problem).
+      placeholder: https://example.com/
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What looks wrong
+      description: What tobrod shows, and what the real browser shows. Screenshots of both help a lot (`tobrod --url <url> --screenshot tobrod.png`).
+    validations:
+      required: true
+  - type: textarea
+    id: html
+    attributes:
+      label: The HTML/CSS behind it
+      description: If you found the element or the CSS property that causes it, paste it here.
+      render: html
+  - type: input
+    id: version
+    attributes:
+      label: tobrod version
+      description: The commit (`git rev-parse --short HEAD`).
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other

@@ -1,0 +1,46 @@
+name: Bug
+description: Something doesn't work (a crash, a build error, wrong behavior that isn't about how a page looks)
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      description: Commands, URLs, or a small HTML file.
+      placeholder: |
+        odin build .
+        ./tobrod --url https://example.com/
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: Error messages, compiler output or a stack trace.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: tobrod version
+      description: The commit (`git rev-parse --short HEAD`).
+  - type: input
+    id: odin
+    attributes:
+      label: Odin version
+      description: "`odin version`"
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
