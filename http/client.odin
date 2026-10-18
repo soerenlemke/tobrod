@@ -27,6 +27,7 @@ Client :: struct {
 	handle:         ^curl.CURL,
 	header_builder: strings.Builder,
 	body_builder:   strings.Builder,
+	url_builder:    strings.Builder, // the effective URL when replaying a recording
 }
 
 // Call once at program start, before any thread uses curl: curl's global
@@ -60,6 +61,12 @@ init :: proc() -> (Client, Maybe(Http_Error)) {
 		curl.easy_cleanup(c.handle)
 		return {}, Http_Error{code = .E_OUT_OF_MEMORY, message = "out of memory"}
 	}
+	if _, err := strings.builder_init(&c.url_builder); err != .None {
+		strings.builder_destroy(&c.body_builder)
+		strings.builder_destroy(&c.header_builder)
+		curl.easy_cleanup(c.handle)
+		return {}, Http_Error{code = .E_OUT_OF_MEMORY, message = "out of memory"}
+	}
 
 	return c, nil
 }
@@ -68,6 +75,7 @@ destroy :: proc(c: ^Client) {
 	curl.easy_cleanup(c.handle)
 	strings.builder_destroy(&c.header_builder)
 	strings.builder_destroy(&c.body_builder)
+	strings.builder_destroy(&c.url_builder)
 }
 
 // Blocking GET. If abort is given, another thread can set it (atomically) to
@@ -75,6 +83,10 @@ destroy :: proc(c: ^Client) {
 get :: proc(c: ^Client, url: string, abort: ^bool = nil) -> (Http_Response, Maybe(Http_Error)) {
 	strings.builder_reset(&c.header_builder)
 	strings.builder_reset(&c.body_builder)
+	strings.builder_reset(&c.url_builder)
+	if recording.mode == .Replay {
+		return replay_response(c, url)
+	}
 
 	url_c := strings.clone_to_cstring(url)
 	defer delete(url_c)
@@ -108,12 +120,15 @@ get :: proc(c: ^Client, url: string, abort: ^bool = nil) -> (Http_Response, Mayb
 	effective_url: cstring
 	curl.easy_getinfo(c.handle, .EFFECTIVE_URL, &effective_url)
 
-	return {
-			url = string(effective_url),
-			header = strings.to_string(c.header_builder),
-			body = strings.to_string(c.body_builder),
-		},
-		nil
+	response := Http_Response {
+		url    = string(effective_url),
+		header = strings.to_string(c.header_builder),
+		body   = strings.to_string(c.body_builder),
+	}
+	if recording.mode == .Record {
+		record_response(url, response)
+	}
+	return response, nil
 }
 
 // Returning non-zero makes curl stop the transfer.
