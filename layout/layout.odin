@@ -47,6 +47,7 @@ Box :: struct {
 	radius:              [dom.Corner]f32, // rounded corners in px, see box_radius
 	mask:                Box_Image,       // mask-image, see image_layer.odin
 	background_image:    Box_Image,       // drawn over the background color
+	shadows:             Box_Shadows,     // box-shadow, see image_layer.odin
 }
 
 // An <img>: where it goes and how big it is. The ui draws the decoded image
@@ -547,7 +548,7 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	// reserve the box slot now: parents are drawn before their children
 	has_border := border[.Top] > 0 || border[.Right] > 0 || border[.Bottom] > 0 || border[.Left] > 0
 	box_index := -1
-	if (box_background[3] > 0 || has_border || style.background_image.image != "") && style.visibility == .Visible {
+	if (box_background[3] > 0 || has_border || style.background_image.image != "" || style.box_shadow.count > 0) && style.visibility == .Visible {
 		append(&b.layout.boxes, Box{})
 		box_index = len(b.layout.boxes) - 1
 	}
@@ -597,7 +598,7 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	}
 	b.last_box = {box_x, top.y, box_width, b.y - top.y, border, box_index}
 	if box_index >= 0 {
-		box := Box{box_x, top.y, box_width, b.y - top.y, box_background, border, {}, 0, box_radius(b, style, box_width, b.y - top.y), {}, {}}
+		box := Box{box_x, top.y, box_width, b.y - top.y, box_background, border, {}, 0, box_radius(b, style, box_width, b.y - top.y), {}, {}, {}}
 		set_box_colors(b, &box, style, box_background)
 		b.layout.boxes[box_index] = box
 	}
@@ -1323,7 +1324,7 @@ baseline_shift :: proc(align: dom.Vertical_Align, parent_font_size: f32) -> f32 
 
 // The colors of a box (background and borders), faded by the opacity of the
 // element and its ancestors (the part its layer doesn't draw, item_fade),
-// and its images (background, mask). Called when the box has its final size.
+// its images (background, mask) and shadows. Called when the box has its final size.
 @(private)
 set_box_colors :: proc(b: ^Builder, box: ^Box, style: dom.Style, background: dom.Color) {
 	fade := item_fade(b, style)
@@ -1332,6 +1333,7 @@ set_box_colors :: proc(b: ^Builder, box: ^Box, style: dom.Style, background: dom
 		box.border_color[edge] = dom.faded(dom.border_color(style.border[edge], style.color), fade)
 	}
 	set_box_images(b, box, style)
+	set_box_shadows(b, box, style)
 }
 
 @(private)

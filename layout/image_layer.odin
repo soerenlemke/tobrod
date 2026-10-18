@@ -85,3 +85,37 @@ place_image :: proc(b: ^Builder, layer: dom.Image_Layer, style: dom.Style, origi
 		repeat = {!layer.no_repeat.x, !layer.no_repeat.y},
 	}
 }
+
+// box-shadow in px, the color faded by opacity. Outer shadows are drawn
+// under the box (the border box offset by x/y and grown by spread), inset
+// ones inside its padding box over the background; blur softens the edge.
+Box_Shadow :: struct {
+	x, y, blur, spread: f32,
+	color:              dom.Color,
+	inset:              bool,
+}
+
+Box_Shadows :: struct {
+	list:  [dom.MAX_SHADOWS]Box_Shadow,
+	count: int,
+}
+
+@(private)
+set_box_shadows :: proc(b: ^Builder, box: ^Box, style: dom.Style) {
+	fade := item_fade(b, style)
+	shadows := style.box_shadow
+	for s, i in shadows.list[:shadows.count] {
+		resolve :: proc(b: ^Builder, l: dom.Length, style: dom.Style) -> f32 {
+			return dom.resolve_length(l, style.font_size, 0, b.viewport)
+		}
+		box.shadows.list[i] = {
+			x      = resolve(b, s.x, style),
+			y      = resolve(b, s.y, style),
+			blur   = max(resolve(b, s.blur, style), 0),
+			spread = resolve(b, s.spread, style),
+			color  = dom.faded(s.color.? or_else style.color, fade),
+			inset  = s.inset,
+		}
+	}
+	box.shadows.count = style.box_shadow.count
+}

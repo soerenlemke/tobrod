@@ -498,7 +498,7 @@ box_edges :: proc(b: ^Builder, style: dom.Style, available: f32) -> (margin, pad
 @(private)
 reserve_box :: proc(b: ^Builder, style: dom.Style, border: [dom.Edge]f32) -> int {
 	has_border := border[.Top] > 0 || border[.Right] > 0 || border[.Bottom] > 0 || border[.Left] > 0
-	if (style.background[3] == 0 && !has_border && style.background_image.image == "") || style.visibility != .Visible {
+	if (style.background[3] == 0 && !has_border && style.background_image.image == "" && style.box_shadow.count == 0) || style.visibility != .Visible {
 		return -1
 	}
 	append(&b.layout.boxes, Box{})
@@ -511,7 +511,7 @@ fill_box :: proc(b: ^Builder, index: int, style: dom.Style, border: [dom.Edge]f3
 	if index < 0 {
 		return
 	}
-	box := Box{x, y, width, height, style.background, border, {}, 0, box_radius(b, style, width, height), {}, {}}
+	box := Box{x, y, width, height, style.background, border, {}, 0, box_radius(b, style, width, height), {}, {}, {}}
 	set_box_colors(b, &box, style, style.background)
 	b.layout.boxes[index] = box
 	b.extent = max(b.extent, x + width) // a table measures as wide as its box

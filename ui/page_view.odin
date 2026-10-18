@@ -185,17 +185,20 @@ draw_display_list :: proc(pv: ^PageView, boxes: []layout.Box, images: []layout.I
 			draw_masked_box(pv, box, x, y)
 			continue
 		}
+		draw_outer_shadows(x, y, box) // under the box
 		bt, br, bb, bl := box.border[.Top], box.border[.Right], box.border[.Bottom], box.border[.Left]
 		if box.radius != {} {
 			draw_rounded_box(x, y, box)
 			// over the rounded box, inside its borders (corners not rounded)
 			draw_background_image(pv, box, x, y, {bl, bt, box.width - br, box.height - bb})
+			draw_inset_shadows(x, y, box)
 			continue
 		}
 		if box.color[3] > 0 {
 			rl.DrawRectangleRec({x, y, box.width, box.height}, rl.Color(box.color))
 		}
 		draw_background_image(pv, box, x, y, {0, 0, box.width, box.height})
+		draw_inset_shadows(x, y, box)
 		// borders on top of the background: top and bottom over the full width,
 		// left and right in between
 		rl.DrawRectangleRec({x, y, box.width, bt}, rl.Color(box.border_color[.Top]))
