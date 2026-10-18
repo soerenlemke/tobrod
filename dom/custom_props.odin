@@ -280,7 +280,7 @@ declared_spec :: proc(d: ^Declared, property: string) -> (spec: u32, ok: bool) {
 @(private)
 shorthands_of :: proc(property: string) -> [5]string {
 	switch property {
-	case "list-style-type":
+	case "list-style-type", "list-style-position":
 		return {0 = "list-style"}
 	case "margin-top", "margin-right", "margin-bottom", "margin-left":
 		return {0 = "margin"}

@@ -37,6 +37,12 @@ load_font :: proc(path: cstring, codepoints: []rune) -> (rl.Font, bool) {
 	if f.texture.id == 0 {
 		return f, false
 	}
+	// raylib gives empty glyphs no advance, except the space: the no-break
+	// space (&nbsp;) would have no width
+	nbsp := rl.GetGlyphIndex(f, 0xA0)
+	if f.glyphs[nbsp].value == 0xA0 {
+		f.glyphs[nbsp].advanceX = f.glyphs[rl.GetGlyphIndex(f, ' ')].advanceX
+	}
 	// Text is mostly drawn smaller than it was rasterized. Mipmaps + trilinear
 	// filtering keep it smooth instead of blocky when scaled down.
 	rl.GenTextureMipmaps(&f.texture)
@@ -57,8 +63,9 @@ font_codepoints :: proc() -> [dynamic]rune {
 	}
 	// – — ‘ ’ ‚ “ ” „ • … €
 	append(&codepoints, 0x2013, 0x2014, 0x2018, 0x2019, 0x201A, 0x201C, 0x201D, 0x201E, 0x2022, 0x2026, 0x20AC)
-	// list markers for list-style circle and square: ◦ ▪
-	append(&codepoints, 0x25E6, 0x25AA)
+	// list markers for list-style circle and square: ◦ ▪, of <summary>: ▶ ▼,
+	// and ▲ (the vote arrow of Hacker News)
+	append(&codepoints, 0x25E6, 0x25AA, 0x25B6, 0x25BC, 0x25B2)
 	return codepoints
 }
 

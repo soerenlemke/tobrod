@@ -12,7 +12,8 @@ test_element_report :: proc(t: ^testing.T) {
 		<img src="logo.svg?v=2" width="20" height="20"><img src="photo.webp"><img src="a.png">
 		<details><summary>More</summary>hidden</details><details open>shown</details>
 		<noscript>Please enable JavaScript</noscript>
-		<table cellpadding="4"><tr><td bgcolor="red" align="right" width="50%">a</td></tr></table>
+		<table cellpadding="4"><tr><td bgcolor="red" align="right" width="50%" nowrap>a</td></tr></table>
+		<hr noshade><dialog>hidden</dialog>
 		<my-widget></my-widget><svg width="10"><rect width="5" height="5"></rect></svg>
 		<div style="display: none"><select><option>a</option></select><td bgcolor="red"></td></div>
 	</body></html>`, report = &report)
@@ -25,20 +26,19 @@ test_element_report :: proc(t: ^testing.T) {
 	testing.expect_value(t, report.elements["button"], 1)
 	testing.expect_value(t, report.elements["em"], 1)
 	testing.expect_value(t, report.elements["code"], 1)
-	testing.expect_value(t, report.elements["sup"], 1)
 	testing.expect_value(t, report.elements["img: SVG"], 1)
 	testing.expect_value(t, report.elements["img: WebP"], 1)
-	testing.expect_value(t, report.elements["details"], 1) // not the open one
+	testing.expect_value(t, report.elements["dialog"], 1) // not open
 	testing.expect_value(t, report.elements["noscript"], 1)
 	testing.expect_value(t, report.elements["custom elements"], 1)
 	testing.expect(t, !("select" in report.elements), "inside display: none")
 	testing.expect(t, !("img" in report.elements), "PNG is supported")
 
-	testing.expect_value(t, report.attributes["body[bgcolor]"], 1)
-	testing.expect_value(t, report.attributes["td[bgcolor]"], 1) // the hidden one doesn't count
-	testing.expect_value(t, report.attributes["td[align]"], 1)
-	testing.expect_value(t, report.attributes["td[width]"], 1)
-	testing.expect_value(t, report.attributes["table[cellpadding]"], 1)
+	testing.expect_value(t, report.attributes["td[nowrap]"], 1)
+	testing.expect_value(t, report.attributes["hr[noshade]"], 1)
+	for supported in ([]string{"body[bgcolor]", "td[bgcolor]", "td[align]", "td[width]", "table[cellpadding]"}) {
+		testing.expectf(t, !(supported in report.attributes), "%s is read (html_hints.odin)", supported)
+	}
 	testing.expect(t, !("img[width]" in report.attributes), "image sizes are read")
 	testing.expect(t, !("input[name]" in report.attributes), "not presentational")
 	testing.expect_value(t, report.elements["svg"], 1)

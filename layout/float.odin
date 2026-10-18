@@ -112,20 +112,25 @@ clear_y :: proc(b: ^Builder, clear: dom.Clear) -> f32 {
 }
 
 // Moves the start of the current (empty) line down until a piece of the
-// given width fits next to the floats, then updates the line bounds.
+// given width fits next to the floats, then updates the line bounds. An
+// inside list marker may already start the line; it moves along.
 @(private)
 fit_line :: proc(b: ^Builder, width, height: f32) {
+	indent := b.x - b.line_left
+	left, right := b.left, b.right
 	for {
-		left, right := line_bounds(b, b.y, height)
-		if right - left >= width || !narrowed(b, left, right) {
-			b.line_left, b.line_right = left, right
-			b.x = left
-			return
+		l, r := line_bounds(b, b.y, height)
+		if r - l >= width + indent || !narrowed(b, l, r) {
+			left, right = l, r
+			break
 		}
 		b.y = next_float_bottom(b, b.y, height) or_break
 	}
-	b.line_left, b.line_right = b.left, b.right
-	b.x = b.left
+	for &run in b.line {
+		run.x += left - b.line_left
+	}
+	b.line_left, b.line_right = left, right
+	b.x = left + indent
 }
 
 // Lays out node (if layout_root) or the children of node between left and

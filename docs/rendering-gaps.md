@@ -34,10 +34,10 @@ Ordered by how much they change what a page looks like, weighed against how big 
 7. ~~**`display: inline-block`** (7 / 1963) and **`inline-flex`** (6 / 128)~~: done. Still missing: **`vertical-align`** for inline content (`top`, `middle`, ...), inline blocks sit on the baseline.
 8. ~~**`box-sizing: border-box`** (7 / 251) and **`min-width`** (8 / 154)~~: done.
 9. ~~**`calc()`** in lengths (5 pages; margins, widths, heights)~~: done (`+ - * /`, nested, mixed units resolved in the layout). Not yet in `font-size`, and no `min()`/`max()`/`clamp()`.
-10. **HTML attributes for presentation**: `bgcolor`, `width`, `align`, `valign`, `cellpadding` on tables (Hacker News is built with them: `td[valign]` 60, `td[align]` 30), `<center>` (1 / 33, we even draw it inline), `<font color>`.
+10. ~~**HTML attributes for presentation**~~: done (`bgcolor`, `align`, `valign`, `width`, `height`, `cellpadding`, `cellspacing`, `border`, `<center>`, `<font color size>`). Hacker News now has its orange bar and layout; what is left there is the vote arrow (a `background-image`) and row heights.
 11. **CSS grid** (2 / 70): the page layout of Wikipedia (the table of contents on the left) and MDN.
 12. **Negative margins on floats**: the Python docs put their sidebar next to the content with `float: left; margin-left: -100%`; it ends up below the content.
-13. **`<details>`** without `open` (2 / 25) should only show its `<summary>` (Lobsters shows every hidden menu). Also small: `<sup>`/`<sub>` (2 / 105, Wikipedia's references), `<noscript>` (we hide it, but without JavaScript a browser shows it).
+13. ~~**`<details>`** without `open` (2 / 25) and **`<sup>`/`<sub>`** (2 / 105)~~: done. Still open: `<noscript>` (we hide it, but without JavaScript a browser shows it; lexbor would have to parse its content as markup).
 14. **`z-index`** (6 / 233), **`position: sticky`** (4 / 6), **`display: contents`**, **`-webkit-box`**.
 
 ### Drawing
