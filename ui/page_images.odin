@@ -14,8 +14,11 @@ import rl "vendor:raylib"
 // Takes the downloaded bytes of an image, decodes them and makes the layout
 // use the natural size from now on. Undecodable data (unknown format, an HTML
 // error page, ...) is ignored: the image stays empty once the page is loaded.
-page_view_add_image :: proc(pv: ^PageView, src, url, content_type: string, data: []u8) {
-	if pv.document == nil || src in pv.images || len(data) == 0 {
+// A mask image (mask-image) only keeps its alpha: it is made white, so that
+// drawing it tinted with the box's background color gives that color.
+page_view_add_image :: proc(pv: ^PageView, src, url, content_type: string, data: []u8, mask := false) {
+	textures := &pv.masks if mask else &pv.images
+	if pv.document == nil || src in textures || len(data) == 0 {
 		return
 	}
 	file_type, ok := image_file_type(content_type, url)
@@ -27,7 +30,7 @@ page_view_add_image :: proc(pv: ^PageView, src, url, content_type: string, data:
 	size: layout.Natural_Size
 	if file_type == ".svg" {
 		loaded: bool
-		if texture, size, loaded = load_svg(data); !loaded {
+		if texture, size, loaded = load_svg(data, mask); !loaded {
 			return
 		}
 	} else {
@@ -36,6 +39,10 @@ page_view_add_image :: proc(pv: ^PageView, src, url, content_type: string, data:
 			return
 		}
 		defer rl.UnloadImage(image) // the pixels live on the GPU after this
+		if mask {
+			rl.ImageFormat(&image, .UNCOMPRESSED_R8G8B8A8)
+			whiten((cast([^][4]u8)image.data)[:image.width * image.height])
+		}
 		texture = rl.LoadTextureFromImage(image)
 		size = {size = {f32(image.width), f32(image.height)}}
 	}
@@ -46,8 +53,10 @@ page_view_add_image :: proc(pv: ^PageView, src, url, content_type: string, data:
 	rl.SetTextureFilter(texture, .BILINEAR)
 
 	key := strings.clone(src)
-	pv.images[key] = texture
-	pv.image_sizes[key] = size
+	textures[key] = texture
+	if !(key in pv.image_sizes) {
+		pv.image_sizes[key] = size // shares the key (if an <img> has it too, its key)
+	}
 
 	// the image may have a different size than its placeholder: lay out again
 	page_view_invalidate_layout(pv)
@@ -60,12 +69,15 @@ SVG_SCALE :: 2
 // An SVG file drawn by our own renderer (package svg) into a texture; the
 // layout gets its natural size (or only its aspect ratio).
 @(private)
-load_svg :: proc(data: []u8) -> (texture: rl.Texture2D, natural: layout.Natural_Size, ok: bool) {
+load_svg :: proc(data: []u8, mask := false) -> (texture: rl.Texture2D, natural: layout.Natural_Size, ok: bool) {
 	picture: svg.Image
 	has_size: bool
 	picture, natural.size, has_size = svg.decode(data, SVG_SCALE) or_return
 	natural.ratio_only = !has_size
 	defer delete(picture.pixels)
+	if mask {
+		whiten(picture.pixels)
+	}
 	image := rl.Image {
 		data    = raw_data(picture.pixels),
 		width   = i32(picture.width),
@@ -105,6 +117,14 @@ inline_svg_texture :: proc(pv: ^PageView, node: ^dom.Node, width, height: f32) -
 	return texture, texture.id != 0
 }
 
+// White with the image's alpha: what is left of an image as a mask.
+@(private)
+whiten :: proc(pixels: [][4]u8) {
+	for &p in pixels {
+		p.rgb = 255
+	}
+}
+
 @(private)
 page_view_clear_images :: proc(pv: ^PageView) {
 	for key, texture in pv.images {
@@ -112,6 +132,11 @@ page_view_clear_images :: proc(pv: ^PageView) {
 		delete(key) // image_sizes shares the keys
 	}
 	clear(&pv.images)
+	for key, texture in pv.masks {
+		rl.UnloadTexture(texture)
+		delete(key) // its own copy; image_sizes may share it
+	}
+	clear(&pv.masks)
 	for _, texture in pv.svg_textures {
 		rl.UnloadTexture(texture)
 	}

@@ -184,6 +184,7 @@ Stage 4 — HTML & CSS
 - [x] `position: fixed` (own layer that doesn't scroll)
 - [x] `z-index` (paint order in layers, stacking contexts)
 - [x] `opacity` (a block is faded as a group, drawn into a texture first)
+- [x] `mask-image` with an image (icons; size, position, repeat), `data:` URLs
 - [ ] `position: sticky`
 - [x] SVG: own renderer for filled, stroked and dashed shapes and paths (package `svg`), as `<img>` and inline `<svg>`
 - [ ] SVG: `<use>`, gradients, CSS of the page

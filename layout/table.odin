@@ -511,7 +511,7 @@ fill_box :: proc(b: ^Builder, index: int, style: dom.Style, border: [dom.Edge]f3
 	if index < 0 {
 		return
 	}
-	box := Box{x, y, width, height, style.background, border, {}, 0, box_radius(b, style, width, height)}
+	box := Box{x, y, width, height, style.background, border, {}, 0, box_radius(b, style, width, height), {}}
 	set_box_colors(b, &box, style, style.background)
 	b.layout.boxes[index] = box
 	b.extent = max(b.extent, x + width) // a table measures as wide as its box

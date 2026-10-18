@@ -3,8 +3,24 @@
 <head>
   <meta charset="utf-8">
   <title>SVG images</title>
+  <style>
+    .icon { display: inline-block; width: 20px; height: 20px; background-color: currentColor; vertical-align: middle;
+            mask-repeat: no-repeat; mask-position: center; mask-size: 20px;
+            -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23000\"><path d=\"M3 3h14v3H3zm0 5h14v3H3zm0 5h14v3H3z\"/></svg>");
+            mask-image: url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"%23000\"><path d=\"M3 3h14v3H3zm0 5h14v3H3zm0 5h14v3H3z\"/></svg>") }
+    .file { mask-image: url(images/icon.svg); mask-size: contain }
+    .stripes { display: block; width: 300px; height: 40px; background: #ef6c00;
+               mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Ccircle cx='10' cy='10' r='6'/%3E%3C/svg%3E") repeat-x left center }
+    .faded { display: block; width: 300px; height: 30px; background: #6a1b9a; mask-image: linear-gradient(to right, #000, transparent) }
+  </style>
 </head>
 <body>
+  <h2>mask-image</h2>
+  <p style="color: #c62828">Icons drawn with a mask: <span class="icon"></span> a data URL in the text color,
+    <span class="icon file" style="color: #1565c0; width: 32px; height: 24px"></span> a file, contained in a wider box</p>
+  <span class="stripes"></span>
+  <p>A gradient mask (not supported: drawn without it):</p>
+  <span class="faded"></span>
   <h2>Inline &lt;svg&gt;</h2>
   <p style="color: #1565c0">An icon in the text, in the text color (currentColor), 16 px:
     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0Zm1 4H7v5h2Zm0 6H7v2h2Z"/></svg>

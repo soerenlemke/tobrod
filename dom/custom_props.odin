@@ -139,12 +139,12 @@ winning_raw_declarations :: proc(declared: ^Declared, props: ^Custom_Props) -> m
 			continue // a normal declaration with higher specificity wins
 		}
 		if !contains_var(sv.value) {
-			result[name] = strings.to_lower(strings.trim_space(sv.value), context.temp_allocator)
+			result[name] = lower_outside_urls(strings.trim_space(sv.value))
 			continue
 		}
 		if value, ok := substitute_vars(sv.value, props); ok {
 			// our value parsers expect lexbor's lowercase serialization
-			result[name] = strings.to_lower(strings.trim_space(value), context.temp_allocator)
+			result[name] = lower_outside_urls(strings.trim_space(value))
 		} else {
 			// it won the cascade but is invalid: CSS then treats the property as
 			// "unset" (inherited value or initial), not as the losing declaration
@@ -292,6 +292,10 @@ shorthands_of :: proc(property: string) -> [5]string {
 		return {0 = "padding"}
 	case "background-color":
 		return {0 = "background"}
+	case "mask-image", "mask-size", "mask-position", "mask-repeat":
+		return {0 = "mask"}
+	case "-webkit-mask-image", "-webkit-mask-size", "-webkit-mask-position", "-webkit-mask-repeat":
+		return {0 = "-webkit-mask"}
 	case "top", "right", "bottom", "left":
 		return {0 = "inset"}
 	case "overflow-x", "overflow-y":
@@ -333,4 +337,42 @@ loses_to_shorthand :: proc(d: ^Declared, property: string) -> bool {
 		}
 	}
 	return false
+}
+
+// Lowercase for our value parsers, except inside url(...) and strings: an
+// address (and the SVG in a data URL) must keep its case.
+@(private)
+lower_outside_urls :: proc(value: string) -> string {
+	lower := transmute([]u8)strings.to_lower(value, context.temp_allocator)
+	for i := 0; i < len(value); {
+		start := i
+		switch {
+		case value[i] == '"' || value[i] == '\'':
+			i = string_end(value, i)
+		case i + 4 <= len(value) && strings.equal_fold(value[i:i + 4], "url("):
+			// up to the closing parenthesis, which can't be inside a string
+			i += 4
+			for i < len(value) && value[i] != ')' {
+				i = string_end(value, i) if value[i] == '"' || value[i] == '\'' else i + 1
+			}
+		case:
+			i += 1
+			continue
+		}
+		copy(lower[start:min(i, len(value))], value[start:min(i, len(value))])
+	}
+	return string(lower)
+}
+
+// The index after the string that starts at value[start] (a quote).
+@(private)
+string_end :: proc(value: string, start: int) -> int {
+	for i := start + 1; i < len(value); i += 1 {
+		if value[i] == '\\' {
+			i += 1
+		} else if value[i] == value[start] {
+			return i + 1
+		}
+	}
+	return len(value)
 }

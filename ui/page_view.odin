@@ -17,6 +17,7 @@ PageView :: struct {
 	images:         map[string]rl.Texture2D, // decoded images of the document, see page_images.odin
 	image_sizes:    layout.Image_Sizes,      // their natural sizes, for the layout
 	svg_textures:   map[^dom.Node]rl.Texture2D, // inline <svg>s, drawn at their layout size
+	masks:          map[string]rl.Texture2D, // mask images (mask-image), white with their alpha
 	loading:        bool,                    // the page or its images are still loading (set_loading)
 	group_target:   rl.RenderTexture2D,      // layers with opacity are drawn into it first (draw_layer)
 }
@@ -56,6 +57,7 @@ page_view_destroy :: proc(pv: ^PageView) {
 	delete(pv.images)
 	delete(pv.image_sizes)
 	delete(pv.svg_textures)
+	delete(pv.masks)
 	if pv.group_target.id != 0 {
 		rl.UnloadRenderTexture(pv.group_target)
 	}
@@ -179,6 +181,10 @@ draw_display_list :: proc(pv: ^PageView, boxes: []layout.Box, images: []layout.I
 		}
 		set_clip(pv, box.clip, scroll_y, &current)
 		x, y := pv.rect.x + box.x, pv.rect.y + top
+		if box.mask.src != "" {
+			draw_masked_box(pv, box, x, y)
+			continue
+		}
 		if box.radius != {} {
 			draw_rounded_box(x, y, box)
 			continue
@@ -258,6 +264,53 @@ draw_decoration :: proc(run: layout.Text_Run, pos: rl.Vector2) {
 	}
 	if .Line_Through in d.lines {
 		line(x, width, pos.y + run.font_size * 0.53, thickness, color)
+	}
+}
+
+// A box with mask-image: its background color only where the mask is opaque.
+// The mask texture is white with the mask's alpha, so tinting it with the
+// color gives exactly that. Each tile is cut to the box. Without a texture
+// (not loaded (yet), or failed) nothing is drawn, like in Firefox.
+@(private)
+draw_masked_box :: proc(pv: ^PageView, box: layout.Box, x, y: f32) {
+	texture, ok := pv.masks[box.mask.src]
+	tile := box.mask.tile
+	if !ok || tile[2] < 0.5 || tile[3] < 0.5 || box.color[3] == 0 {
+		return
+	}
+	// the first tile: the one at the position, or further left/up if it repeats
+	first := [2]f32{tile[0], tile[1]}
+	count := [2]int{1, 1}
+	size := [2]f32{box.width, box.height}
+	for axis in 0 ..< 2 {
+		if box.mask.repeat[axis] {
+			first[axis] -= math.ceil(first[axis] / tile[2 + axis]) * tile[2 + axis]
+			count[axis] = int(math.ceil((size[axis] - first[axis]) / tile[2 + axis]))
+		}
+	}
+	if count.x * count.y > 10_000 {
+		return // tiny tiles over a big box
+	}
+	tw, th := f32(texture.width), f32(texture.height)
+	for j in 0 ..< count.y {
+		for i in 0 ..< count.x {
+			// the tile in box coordinates, cut to the box
+			x0, y0 := first.x + f32(i) * tile[2], first.y + f32(j) * tile[3]
+			x1, y1 := x0 + tile[2], y0 + tile[3]
+			cx0, cy0 := max(x0, 0), max(y0, 0)
+			cx1, cy1 := min(x1, size.x), min(y1, size.y)
+			if cx1 <= cx0 || cy1 <= cy0 {
+				continue
+			}
+			source := rl.Rectangle {
+				(cx0 - x0) / tile[2] * tw,
+				(cy0 - y0) / tile[3] * th,
+				(cx1 - cx0) / tile[2] * tw,
+				(cy1 - cy0) / tile[3] * th,
+			}
+			dest := rl.Rectangle{x + cx0, y + cy0, cx1 - cx0, cy1 - cy0}
+			rl.DrawTexturePro(texture, source, dest, {0, 0}, 0, rl.Color(box.color))
+		}
 	}
 }
 
