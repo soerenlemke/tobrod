@@ -259,7 +259,7 @@ fetch :: proc(l: ^Loader, request: Request) -> (result: Result, finished: bool) 
 		// external stylesheets are fetched during parsing, with the same client.
 		// That reuses the response buffers: response must not be used after this.
 		fetcher := Stylesheet_Fetch{loader = l, base = result.url}
-		result.document, parse_err = dom.parse(response.body, {load = load_stylesheet, ctx = &fetcher}, request.media)
+		result.document, parse_err = dom.parse(response.body, {load = load_stylesheet, resolve = resolve_in_temp, ctx = &fetcher}, request.media)
 		if fetcher.aborted {
 			// a newer request came in while we were loading the stylesheets
 			if result.document != nil {
@@ -304,4 +304,10 @@ load_stylesheet :: proc(ctx: rawptr, href, base: string) -> (css, url: string, o
 	// point into the client's buffers: valid until the next request, dom.parse
 	// copies what it needs before that
 	return response.body, response.url, true
+}
+
+// dom.Stylesheet_Loader.resolve: url()s in stylesheets, relative to them.
+@(private)
+resolve_in_temp :: proc(base, ref: string) -> (url: string, ok: bool) {
+	return http.resolve_url(base, ref, context.temp_allocator)
 }

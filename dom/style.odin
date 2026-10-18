@@ -56,7 +56,8 @@ Style :: struct {
 	background:  Color,  // alpha 0 = transparent
 	border:      Borders,
 	border_radius: [Corner]Length, // rounded corners (not inherited), see border_style.odin
-	mask:        Mask,   // mask-image: icons (not inherited), see mask_style.odin
+	mask:        Image_Layer, // mask-image: icons (not inherited), see image_layer.odin
+	background_image: Image_Layer, // background-image etc. (not inherited)
 	flex:        Flex,   // flexbox, see flex_style.odin
 }
 
@@ -292,7 +293,9 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 	switch property {
 	case "mask", "mask-image", "mask-size", "mask-position", "mask-repeat",
 	     "-webkit-mask", "-webkit-mask-image", "-webkit-mask-size", "-webkit-mask-position", "-webkit-mask-repeat":
-		apply_mask_declaration(style, property, value)
+		apply_image_layer_declaration(style, property, value)
+	case "background-image", "background-size", "background-position", "background-repeat":
+		apply_image_layer_declaration(style, property, value)
 	case "display":
 		switch value {
 		case "inherit":
@@ -600,7 +603,7 @@ STYLE_PROPERTIES :: [?]string {
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
 	"box-sizing", "width", "height", "min-width", "min-height", "max-height", "max-width",
-	"background", "background-color",
+	"background", "background-color", "background-image", "background-size", "background-position", "background-repeat",
 	"flex-direction", "flex-wrap", "flex-flow", "justify-content", "align-items", "align-self",
 	"gap", "row-gap", "column-gap", "flex", "flex-grow", "flex-shrink", "flex-basis",
 	"border", "border-width", "border-style", "border-color",

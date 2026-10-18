@@ -185,16 +185,19 @@ draw_display_list :: proc(pv: ^PageView, boxes: []layout.Box, images: []layout.I
 			draw_masked_box(pv, box, x, y)
 			continue
 		}
+		bt, br, bb, bl := box.border[.Top], box.border[.Right], box.border[.Bottom], box.border[.Left]
 		if box.radius != {} {
 			draw_rounded_box(x, y, box)
+			// over the rounded box, inside its borders (corners not rounded)
+			draw_background_image(pv, box, x, y, {bl, bt, box.width - br, box.height - bb})
 			continue
 		}
 		if box.color[3] > 0 {
 			rl.DrawRectangleRec({x, y, box.width, box.height}, rl.Color(box.color))
 		}
+		draw_background_image(pv, box, x, y, {0, 0, box.width, box.height})
 		// borders on top of the background: top and bottom over the full width,
 		// left and right in between
-		bt, br, bb, bl := box.border[.Top], box.border[.Right], box.border[.Bottom], box.border[.Left]
 		rl.DrawRectangleRec({x, y, box.width, bt}, rl.Color(box.border_color[.Top]))
 		rl.DrawRectangleRec({x, y + box.height - bb, box.width, bb}, rl.Color(box.border_color[.Bottom]))
 		rl.DrawRectangleRec({x, y + bt, bl, box.height - bt - bb}, rl.Color(box.border_color[.Left]))
@@ -269,23 +272,41 @@ draw_decoration :: proc(run: layout.Text_Run, pos: rl.Vector2) {
 
 // A box with mask-image: its background color only where the mask is opaque.
 // The mask texture is white with the mask's alpha, so tinting it with the
-// color gives exactly that. Each tile is cut to the box. Without a texture
-// (not loaded (yet), or failed) nothing is drawn, like in Firefox.
+// color gives exactly that. Without a texture (not loaded (yet), or failed)
+// nothing is drawn, like in Firefox.
 @(private)
 draw_masked_box :: proc(pv: ^PageView, box: layout.Box, x, y: f32) {
-	texture, ok := pv.masks[box.mask.src]
-	tile := box.mask.tile
-	if !ok || tile[2] < 0.5 || tile[3] < 0.5 || box.color[3] == 0 {
+	if texture, ok := pv.masks[box.mask.src]; ok && box.color[3] > 0 {
+		draw_tiles(texture, box.mask, x, y, {0, 0, box.width, box.height}, rl.Color(box.color))
+	}
+}
+
+// A background image over the background color, cut to `area` (relative to
+// the box: the border box, or the padding box when the borders are already drawn).
+@(private)
+draw_background_image :: proc(pv: ^PageView, box: layout.Box, x, y: f32, area: [4]f32) {
+	if texture, ok := pv.images[box.background_image.src]; ok {
+		tint := rl.Color(dom.faded({255, 255, 255, 255}, box.background_image.fade))
+		draw_tiles(texture, box.background_image, x, y, area, tint)
+	}
+}
+
+// Draws an image of a box (layout.Box_Image) at the box's position x, y:
+// its tile, repeated if it repeats, each tile cut to area (x0, y0, x1, y1
+// relative to the box).
+@(private)
+draw_tiles :: proc(texture: rl.Texture2D, image: layout.Box_Image, x, y: f32, area: [4]f32, tint: rl.Color) {
+	tile := image.tile
+	if tile[2] < 0.5 || tile[3] < 0.5 {
 		return
 	}
 	// the first tile: the one at the position, or further left/up if it repeats
 	first := [2]f32{tile[0], tile[1]}
 	count := [2]int{1, 1}
-	size := [2]f32{box.width, box.height}
 	for axis in 0 ..< 2 {
-		if box.mask.repeat[axis] {
-			first[axis] -= math.ceil(first[axis] / tile[2 + axis]) * tile[2 + axis]
-			count[axis] = int(math.ceil((size[axis] - first[axis]) / tile[2 + axis]))
+		if image.repeat[axis] {
+			first[axis] -= math.ceil((first[axis] - area[axis]) / tile[2 + axis]) * tile[2 + axis]
+			count[axis] = int(math.ceil((area[2 + axis] - first[axis]) / tile[2 + axis]))
 		}
 	}
 	if count.x * count.y > 10_000 {
@@ -294,11 +315,11 @@ draw_masked_box :: proc(pv: ^PageView, box: layout.Box, x, y: f32) {
 	tw, th := f32(texture.width), f32(texture.height)
 	for j in 0 ..< count.y {
 		for i in 0 ..< count.x {
-			// the tile in box coordinates, cut to the box
+			// the tile in box coordinates, cut to the area
 			x0, y0 := first.x + f32(i) * tile[2], first.y + f32(j) * tile[3]
 			x1, y1 := x0 + tile[2], y0 + tile[3]
-			cx0, cy0 := max(x0, 0), max(y0, 0)
-			cx1, cy1 := min(x1, size.x), min(y1, size.y)
+			cx0, cy0 := max(x0, area[0]), max(y0, area[1])
+			cx1, cy1 := min(x1, area[2]), min(y1, area[3])
 			if cx1 <= cx0 || cy1 <= cy0 {
 				continue
 			}
@@ -309,7 +330,7 @@ draw_masked_box :: proc(pv: ^PageView, box: layout.Box, x, y: f32) {
 				(cy1 - cy0) / tile[3] * th,
 			}
 			dest := rl.Rectangle{x + cx0, y + cy0, cx1 - cx0, cy1 - cy0}
-			rl.DrawTexturePro(texture, source, dest, {0, 0}, 0, rl.Color(box.color))
+			rl.DrawTexturePro(texture, source, dest, {0, 0}, 0, tint)
 		}
 	}
 }

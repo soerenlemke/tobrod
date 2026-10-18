@@ -2,54 +2,64 @@ package dom
 
 import "core:strings"
 
-// mask-image with an image: pages draw most of their icons this way, an
-// element with a background color (often currentColor) that only shows where
-// the mask image (an SVG) is opaque. Only the first layer and only url()
-// images; gradients (used for fading edges) are ignored. Not inherited.
-Mask :: struct {
+// An image drawn in or over an element's box: background-image, and
+// mask-image, the way pages draw most of their icons (an element with a
+// background color, often currentColor, that only shows where the mask image,
+// an SVG, is opaque). Only the first layer of a list and only url() images;
+// gradients count as no image. Not inherited.
+Image_Layer :: struct {
 	image:     string,    // the url as written in the CSS ("" = none)
-	size:      Mask_Size,
+	size:      Layer_Size,
 	width:     Length,    // with .Explicit; .Auto follows the image's aspect ratio
 	height:    Length,
 	position:  [2]Length, // x, y of the free space: 0% = left/top, 100% = right/bottom
 	no_repeat: [2]bool,   // x, y (repeat is the initial value)
 }
 
-Mask_Size :: enum {
+Layer_Size :: enum {
 	Auto, // the image's natural size
 	Contain,
 	Cover,
 	Explicit,
 }
 
-// The mask properties, also with the -webkit- prefix (many pages still need it).
+// mask-* and background-* (image, size, position, repeat) and the shorthands
+// mask and background; the mask properties also with the -webkit- prefix
+// (many pages still need it). The color of background is read in box_style.odin.
 @(private)
-apply_mask_declaration :: proc(style: ^Style, property: string, value: string) {
+apply_image_layer_declaration :: proc(style: ^Style, property: string, value: string) {
 	name := strings.trim_prefix(property, "-webkit-")
+	target := &style.mask
+	if strings.has_prefix(name, "background") {
+		target = &style.background_image
+	}
+	part := name[strings.index_byte(name, '-') + 1:] if strings.contains(name, "-") else ""
 	layer := first_layer(value)
-	switch name {
-	case "mask":
-		apply_mask_shorthand(&style.mask, layer)
-	case "mask-image":
-		style.mask.image = mask_image(layer) or_else style.mask.image
-	case "mask-size":
-		parse_mask_size(&style.mask, layer)
-	case "mask-position":
-		if position, ok := parse_mask_position(strings.fields(strings.to_lower(layer, context.temp_allocator), context.temp_allocator)); ok {
-			style.mask.position = position
+	words := strings.fields(strings.to_lower(layer, context.temp_allocator), context.temp_allocator)
+	switch part {
+	case "":
+		apply_layer_shorthand(target, layer)
+	case "image":
+		target.image = layer_image(layer) or_else target.image
+	case "size":
+		parse_layer_size(target, layer)
+	case "position":
+		if position, ok := parse_layer_position(words); ok {
+			target.position = position
 		}
-	case "mask-repeat":
-		if no_repeat, ok := parse_mask_repeat(strings.fields(strings.to_lower(layer, context.temp_allocator), context.temp_allocator)); ok {
-			style.mask.no_repeat = no_repeat
+	case "repeat":
+		if no_repeat, ok := parse_layer_repeat(words); ok {
+			target.no_repeat = no_repeat
 		}
 	}
 }
 
-// mask: <image> <position> [/ <size>] <repeat> ... in any order; what is not
-// given goes back to its initial value.
+// mask / background: <image> <position> [/ <size>] <repeat> ... in any
+// order; what is not given goes back to its initial value. Other parts (the
+// background color, origin, clip, ...) are skipped.
 @(private)
-apply_mask_shorthand :: proc(mask: ^Mask, value: string) {
-	result: Mask
+apply_layer_shorthand :: proc(target: ^Image_Layer, value: string) {
+	result: Image_Layer
 	position_words := make([dynamic]string, context.temp_allocator)
 	repeat_words := make([dynamic]string, context.temp_allocator)
 	after_slash := false
@@ -58,13 +68,13 @@ apply_mask_shorthand :: proc(mask: ^Mask, value: string) {
 		lower := strings.to_lower(word, context.temp_allocator)
 		switch {
 		case strings.has_prefix(lower, "url("), lower == "none", strings.contains(lower, "gradient("):
-			result.image = mask_image(word) or_else ""
+			result.image = layer_image(word) or_else ""
 		case lower == "/":
 			after_slash = true
 		case strings.has_prefix(lower, "/"):
 			after_slash = true
 			append(&size_words, lower[1:])
-		case after_slash && (is_length_word(lower) || lower == "contain" || lower == "cover"):
+		case after_slash && (is_length_word(lower) || lower == "contain" || lower == "cover" || lower == "auto"):
 			append(&size_words, lower)
 		case lower == "repeat" || lower == "no-repeat" || lower == "repeat-x" || lower == "repeat-y" || lower == "space" || lower == "round":
 			append(&repeat_words, lower)
@@ -73,22 +83,22 @@ apply_mask_shorthand :: proc(mask: ^Mask, value: string) {
 			append(&position_words, lower)
 		}
 	}
-	if position, ok := parse_mask_position(position_words[:]); ok {
+	if position, ok := parse_layer_position(position_words[:]); ok {
 		result.position = position
 	}
-	if no_repeat, ok := parse_mask_repeat(repeat_words[:]); ok {
+	if no_repeat, ok := parse_layer_repeat(repeat_words[:]); ok {
 		result.no_repeat = no_repeat
 	}
 	if len(size_words) > 0 {
-		parse_mask_size(&result, strings.join(size_words[:], " ", context.temp_allocator))
+		parse_layer_size(&result, strings.join(size_words[:], " ", context.temp_allocator))
 	}
-	mask^ = result
+	target^ = result
 }
 
-// The url of a mask image: "" for none (and for gradients, which we don't
-// draw: as if there were no mask). Fails for anything else.
+// The url of an image: "" for none (and for gradients, which we don't draw:
+// as if there were no image). Fails for anything else.
 @(private)
-mask_image :: proc(value: string) -> (image: string, ok: bool) {
+layer_image :: proc(value: string) -> (image: string, ok: bool) {
 	lower := strings.to_lower(strings.trim_space(value), context.temp_allocator)
 	switch {
 	case lower == "none", lower == "initial", lower == "unset":
@@ -125,15 +135,15 @@ css_url :: proc(value: string) -> (url: string, ok: bool) {
 
 // contain, cover, or one or two lengths (the second auto by default).
 @(private)
-parse_mask_size :: proc(mask: ^Mask, value: string) {
+parse_layer_size :: proc(layer: ^Image_Layer, value: string) {
 	words := strings.fields(strings.to_lower(value, context.temp_allocator), context.temp_allocator)
 	switch {
 	case len(words) == 1 && words[0] == "contain":
-		mask.size = .Contain
+		layer.size = .Contain
 	case len(words) == 1 && words[0] == "cover":
-		mask.size = .Cover
+		layer.size = .Cover
 	case len(words) == 1 && (words[0] == "auto" || words[0] == "initial" || words[0] == "unset"):
-		mask.size = .Auto
+		layer.size = .Auto
 	case len(words) == 1 || len(words) == 2:
 		width, ok := parse_length(words[0], true)
 		if !ok {
@@ -147,41 +157,25 @@ parse_mask_size :: proc(mask: ^Mask, value: string) {
 			}
 			height = h
 		}
-		mask.size, mask.width, mask.height = .Explicit, width, height
+		layer.size, layer.width, layer.height = .Explicit, width, height
 		if width.unit == .Auto && height.unit == .Auto {
-			mask.size = .Auto
+			layer.size = .Auto
 		}
 	}
 }
 
-// One or two position values: keywords, lengths or percentages. A single
-// value means the other axis is centered.
+// One to four position values: keywords, lengths or percentages. A single
+// value means the other axis is centered; with three or four, a keyword can
+// be followed by its distance from that edge ("right 4px top").
 @(private)
-parse_mask_position :: proc(words: []string) -> (position: [2]Length, ok: bool) {
-	if len(words) == 0 || len(words) > 2 {
+parse_layer_position :: proc(words: []string) -> (position: [2]Length, ok: bool) {
+	if len(words) == 0 || len(words) > 4 {
 		return {}, false
 	}
 	center := Length{unit = .Percent, value = 50}
 	position = {center, center}
-	axis_of :: proc(word: string) -> int {
-		switch word {
-		case "left", "right":
-			return 0
-		case "top", "bottom":
-			return 1
-		}
-		return -1 // center or a length: in order
-	}
-	keyword :: proc(word: string) -> (Length, bool) {
-		switch word {
-		case "left", "top":
-			return {unit = .Percent, value = 0}, true
-		case "center":
-			return {unit = .Percent, value = 50}, true
-		case "right", "bottom":
-			return {unit = .Percent, value = 100}, true
-		}
-		return parse_length(word, false)
+	if len(words) >= 3 {
+		return edge_offsets(words)
 	}
 	// "top left": a vertical keyword first swaps the order
 	swapped := axis_of(words[0]) == 1 || (len(words) == 2 && axis_of(words[1]) == 0)
@@ -190,13 +184,71 @@ parse_mask_position :: proc(words: []string) -> (position: [2]Length, ok: bool) 
 		if a := axis_of(word); a >= 0 && len(words) == 1 {
 			axis = a
 		}
-		position[axis] = keyword(word) or_return
+		position[axis] = position_keyword(word) or_return
+	}
+	return position, true
+}
+
+// "right 4px top", "left 10% bottom 2em": keywords, each maybe with an offset.
+@(private)
+edge_offsets :: proc(words: []string) -> (position: [2]Length, ok: bool) {
+	center := Length{unit = .Percent, value = 50}
+	position = {center, center}
+	for i := 0; i < len(words); i += 1 {
+		axis := axis_of(words[i])
+		edge := position_keyword(words[i]) or_return
+		if axis < 0 {
+			if words[i] != "center" {
+				return {}, false // a length without a keyword
+			}
+			continue // center: the axis is the one not named otherwise
+		}
+		if i + 1 < len(words) && is_length_word(words[i + 1]) {
+			offset, _ := parse_length(words[i + 1], false)
+			i += 1
+			if offset.unit == .Calc {
+				return {}, false
+			}
+			if edge.value == 0 {
+				edge = offset
+			} else {
+				// from the right/bottom: 100% - offset
+				edge = Length{unit = .Calc}
+				edge.calc[.Percent] = 100
+				edge.calc[offset.unit] -= offset.value
+			}
+		}
+		position[axis] = edge
 	}
 	return position, true
 }
 
 @(private)
-parse_mask_repeat :: proc(words: []string) -> (no_repeat: [2]bool, ok: bool) {
+axis_of :: proc(word: string) -> int {
+	switch word {
+	case "left", "right":
+		return 0
+	case "top", "bottom":
+		return 1
+	}
+	return -1 // center or a length: in order
+}
+
+@(private)
+position_keyword :: proc(word: string) -> (Length, bool) {
+	switch word {
+	case "left", "top":
+		return {unit = .Percent, value = 0}, true
+	case "center":
+		return {unit = .Percent, value = 50}, true
+	case "right", "bottom":
+		return {unit = .Percent, value = 100}, true
+	}
+	return parse_length(word, false)
+}
+
+@(private)
+parse_layer_repeat :: proc(words: []string) -> (no_repeat: [2]bool, ok: bool) {
 	switch len(words) {
 	case 1:
 		switch words[0] {

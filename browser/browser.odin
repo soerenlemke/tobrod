@@ -211,7 +211,7 @@ Image_Request :: struct {
 }
 
 // Queues the pictures of the page in the loader (<img src>, <video poster>,
-// the mask images of visible elements), each src only once. data: URLs need
+// the background and mask images of visible elements), each src only once. data: URLs need
 // no loading and go to the page view right away.
 @(private)
 request_images :: proc(b: ^Browser, doc: ^dom.Document) {
@@ -244,6 +244,7 @@ request_images :: proc(b: ^Browser, doc: ^dom.Document) {
 		if layout.is_replaced_element(node.tag) {
 			fetch(b, layout.image_source(node), base, false, requested)
 		}
+		fetch(b, node.style.background_image.image, base, false, requested)
 		fetch(b, node.style.mask.image, base, true, requested)
 		for child in node.children {
 			request(b, child, base, requested)

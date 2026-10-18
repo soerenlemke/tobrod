@@ -290,7 +290,7 @@ shorthands_of :: proc(property: string) -> [5]string {
 		return {0 = "margin"}
 	case "padding-top", "padding-right", "padding-bottom", "padding-left":
 		return {0 = "padding"}
-	case "background-color":
+	case "background-color", "background-image", "background-size", "background-position", "background-repeat":
 		return {0 = "background"}
 	case "mask-image", "mask-size", "mask-position", "mask-repeat":
 		return {0 = "mask"}

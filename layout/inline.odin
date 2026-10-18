@@ -130,7 +130,7 @@ place_inline_boxes :: proc(b: ^Builder, line_top, line_height: f32) {
 		}
 		b.extent = max(b.extent, right)
 		has_border := border[.Top] > 0 || border[.Right] > 0 || border[.Bottom] > 0 || border[.Left] > 0
-		if (style.background[3] == 0 && !has_border) || style.visibility != .Visible {
+		if (style.background[3] == 0 && !has_border && style.background_image.image == "") || style.visibility != .Visible {
 			continue
 		}
 

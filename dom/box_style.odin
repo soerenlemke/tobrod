@@ -167,9 +167,12 @@ apply_box_declaration :: proc(style: ^Style, property, value: string) {
 			style.background = color
 		}
 	case "background":
-		// the shorthand can contain an image, position, repeat, ...; we only
-		// take the color out of it. Without one, the color is reset to
-		// transparent ("background: none" on a button removes its grey).
+		// the color here, the image and its size, position and repeat in
+		// image_layer.odin. Without a color, it is reset to transparent
+		// ("background: none" on a button removes its grey).
+		if !strings.contains(value, "var(") && value != "inherit" {
+			apply_image_layer_declaration(style, property, value)
+		}
 		if color, ok := background_color_of(value, style.color); ok {
 			style.background = color
 		} else if value != "inherit" && value != "unset" && !strings.contains(value, "var(") {

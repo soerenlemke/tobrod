@@ -102,3 +102,70 @@ parse_import :: proc(prelude: string) -> (imp: Css_Import, ok: bool) {
 	imp.media = rest
 	return imp, imp.href != ""
 }
+
+// The url()s in a stylesheet are relative to the stylesheet, not to the page
+// that ends up with its rules (background images in a _static/ folder). So
+// before the rules are parsed, each relative one is made absolute against the
+// stylesheet's url with resolve (nil: everything stays as it is).
+@(private)
+absolute_urls :: proc(css, base: string, resolve: proc(base, ref: string) -> (string, bool)) -> string {
+	if resolve == nil || base == "" || !strings.contains(css, "url(") {
+		return css
+	}
+	b := strings.builder_make(0, len(css), context.temp_allocator)
+	rest := css
+	for {
+		i := strings.index(rest, "url(")
+		if i < 0 {
+			break
+		}
+		strings.write_string(&b, rest[:i + 4])
+		rest = rest[i + 4:]
+		// the address: quoted, or up to the closing parenthesis
+		start := 0
+		for start < len(rest) && (rest[start] == ' ' || rest[start] == '\t') {
+			start += 1
+		}
+		end: int
+		address: string
+		if start < len(rest) && (rest[start] == '"' || rest[start] == '\'') {
+			end = string_end(rest, start)
+			address = rest[start + 1:max(end - 1, start + 1)]
+		} else {
+			close := strings.index_byte(rest[start:], ')')
+			end = len(rest) if close < 0 else start + close
+			address = strings.trim_space(rest[start:end])
+		}
+		if is_relative_address(address) {
+			if url, ok := resolve(base, address); ok && strings.index_byte(url, '"') < 0 {
+				strings.write_byte(&b, '"')
+				strings.write_string(&b, url)
+				strings.write_byte(&b, '"')
+				rest = rest[end:]
+				continue
+			}
+		}
+		strings.write_string(&b, rest[:end])
+		rest = rest[end:]
+	}
+	strings.write_string(&b, rest)
+	return strings.to_string(b)
+}
+
+// Not "http:...", "data:...", "#id" or empty (and no backslash escapes, which
+// we would have to undo first).
+@(private)
+is_relative_address :: proc(address: string) -> bool {
+	if address == "" || address[0] == '#' || strings.index_byte(address, '\\') >= 0 {
+		return false
+	}
+	for c, i in address {
+		switch c {
+		case ':':
+			return i == 0 // a scheme before it
+		case '/', '?', '#':
+			return true
+		}
+	}
+	return true
+}
