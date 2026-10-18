@@ -21,6 +21,10 @@ Ordered by how much they change what a page looks like, weighed against how big 
 - ~~**`<link media="...">` is not evaluated.**~~ Fixed: the `media` attribute of `<link>` and `<style>` is evaluated like an `@media` block. The Python docs used to load their `(prefers-color-scheme: dark)` stylesheet and turn dark.
 - ~~**`@import` in stylesheets is not followed.**~~ Fixed. The Python docs load most of their rules with `@import url("basic.css")`; their navigation bar was a bulleted list.
 
+### Done since the last measurement
+
+- ~~Logical properties~~ (`margin-inline-start` 4 / 181, `padding-block` 3 / 1617, `margin-inline-end`, `padding-inline-start`, `inline-size`, ...): read as the physical sides (text is always horizontal, left to right).
+
 ### Text
 
 2. ~~**`text-decoration`** (9 / 4260)~~: done. Underline, overline and line-through, propagated to the text inside, the UA underline of links.

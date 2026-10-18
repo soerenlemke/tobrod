@@ -69,6 +69,11 @@ report_element :: proc(r: ^Css_Report, element: ^lxb.Dom_Element, declared: ^Dec
 				return true
 			}
 		}
+		for p in LOGICAL_PROPERTIES {
+			if p == property {
+				return true
+			}
+		}
 		return false
 	}
 	check :: proc(r: ^Css_Report, element: ^lxb.Dom_Element, declared: ^Declared, props: ^Custom_Props, property: string) {
