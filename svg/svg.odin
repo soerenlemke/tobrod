@@ -7,11 +7,12 @@ import "../dom"
 // Our own small SVG renderer: draws an <svg> element of our DOM (lexbor
 // parses SVG, as part of HTML or as a file of its own) into an RGBA picture.
 //
-// Supported: the shapes path, rect (also rounded), circle, ellipse, polygon
-// and polyline; filled with a color (also currentColor, the first color of a
-// gradient), fill-rule, fill-opacity and opacity; transform; viewBox with
+// Supported: the shapes path, rect (also rounded), circle, ellipse, line,
+// polygon and polyline; filled and stroked with a color (also currentColor,
+// the first color of a gradient), fill-rule, the stroke's width, caps, joins
+// and miter limit, fill-/stroke-opacity and opacity; transform; viewBox with
 // the default "xMidYMid meet" (and "none"); groups and nested svg. Not yet:
-// strokes, <use>, real gradients, text, clipping and masks.
+// dashes, <use>, real gradients, text, clipping and masks.
 //
 // dom lowercases all names: viewbox, lineargradient, fill-rule.
 
@@ -102,10 +103,16 @@ MIN_RATIO_ONLY_WIDTH :: f32(512)
 // What is inherited down the tree.
 @(private)
 Paint :: struct {
-	fill:         Maybe([4]u8), // nil = none
-	fill_rule:    Fill_Rule,
-	fill_opacity: f32,
-	color:        [4]u8, // for currentColor
+	fill:           Maybe([4]u8), // nil = none
+	fill_rule:      Fill_Rule,
+	fill_opacity:   f32,
+	stroke:         Maybe([4]u8), // nil = none (the default)
+	stroke_width:   f32,          // in user units
+	stroke_opacity: f32,
+	line_cap:       Line_Cap,
+	line_join:      Line_Join,
+	miter_limit:    f32,
+	color:          [4]u8, // for currentColor
 }
 
 @(private)
@@ -118,7 +125,7 @@ Renderer :: struct {
 root_paint :: proc(root: ^dom.Node) -> Paint {
 	// currentColor of an inline <svg> is the text color of the page
 	color := root.style.color if root.style.color[3] > 0 else {0, 0, 0, 255}
-	return {fill = [4]u8{0, 0, 0, 255}, fill_opacity = 1, color = color}
+	return {fill = [4]u8{0, 0, 0, 255}, fill_opacity = 1, stroke_width = 1, stroke_opacity = 1, miter_limit = 4, color = color}
 }
 
 // viewBox="x y w h" mapped into the picture: scaled evenly and centered
@@ -192,6 +199,7 @@ draw_element :: proc(r: ^Renderer, node: ^dom.Node, parent_m: Matrix, parent_pai
 		// it down to its shapes, which is the same as long as they don't overlap
 		if opacity < 1 {
 			paint.fill_opacity *= opacity
+			paint.stroke_opacity *= opacity
 		}
 		draw_children(r, node, m, paint)
 	case "svg":
@@ -204,14 +212,23 @@ draw_element :: proc(r: ^Renderer, node: ^dom.Node, parent_m: Matrix, parent_pai
 		draw_children(r, node, inner, paint)
 	case:
 		fill_color, has_fill := paint.fill.?
-		if !has_fill {
+		stroke_color, has_stroke := paint.stroke.?
+		if !has_fill && !has_stroke {
 			return
 		}
 		pb := path_builder(m)
 		if !shape_outline(&pb, node) {
 			return
 		}
-		fill(r.image.pixels, r.image.width, r.image.height, pb.polygons[:], paint.fill_rule, fill_color, paint.fill_opacity * opacity)
+		// the fill first, the stroke over it; a line has no inside
+		if has_fill && node.tag != "line" {
+			fill(r.image.pixels, r.image.width, r.image.height, pb.polygons[:], paint.fill_rule, fill_color, paint.fill_opacity * opacity)
+		}
+		if has_stroke && paint.stroke_width > 0 {
+			style := Stroke_Style{paint.stroke_width * pb.scale, paint.line_cap, paint.line_join, paint.miter_limit}
+			outline := stroke_outline(pb.polygons[:], pb.closed[:], style)
+			fill(r.image.pixels, r.image.width, r.image.height, outline[:], .Nonzero, stroke_color, paint.stroke_opacity * opacity)
+		}
 	}
 }
 
@@ -254,6 +271,7 @@ shape_outline :: proc(pb: ^Path_Builder, node: ^dom.Node) -> bool {
 			line_to(pb, {x + w, y + h})
 			line_to(pb, {x, y + h})
 		}
+		close_path(pb)
 	case "circle", "ellipse":
 		cx := length_attribute(node, "cx") or_else 0
 		cy := length_attribute(node, "cy") or_else 0
@@ -272,6 +290,14 @@ shape_outline :: proc(pb: ^Path_Builder, node: ^dom.Node) -> bool {
 		move_to(pb, {cx + rx, cy})
 		arc_to(pb, {cx + rx, cy}, rx, ry, 0, false, true, {cx - rx, cy})
 		arc_to(pb, {cx - rx, cy}, rx, ry, 0, false, true, {cx + rx, cy})
+		close_path(pb)
+	case "line":
+		x1 := length_attribute(node, "x1") or_else 0
+		y1 := length_attribute(node, "y1") or_else 0
+		x2 := length_attribute(node, "x2") or_else 0
+		y2 := length_attribute(node, "y2") or_else 0
+		move_to(pb, {x1, y1})
+		line_to(pb, {x2, y2})
 	case "polygon", "polyline":
 		points := numbers_of(attribute(node, "points") or_return)
 		if len(points) < 4 {
@@ -280,6 +306,9 @@ shape_outline :: proc(pb: ^Path_Builder, node: ^dom.Node) -> bool {
 		move_to(pb, {points[0], points[1]})
 		for i := 2; i + 1 < len(points); i += 2 {
 			line_to(pb, {points[i], points[i + 1]})
+		}
+		if node.tag == "polygon" {
+			close_path(pb)
 		}
 	case:
 		return false
@@ -302,6 +331,42 @@ inherit_paint :: proc(r: ^Renderer, node: ^dom.Node, parent: Paint) -> Paint {
 	}
 	if value, ok := property(node, "fill-opacity"); ok {
 		paint.fill_opacity = clamp(parse_number(value) or_else 1, 0, 1)
+	}
+	if value, ok := property(node, "stroke"); ok {
+		paint.stroke = parse_paint(r, value, paint.color, parent.stroke)
+	}
+	if value, ok := property(node, "stroke-width"); ok {
+		if width, valid := parse_number(strings.trim_suffix(value, "px")); valid && width >= 0 {
+			paint.stroke_width = width
+		}
+	}
+	if value, ok := property(node, "stroke-opacity"); ok {
+		paint.stroke_opacity = clamp(parse_number(value) or_else 1, 0, 1)
+	}
+	if value, ok := property(node, "stroke-linecap"); ok {
+		switch value {
+		case "butt":
+			paint.line_cap = .Butt
+		case "round":
+			paint.line_cap = .Round
+		case "square":
+			paint.line_cap = .Square
+		}
+	}
+	if value, ok := property(node, "stroke-linejoin"); ok {
+		switch value {
+		case "miter", "miter-clip", "arcs":
+			paint.line_join = .Miter
+		case "round":
+			paint.line_join = .Round
+		case "bevel":
+			paint.line_join = .Bevel
+		}
+	}
+	if value, ok := property(node, "stroke-miterlimit"); ok {
+		if limit, valid := parse_number(value); valid && limit >= 1 {
+			paint.miter_limit = limit
+		}
 	}
 	return paint
 }
