@@ -8,6 +8,7 @@ import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
 import "../dom"
+import "../svg"
 
 // Turns a styled DOM into a "display list" of background boxes and positioned
 // pieces of text, which the ui just has to draw. Simplified block and inline layout:
@@ -50,6 +51,7 @@ Box :: struct {
 // there, or a placeholder while it is not loaded (yet).
 Image_Item :: struct {
 	src:                 string, // as written in the page, also the key for Image_Sizes
+	svg:                 ^dom.Node, // an inline <svg>: the ui draws it from the DOM (src is "")
 	x, y, width, height: f32,
 	link:                string, // href of the surrounding <a>, "" if none
 	hidden:              bool,   // visibility: hidden
@@ -1093,6 +1095,7 @@ layout_image :: proc(b: ^Builder, node: ^dom.Node) {
 		y      = b.offset.y, // the line's y is added in finish_line
 		width  = width,
 		height = height,
+		svg    = node if node.tag == "svg" else nil,
 		link   = b.link,
 		hidden = node.style.visibility == .Hidden,
 	})
@@ -1125,6 +1128,11 @@ image_size :: proc(b: ^Builder, node: ^dom.Node, src: string) -> (width, height:
 	}
 
 	entry, loaded := b.image_sizes[src]
+	if node.tag == "svg" {
+		// an inline <svg> knows its size right away
+		size, has_size := svg.natural_size(node)
+		entry, loaded = Natural_Size{size, !has_size}, true
+	}
 	natural := entry.size
 	if loaded && natural.x > 0 && natural.y > 0 {
 		ratio := natural.y / natural.x
@@ -1158,14 +1166,15 @@ image_size :: proc(b: ^Builder, node: ^dom.Node, src: string) -> (width, height:
 // video, another page...), the layout only reserves a rectangle for them.
 is_replaced_element :: proc(tag: string) -> bool {
 	switch tag {
-	case "img", "video", "iframe", "canvas", "embed", "object":
+	case "img", "video", "iframe", "canvas", "embed", "object", "svg":
 		return true
 	}
 	return false
 }
 
 // The picture to show for a replaced element: the image of <img>, the
-// preview of a <video> ("poster"); others get a placeholder. Also the key for
+// preview of a <video> ("poster"); others get a placeholder (an inline <svg>
+// is drawn from its own elements, see Image_Item.svg). Also the key for
 // Image_Sizes.
 image_source :: proc(node: ^dom.Node) -> string {
 	switch node.tag {

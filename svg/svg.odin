@@ -92,13 +92,16 @@ decode :: proc(data: []u8, scale: f32 = 1, allocator := context.allocator) -> (i
 		scale = max(scale, MIN_RATIO_ONLY_WIDTH / natural.x)
 	}
 	width, height := int(natural.x * scale + 0.5), int(natural.y * scale + 0.5)
-	if width <= 0 || height <= 0 || width > 4096 || height > 4096 {
+	if width <= 0 || height <= 0 || width > MAX_SIZE || height > MAX_SIZE {
 		return
 	}
 	return render(root, width, height, allocator), natural, has_size, true
 }
 
 MIN_RATIO_ONLY_WIDTH :: f32(512)
+
+// The largest picture we draw (per side), against absurd sizes.
+MAX_SIZE :: 4096
 
 // What is inherited down the tree.
 @(private)

@@ -5,6 +5,14 @@
   <title>SVG images</title>
 </head>
 <body>
+  <h2>Inline &lt;svg&gt;</h2>
+  <p style="color: #1565c0">An icon in the text, in the text color (currentColor), 16 px:
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0Zm1 4H7v5h2Zm0 6H7v2h2Z"/></svg>
+    and a line icon, 24 px:
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/></svg></p>
+  <p>Sized by CSS (2em): <svg style="width: 2em; height: 2em" viewBox="0 0 10 10"><rect width="10" height="10" rx="2" fill="#2e7d32"/><path d="M2 5l2 2 4-4" fill="none" stroke="#fff"/></svg>,
+    without any size (300 × 150): <svg><circle cx="150" cy="75" r="60" fill="#c62828"/></svg></p>
+  <p>A link around an icon: <a href="svg.html"><svg width="20" height="20" viewBox="0 0 20 20"><path d="M4 10h12M11 5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2"/></svg> again</a></p>
   <h2>SVG as &lt;img&gt;</h2>
   <p>Shapes at their natural size (200 × 100): <img src="images/shapes.svg"></p>
   <p>The same, 100 px wide: <img src="images/shapes.svg" width="100"></p>
@@ -13,6 +21,7 @@
   <p>Strokes: joins (miter, round, bevel) and caps (butt, round, square): <img src="images/strokes.svg"></p>
   <p>Dashes (stroke-dasharray, -dashoffset): <img src="images/dashes.svg"></p>
   <p>A line icon (round caps and joins), 24 px and 72 px: <img src="images/feather.svg"> <img src="images/feather.svg" width="72"></p>
+  <h2>Only a viewBox</h2>
   <p>The icon without a size: an SVG with only a viewBox has no size of its own, only an aspect ratio, so the image is as wide as the page:</p>
   <img src="images/icon.svg">
 </body>

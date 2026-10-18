@@ -1189,3 +1189,25 @@ test_image_with_only_a_ratio :: proc(t: ^testing.T) {
 	testing.expect_value(t, [2]f32{l.images[0].width, l.images[0].height}, [2]f32{400, 200})
 	testing.expect_value(t, [2]f32{l.images[1].width, l.images[1].height}, [2]f32{32, 16})
 }
+
+@(test)
+test_inline_svg :: proc(t: ^testing.T) {
+	// an inline <svg> is a replaced element: its size from width/height, the
+	// viewBox's ratio or CSS, and its children are not laid out as text
+	doc, err := dom.parse(`<body style="margin: 0">a <svg width="16" height="16"><text>no</text></svg>` +
+		`<svg width="20" viewBox="0 0 10 5"></svg><svg style="width: 10px; height: 8px"></svg><svg></svg></body>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer dom.destroy(doc)
+
+	l := build(doc, {1000, 600}, fake_measure)
+	defer destroy(l)
+	testing.expect_value(t, len(l.runs), 1) // only "a"
+	if len(l.images) != 4 do return
+	sizes := [4][2]f32{{16, 16}, {20, 10}, {10, 8}, {300, 150}}
+	for image, i in l.images {
+		testing.expect_value(t, [2]f32{image.width, image.height}, sizes[i])
+		testing.expect(t, image.svg != nil && image.src == "", "drawn from the DOM")
+	}
+}
