@@ -14,7 +14,7 @@ Browser :: struct {
 	loading_id:  loader.Request_Id, // the page we are waiting for, 0 if none
 	// images of the current page that are still loading: request id -> src as
 	// written in the page (owned)
-	image_requests: map[loader.Request_Id]string,
+	image_requests: map[loader.Request_Id]Image_Request,
 	history:     History,           // the current entry is the base for relative links
 }
 
@@ -167,11 +167,11 @@ receive_pages :: proc(b: ^Browser) {
 				show_page(b, &result)
 			}
 		case .Resource:
-			if src, waiting := b.image_requests[result.id]; waiting {
+			if request, waiting := b.image_requests[result.id]; waiting {
 				if result.error == "" {
-					ui.page_view_add_image(&b.window.page_view, src, result.url, result.content_type, result.data)
+					ui.page_view_add_image(&b.window.page_view, request.src, result.url, result.content_type, result.data, request.mask)
 				}
-				delete(src)
+				delete(request.src)
 				delete_key(&b.image_requests, result.id)
 			}
 		}
@@ -202,30 +202,56 @@ show_page :: proc(b: ^Browser, result: ^loader.Result) {
 	request_images(b, doc)
 }
 
-// Queues the pictures of the page in the loader (<img src>, <video poster>),
-// each src only once.
+// An image the loader is fetching for the page: src as written in the page
+// (the key for the layout), and whether it is a mask image (mask-image).
+@(private)
+Image_Request :: struct {
+	src:  string,
+	mask: bool,
+}
+
+// Queues the pictures of the page in the loader (<img src>, <video poster>,
+// the mask images of visible elements), each src only once. data: URLs need
+// no loading and go to the page view right away.
 @(private)
 request_images :: proc(b: ^Browser, doc: ^dom.Document) {
 	base, _ := history_current(&b.history)
 	requested := make(map[string]bool, allocator = context.temp_allocator)
 
-	request :: proc(b: ^Browser, node: ^dom.Node, base: string, requested: ^map[string]bool) {
-		// <img src> and the preview picture of <video poster>
-		if node.kind == .Element && layout.is_replaced_element(node.tag) {
-			if src := layout.image_source(node); src != "" && !(src in requested) {
-				requested[src] = true
-				url, resolved := http.resolve_url(base, src, context.temp_allocator)
-				if resolved && http.is_loadable_url(url) {
-					id := loader.load_resource(&b.page_loader, url)
-					b.image_requests[id] = strings.clone(src)
-				}
-			}
+	fetch :: proc(b: ^Browser, src, base: string, mask: bool, requested: ^map[string]bool) {
+		key := fmt.tprintf("%v %s", mask, src)
+		if src == "" || key in requested {
+			return
 		}
+		requested[key] = true
+		if http.is_data_url(src) {
+			if data, content_type, ok := http.decode_data_url(src, context.temp_allocator); ok {
+				ui.page_view_add_image(&b.window.page_view, src, "", content_type, data, mask)
+			}
+			return
+		}
+		url, resolved := http.resolve_url(base, src, context.temp_allocator)
+		if resolved && http.is_loadable_url(url) {
+			id := loader.load_resource(&b.page_loader, url)
+			b.image_requests[id] = {strings.clone(src), mask}
+		}
+	}
+	request :: proc(b: ^Browser, node: ^dom.Node, base: string, requested: ^map[string]bool) {
+		if node.kind != .Element || node.style.display == .None {
+			return
+		}
+		// <img src> and the preview picture of <video poster>
+		if layout.is_replaced_element(node.tag) {
+			fetch(b, layout.image_source(node), base, false, requested)
+		}
+		fetch(b, node.style.mask.image, base, true, requested)
 		for child in node.children {
 			request(b, child, base, requested)
 		}
 	}
-	request(b, doc.root, base, &requested)
+	for child in doc.root.children {
+		request(b, child, base, &requested)
+	}
 }
 
 // Like in a browser, a page counts as loaded once its images are there too:
@@ -237,8 +263,8 @@ update_loading_state :: proc(b: ^Browser) {
 
 @(private)
 forget_image_requests :: proc(b: ^Browser) {
-	for _, src in b.image_requests {
-		delete(src)
+	for _, request in b.image_requests {
+		delete(request.src)
 	}
 	clear(&b.image_requests)
 }

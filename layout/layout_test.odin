@@ -1245,3 +1245,31 @@ test_opacity :: proc(t: ^testing.T) {
 	testing.expect_value(t, l.images[0].fade, 0.5)
 	testing.expect_value(t, l.runs[4].color[3], 255) // c: opacity 1 doesn't undo the group's
 }
+
+@(test)
+test_mask_tile :: proc(t: ^testing.T) {
+	// where the mask image goes in the box: contain, centered by default
+	// position "center"; a length; the default (natural size, top left, repeat)
+	doc, err := dom.parse(`<body style="margin: 0">` +
+		`<div style="width: 40px; height: 20px; background: red; mask: url(i.svg) center / contain no-repeat"></div>` +
+		`<div style="width: 40px; height: 20px; background: red; mask-image: url(i.svg); mask-size: 5px; mask-position: 100% 0"></div>` +
+		`<div style="width: 40px; height: 20px; background: red; mask-image: url(i.svg)"></div></body>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer dom.destroy(doc)
+
+	sizes := make(Image_Sizes, context.temp_allocator)
+	sizes["i.svg"] = {size = {10, 10}}
+	l := build(doc, {1000, 600}, fake_measure, sizes)
+	defer destroy(l)
+	if len(l.boxes) != 3 {
+		testing.fail_now(t, fmt.tprintf("%d boxes", len(l.boxes)))
+	}
+	testing.expect_value(t, l.boxes[0].mask.src, "i.svg")
+	testing.expect_value(t, l.boxes[0].mask.tile, [4]f32{10, 0, 20, 20})
+	testing.expect_value(t, l.boxes[0].mask.repeat, [2]bool{false, false})
+	testing.expect_value(t, l.boxes[1].mask.tile, [4]f32{35, 0, 5, 5})
+	testing.expect_value(t, l.boxes[2].mask.tile, [4]f32{0, 0, 10, 10})
+	testing.expect_value(t, l.boxes[2].mask.repeat, [2]bool{true, true})
+}

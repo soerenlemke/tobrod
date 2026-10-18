@@ -102,6 +102,7 @@ copy_children :: proc(lxb_doc: ^lxb.Html_Document, from: ^lxb.Dom_Node, to: ^Nod
 			node.attributes = copy_attributes(element, allocator)
 			own_props: ^Custom_Props
 			node.style, own_props = compute_style(node, element, to.style, props, report)
+			node.style.mask.image = strings.clone(node.style.mask.image, allocator) // was in the temp allocator
 			copy_children(lxb_doc, child, node, own_props, allocator, report)
 			if report != nil {
 				report_node(report, node) // after its children: an <svg> looks at its parts
@@ -172,6 +173,11 @@ compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inh
 			continue
 		}
 		if value, ok := lxb.element_style(element, property, context.temp_allocator); ok {
+			// lexbor keeps properties it doesn't know (mask-image) as text,
+			// var() included
+			if contains_var(value) {
+				value = substitute_vars(value, props) or_else "unset"
+			}
 			apply_declaration(&style, property, value, parent)
 		}
 		// a raw value that won (var() or something lexbor can't parse) on top;

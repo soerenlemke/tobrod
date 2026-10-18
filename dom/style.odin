@@ -56,6 +56,7 @@ Style :: struct {
 	background:  Color,  // alpha 0 = transparent
 	border:      Borders,
 	border_radius: [Corner]Length, // rounded corners (not inherited), see border_style.odin
+	mask:        Mask,   // mask-image: icons (not inherited), see mask_style.odin
 	flex:        Flex,   // flexbox, see flex_style.odin
 }
 
@@ -289,6 +290,9 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 // ignored, so the default stays (like a browser drops invalid declarations).
 apply_declaration :: proc(style: ^Style, property, value: string, parent: Style) {
 	switch property {
+	case "mask", "mask-image", "mask-size", "mask-position", "mask-repeat",
+	     "-webkit-mask", "-webkit-mask-image", "-webkit-mask-size", "-webkit-mask-position", "-webkit-mask-repeat":
+		apply_mask_declaration(style, property, value)
 	case "display":
 		switch value {
 		case "inherit":
@@ -606,6 +610,8 @@ STYLE_PROPERTIES :: [?]string {
 	"border-top-color", "border-right-color", "border-bottom-color", "border-left-color",
 	"border-radius", "border-top-left-radius", "border-top-right-radius",
 	"border-bottom-right-radius", "border-bottom-left-radius",
+	"-webkit-mask", "mask", "-webkit-mask-image", "mask-image", "-webkit-mask-size", "mask-size",
+	"-webkit-mask-position", "mask-position", "-webkit-mask-repeat", "mask-repeat",
 }
 
 @(private)

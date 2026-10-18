@@ -57,3 +57,19 @@ test_complete_url :: proc(t: ^testing.T) {
 		testing.expectf(t, url == c.expected, "%q: got %q, want %q", c.input, url, c.expected)
 	}
 }
+
+@(test)
+test_data_url :: proc(t: ^testing.T) {
+	data, content_type, ok := decode_data_url(`data:image/svg+xml;utf8,<svg fill="%23000"/>`, context.temp_allocator)
+	testing.expect(t, ok, "percent-encoded")
+	testing.expect_value(t, content_type, "image/svg+xml;utf8")
+	testing.expect_value(t, string(data), `<svg fill="#000"/>`)
+
+	data, content_type, ok = decode_data_url("data:image/png;base64,aGVs bG8=", context.temp_allocator)
+	testing.expect(t, ok, "base64")
+	testing.expect_value(t, content_type, "image/png")
+	testing.expect_value(t, string(data), "hello")
+
+	_, _, ok = decode_data_url("https://example.com/a.png", context.temp_allocator)
+	testing.expect(t, !ok, "not a data URL")
+}
