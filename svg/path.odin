@@ -88,15 +88,17 @@ Path_Builder :: struct {
 	m:        Matrix,
 	scale:    f32, // of m: how many pixels one unit is
 	polygons: [dynamic]Polygon,
+	closed:   [dynamic]bool, // per polygon: ended with Z (for strokes: a join instead of two ends)
 	current:  ^Polygon,
 }
 
 path_builder :: proc(m: Matrix, allocator := context.temp_allocator) -> Path_Builder {
-	return {m = m, scale = scale_of(m), polygons = make([dynamic]Polygon, allocator)}
+	return {m = m, scale = scale_of(m), polygons = make([dynamic]Polygon, allocator), closed = make([dynamic]bool, allocator)}
 }
 
 move_to :: proc(pb: ^Path_Builder, p: Point) {
 	append(&pb.polygons, make(Polygon, pb.polygons.allocator))
+	append(&pb.closed, false)
 	pb.current = &pb.polygons[len(pb.polygons) - 1]
 	append(pb.current, apply(pb.m, p))
 }
@@ -179,9 +181,11 @@ arc_to :: proc(pb: ^Path_Builder, p0: Point, rx, ry, angle: f32, large, sweep: b
 close_path :: proc(pb: ^Path_Builder) {
 	if pb.current != nil && len(pb.current) > 0 {
 		first := pb.current[0]
+		pb.closed[len(pb.closed) - 1] = true
 		pb.current = nil
 		// the next command starts where this subpath started
 		append(&pb.polygons, make(Polygon, pb.polygons.allocator))
+		append(&pb.closed, false)
 		pb.current = &pb.polygons[len(pb.polygons) - 1]
 		append(pb.current, first)
 	}

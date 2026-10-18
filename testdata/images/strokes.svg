@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="90" viewBox="0 0 240 90">
+  <g fill="none" stroke="#333" stroke-width="8">
+    <polyline points="10,70 30,20 50,70" stroke-linejoin="miter"/>
+    <polyline points="70,70 90,20 110,70" stroke-linejoin="round"/>
+    <polyline points="130,70 150,20 170,70" stroke-linejoin="bevel"/>
+  </g>
+  <g stroke="#db4437" stroke-width="10">
+    <line x1="190" y1="20" x2="230" y2="20"/>
+    <line x1="190" y1="45" x2="230" y2="45" stroke-linecap="round"/>
+    <line x1="190" y1="70" x2="230" y2="70" stroke-linecap="square"/>
+  </g>
+</svg>

@@ -158,3 +158,49 @@ test_decode :: proc(t: ^testing.T) {
 	_, _, _, bad := decode(transmute([]u8)string("not an svg"), 1, context.temp_allocator)
 	testing.expect(t, !bad, "no svg element")
 }
+
+@(test)
+test_render_strokes :: proc(t: ^testing.T) {
+	// a 4px wide horizontal line from x 10 to 30 at y 10, three caps
+	image := render_svg(t, `<svg width="40" height="60">
+		<line x1="10" y1="10" x2="30" y2="10" stroke="#f00" stroke-width="4"/>
+		<line x1="10" y1="30" x2="30" y2="30" stroke="#f00" stroke-width="4" stroke-linecap="round"/>
+		<line x1="10" y1="50" x2="30" y2="50" stroke="#f00" stroke-width="4" stroke-linecap="square"/>
+	</svg>`, 40, 60)
+
+	testing.expect_value(t, pixel(image, 20, 9), [4]u8{255, 0, 0, 255}) // inside the width
+	testing.expect_value(t, pixel(image, 20, 13), [4]u8{0, 0, 0, 0})    // outside
+	testing.expect_value(t, pixel(image, 8, 9)[3], 0)                   // butt: nothing past the end
+	testing.expect(t, pixel(image, 8, 30)[3] > 0, "round cap past the end")
+	testing.expect_value(t, pixel(image, 8, 49), [4]u8{255, 0, 0, 255}) // square cap: half the width further
+}
+
+@(test)
+test_render_joins :: proc(t: ^testing.T) {
+	// a right angle, 6px wide: the outer corner is at (26, 4) with miter,
+	// cut off with bevel; and a rectangle's closed corner
+	image := render_svg(t, `<svg width="80" height="40">
+		<polyline points="5,7 23,7 23,30" fill="none" stroke="#00f" stroke-width="6"/>
+		<polyline points="45,7 63,7 63,30" fill="none" stroke="#00f" stroke-width="6" stroke-linejoin="bevel"/>
+	</svg>`, 80, 40)
+
+	testing.expect_value(t, pixel(image, 25, 4), [4]u8{0, 0, 255, 255}) // miter: the corner is filled
+	testing.expect_value(t, pixel(image, 65, 4)[3], 0)                  // bevel: cut off
+
+	closed := render_svg(t, `<svg width="20" height="20"><rect x="4" y="4" width="12" height="12" fill="none" stroke="#000" stroke-width="2"/></svg>`, 20, 20)
+	testing.expect_value(t, pixel(closed, 3, 3), [4]u8{0, 0, 0, 255}) // the first corner is joined too
+	testing.expect_value(t, pixel(closed, 10, 10)[3], 0)              // no fill
+}
+
+@(test)
+test_render_stroke_and_fill :: proc(t: ^testing.T) {
+	// the stroke is drawn over the fill, scaled with the transform; stroke
+	// is inherited from the group
+	image := render_svg(t, `<svg viewBox="0 0 10 10"><g stroke="#f00" stroke-width="1">
+		<rect x="2" y="2" width="6" height="6" fill="#0f0"/>
+	</g></svg>`, 40, 40)
+
+	testing.expect_value(t, pixel(image, 20, 20), [4]u8{0, 255, 0, 255}) // fill inside
+	testing.expect_value(t, pixel(image, 20, 7), [4]u8{255, 0, 0, 255})  // the edge at y = 2 * 4 = 8, 4px wide
+	testing.expect_value(t, pixel(image, 20, 10), [4]u8{0, 255, 0, 255}) // inside again
+}
