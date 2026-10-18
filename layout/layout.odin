@@ -68,7 +68,15 @@ Clip_Rect :: struct {
 
 // Natural sizes of the images that are already loaded, by src as written in
 // the page. Images not in the map get their size from the page or a placeholder.
-Image_Sizes :: map[string][2]f32
+Image_Sizes :: map[string]Natural_Size
+
+// An SVG without width and height has no size of its own, only an aspect
+// ratio (that of size): without a size from the page, such an <img> is as
+// wide as its containing block.
+Natural_Size :: struct {
+	size:       [2]f32,
+	ratio_only: bool,
+}
 
 // Owns all boxes, runs, images and their strings; destroy frees everything at once.
 // Draw order: background, then boxes in order (parents before children), then
@@ -1116,10 +1124,14 @@ image_size :: proc(b: ^Builder, node: ^dom.Node, src: string) -> (width, height:
 		h = v
 	}
 
-	natural, loaded := b.image_sizes[src]
+	entry, loaded := b.image_sizes[src]
+	natural := entry.size
 	if loaded && natural.x > 0 && natural.y > 0 {
 		ratio := natural.y / natural.x
 		switch {
+		case w == nil && h == nil && entry.ratio_only:
+			w = available
+			h = available * ratio
 		case w == nil && h == nil:
 			w, h = natural.x, natural.y
 		case h == nil:

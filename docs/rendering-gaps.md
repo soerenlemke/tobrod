@@ -46,7 +46,7 @@ Ordered by how much they change what a page looks like, weighed against how big 
 
 ### Drawing
 
-15. **SVG images**: almost every logo and icon (Wikipedia, odin-lang.org, GitHub, MDN): `<img>` with an SVG source on 7 pages, inline `<svg>` on 3 (128 elements). They need an SVG rasterizer, which means a new library.
+15. **SVG**: ~~`<img>` with an SVG source (7 pages)~~ is drawn by our own renderer (package `svg`: shapes and paths filled with a color, transforms, viewBox; Wikipedia's wordmark, the Odin and Rust logos). Still open: inline `<svg>` (3 / 128, GitHub's and MDN's icons), strokes, `<use>`, real gradients, SVG as a background image. The Odin logo overlaps the title below it.
 16. ~~**`border-radius`** (8 / 2514)~~: done (per corner, also with borders and on inline elements). Not yet: clipping content to the rounded shape (images in rounded cards, round avatars) and elliptical corners (drawn round).
 17. **`background-image`** with a raster image, **`background-size`/`-position`/`-repeat`** (5 / 164).
 18. **`opacity`** (4 / 367), **`box-shadow`** (6 / 102), **`transform`** (4 / 220), **`mask-image`** (icons, 4 / 286).
