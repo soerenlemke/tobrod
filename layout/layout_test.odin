@@ -1030,3 +1030,23 @@ test_fonts_split_runs :: proc(t: ^testing.T) {
 	testing.expect_value(t, l.runs[2].font, Font{italic = true})
 	testing.expect_value(t, l.runs[4].font, Font{bold = true, italic = true})
 }
+
+@(test)
+test_border_radius_boxes :: proc(t: ^testing.T) {
+	doc, l := build_html(t, `<body style="margin: 0">
+		<div style="width: 100px; height: 40px; border-radius: 50%; background: red"></div>
+		<div style="width: 100px; height: 40px; border-radius: 10% 4px 0 1em; background: blue"></div>
+		<p style="width: 60px"><span style="border-radius: 3px; background: #eee">aa bb cc</span></p>
+	</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.boxes) < 4 do return
+	// 50% of 100px is 50, more than half the height: a pill with radius 20
+	testing.expect_value(t, l.boxes[0].radius, [dom.Corner]f32{.Top_Left = 20, .Top_Right = 20, .Bottom_Right = 20, .Bottom_Left = 20})
+	testing.expect_value(t, l.boxes[1].radius, [dom.Corner]f32{.Top_Left = 10, .Top_Right = 4, .Bottom_Right = 0, .Bottom_Left = 16})
+	// the span is broken over lines: round only where it starts and ends
+	first, last := l.boxes[2], l.boxes[len(l.boxes) - 1]
+	testing.expect_value(t, first.radius, #partial [dom.Corner]f32{.Top_Left = 3, .Bottom_Left = 3})
+	testing.expect_value(t, last.radius, #partial [dom.Corner]f32{.Top_Right = 3, .Bottom_Right = 3})
+}

@@ -46,6 +46,7 @@ Style :: struct {
 	border_box:  bool,   // box-sizing: border-box - width/height include padding and border
 	background:  Color,  // alpha 0 = transparent
 	border:      Borders,
+	border_radius: [Corner]Length, // rounded corners (not inherited), see border_style.odin
 	flex:        Flex,   // flexbox, see flex_style.odin
 }
 
@@ -519,6 +520,8 @@ STYLE_PROPERTIES :: [?]string {
 	"border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
 	"border-top-style", "border-right-style", "border-bottom-style", "border-left-style",
 	"border-top-color", "border-right-color", "border-bottom-color", "border-left-color",
+	"border-radius", "border-top-left-radius", "border-top-right-radius",
+	"border-bottom-right-radius", "border-bottom-left-radius",
 }
 
 @(private)

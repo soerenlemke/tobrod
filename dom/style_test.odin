@@ -666,3 +666,35 @@ test_box_sizing_and_min_width :: proc(t: ^testing.T) {
 	testing.expect(t, !p.style.border_box, "content-box on p")
 	testing.expect_value(t, p.style.min_width, em(10))
 }
+
+@(test)
+test_border_radius :: proc(t: ^testing.T) {
+	doc, err := parse(`<style>
+		.a { border-radius: 4px }
+		.b { border-radius: 1px 2px 3px }
+		.c { border-radius: 50% / 10px }
+		.d { border-radius: 8px; border-bottom-left-radius: 2em }
+		.e { border-radius: -1px }
+	</style><div class="a"></div><div class="b"></div><div class="c"></div><div class="d"></div><div class="e"></div>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	body := find_element(doc.root, "body")
+	divs: [5]^Node
+	n := 0
+	for child in body.children {
+		if child.kind == .Element && n < 5 {
+			divs[n] = child
+			n += 1
+		}
+	}
+	testing.expect_value(t, divs[0].style.border_radius, [Corner]Length{.Top_Left = px(4), .Top_Right = px(4), .Bottom_Right = px(4), .Bottom_Left = px(4)})
+	// 3 values: top-left, top-right + bottom-left, bottom-right
+	testing.expect_value(t, divs[1].style.border_radius, [Corner]Length{.Top_Left = px(1), .Top_Right = px(2), .Bottom_Right = px(3), .Bottom_Left = px(2)})
+	testing.expect_value(t, divs[2].style.border_radius[.Top_Left], Length{unit = .Percent, value = 50}) // the horizontal radius
+	testing.expect_value(t, divs[3].style.border_radius[.Bottom_Left], em(2))
+	testing.expect_value(t, divs[3].style.border_radius[.Top_Left], px(8))
+	testing.expect_value(t, divs[4].style.border_radius[.Top_Left], px(0)) // negative: invalid, ignored
+}

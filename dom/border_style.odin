@@ -39,6 +39,46 @@ apply_border_declaration :: proc(style: ^Style, property, value: string) {
 		if border, ok := parse_border(value, style.color); ok {
 			style.border[edge_of(property)] = border
 		}
+	case "border-radius":
+		// "8px", "50%", "4px 0", and elliptical corners "10px / 5px" (we
+		// take the horizontal radii)
+		horizontal := value
+		if slash := strings.index_byte(value, '/'); slash >= 0 {
+			horizontal = strings.trim_space(value[:slash])
+		}
+		parts, ok := expand_four(horizontal)
+		if !ok {
+			return
+		}
+		// expand_four's edges are the corners in the same order: top-left,
+		// top-right, bottom-right, bottom-left
+		radius: [Corner]Length
+		for edge, i in Edge {
+			r, valid := parse_radius(parts[edge])
+			if !valid {
+				return // an invalid value makes the whole declaration invalid
+			}
+			radius[Corner(i)] = r
+		}
+		style.border_radius = radius
+	case "border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius":
+		// one value, or two for an elliptical corner: the first one
+		parts := split_outside_parens(value, context.temp_allocator)
+		if len(parts) == 0 {
+			return
+		}
+		corner: Corner
+		switch property {
+		case "border-top-left-radius":
+			corner = .Top_Left
+		case "border-top-right-radius":
+			corner = .Top_Right
+		case "border-bottom-right-radius":
+			corner = .Bottom_Right
+		case:
+			corner = .Bottom_Left
+		}
+		style.border_radius[corner] = parse_radius(parts[0]) or_else style.border_radius[corner]
 	case "border-width", "border-style", "border-color":
 		// 1 to 4 values, same rules as margin
 		parts, ok := expand_four(value)
@@ -185,4 +225,19 @@ border_color :: proc(border: Border, text_color: Color) -> Color {
 		return c
 	}
 	return text_color
+}
+
+// The corners of a box, in the order of the border-radius shorthand.
+Corner :: enum {
+	Top_Left,
+	Top_Right,
+	Bottom_Right,
+	Bottom_Left,
+}
+
+// A corner radius: a length or a percentage of the box (not negative).
+@(private)
+parse_radius :: proc(value: string) -> (radius: Length, ok: bool) {
+	radius = parse_length(value, false) or_return
+	return radius, is_zero(radius) || radius.value > 0 || radius.unit == .Calc
 }

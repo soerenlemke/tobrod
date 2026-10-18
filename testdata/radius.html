@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>border-radius</title>
+  <style>
+    body { font-family: sans-serif; background: #f3f4f6 }
+    .card { background: #fff; border-radius: 12px; padding: 12px 16px; margin: 12px 0; width: 22em }
+    .bordered { border: 2px solid #4285f4; border-radius: 8px; padding: 8px; margin: 12px 0; width: 22em }
+    .thick { border: 6px solid #e8710a; border-radius: 20px; padding: 8px; margin: 12px 0; width: 22em; background: #fff7ed }
+    .pill { display: inline-block; background: #0f9d58; color: #fff; border-radius: 999px; padding: 4px 14px }
+    .circle { display: inline-block; width: 48px; height: 48px; border-radius: 50%; background: #db4437; vertical-align: top }
+    .corners { background: #ab47bc; color: #fff; border-radius: 0 24px 0 24px; padding: 12px; width: 18em; margin: 12px 0 }
+    .sides { border-style: solid; border-width: 4px 8px 4px 8px; border-color: #1a73e8 #34a853 #fbbc04 #ea4335; border-radius: 16px; padding: 10px; width: 18em; margin: 12px 0 }
+    .tag { background: #e8f0fe; border: 1px solid #aecbfa; border-radius: 4px; padding: 0 4px }
+    .one { border-top-left-radius: 20px; background: #555; color: #fff; padding: 8px; width: 12em; margin: 12px 0 }
+  </style>
+</head>
+<body>
+  <div class="card">A white card with border-radius: 12px.</div>
+  <div class="bordered">A 2px blue border with border-radius: 8px.</div>
+  <div class="thick">A thick 6px border, radius 20px: the inner corner is smaller.</div>
+  <p><span class="pill">a pill</span> <span class="pill">999px</span> <span class="circle"></span></p>
+  <div class="corners">border-radius: 0 24px 0 24px</div>
+  <div class="sides">four sides in four colors, radius 16px</div>
+  <p>Inline <span class="tag">tags with rounded corners</span> and a <span class="tag">long tag that is broken across the lines of the paragraph, so only its outer ends are round</span> in the text.</p>
+  <div class="one">only border-top-left-radius</div>
+</body>
+</html>

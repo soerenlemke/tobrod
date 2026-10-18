@@ -148,6 +148,14 @@ place_inline_boxes :: proc(b: ^Builder, line_top, line_height: f32) {
 			color  = style.background,
 			border = border,
 		}
+		// rounded corners only where the element starts and ends
+		box.radius = box_radius(b, style, box.width, box.height)
+		if !f.starts {
+			box.radius[.Top_Left], box.radius[.Bottom_Left] = 0, 0
+		}
+		if !ends {
+			box.radius[.Top_Right], box.radius[.Bottom_Right] = 0, 0
+		}
 		for edge in dom.Edge {
 			box.border_color[edge] = dom.border_color(style.border[edge], style.color)
 		}

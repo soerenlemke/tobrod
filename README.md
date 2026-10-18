@@ -21,7 +21,7 @@ It is a toy: it renders many real pages surprisingly well (try a Wikipedia artic
 - **HTML**: parsed by lexbor into tobrod's own DOM tree; presentational attributes (`bgcolor`, `align`, `valign`, `cellpadding`, `<center>`, `<font>`, ...), `<details>`/`<summary>`, `<sup>`/`<sub>`; plain text documents are shown like in Chrome
 - **CSS**: `<style>`, `style=""` and external stylesheets, `@media` queries, custom properties (`var()`), `calc()` in lengths, inheritance and the user agent defaults
 - **Layout**: block and inline layout with margin collapsing, the box model (margin, padding, borders, width / min-width / max-width, height / min-height / max-height, `box-sizing`, `margin: auto`), `overflow: hidden`, `position: relative`, `absolute` and `fixed`, backgrounds (also of inline elements like `code` or `mark`, one box per line), `text-align`, lists, images, tables, floats, flexbox and inline blocks (`inline-block`, `inline-flex`)
-- **Rendering**: text in [Inter](https://github.com/rsms/inter) (regular, bold, italic) and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) with sizes, colors, `line-height` and `text-decoration`, boxes, borders, images (PNG, JPG, GIF, BMP, QOI)
+- **Rendering**: text in [Inter](https://github.com/rsms/inter) (regular, bold, italic) and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) with sizes, colors, `line-height` and `text-decoration`, boxes, borders, rounded corners (`border-radius`), images (PNG, JPG, GIF, BMP, QOI)
 
 See the [roadmap](#roadmap) for the details and [known limitations](#known-limitations) for what's missing.
 
@@ -166,6 +166,7 @@ Stage 4 — HTML & CSS
 - [x] Layout: blocks, inline text, margin collapsing, box model (incl. heights), backgrounds, borders, `text-align`, lists
 - [x] `overflow: hidden` (clip rectangles in the display list)
 - [x] Backgrounds, borders, padding and margins of inline elements
+- [x] `border-radius`
 - [x] Images (and other replaced elements like `video`, `iframe`)
 - [x] Tables
 - [x] HTML without CSS: presentational attributes, `<center>`, `<details>`, `<sup>`/`<sub>`
