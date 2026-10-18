@@ -472,7 +472,8 @@ test_position_relative_block :: proc(t: ^testing.T) {
 	if len(l.boxes) != 1 || len(l.runs) != 3 do return
 	testing.expect_value(t, l.boxes[0].x, 30)
 	testing.expect_value(t, l.boxes[0].y, 10)
-	testing.expect_value(t, runs_to_string(l), "a@30,12 16\nb@-20,17 16\nc@0,42 16\n")
+	// positioned elements are drawn after (over) the normal flow
+	testing.expect_value(t, runs_to_string(l), "c@0,42 16\na@30,12 16\nb@-20,17 16\n")
 	testing.expect_value(t, l.height, 60)
 }
 

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Stacking</title>
+  <style>
+    body { font-family: sans-serif }
+    .stage { position: relative; height: 170px; margin-bottom: 16px }
+    .card { position: absolute; width: 140px; height: 90px; padding: 8px; color: #fff }
+    .one { left: 0; top: 0; background: #db4437; z-index: 3 }
+    .two { left: 60px; top: 30px; background: #4285f4; z-index: 1 }
+    .three { left: 120px; top: 60px; background: #0f9d58; z-index: 2 }
+    .under { left: 300px; top: 20px; background: #f4b400; z-index: -1 }
+    .menu { position: absolute; top: 24px; left: 0; width: 180px; background: #fff; border: 1px solid #888; padding: 4px 8px }
+    .context { position: relative; z-index: 1; background: #eee; height: 60px; padding: 8px }
+    .inside { position: absolute; top: 30px; left: 40px; z-index: 100; background: #ab47bc; color: #fff; padding: 4px }
+    .above { position: relative; z-index: 2; margin-top: -10px; margin-left: 100px; background: #444; color: #fff; padding: 8px; width: 200px }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="card one">red, z-index 3</div>
+    <div class="card two">blue, z-index 1</div>
+    <div class="card three">green, z-index 2</div>
+    <div class="card under">yellow, z-index -1, under this text: the normal flow is drawn over it</div>
+    <p style="margin: 0 0 0 300px; padding-top: 50px">Text of the normal flow over the yellow card.</p>
+  </div>
+  <div style="position: relative">
+    <span>A menu opens over the text below:</span>
+    <div class="menu">Menu item one<br>Menu item two<br>Menu item three</div>
+  </div>
+  <p>This paragraph is covered by the menu, which is positioned (absolute) and so drawn after the normal flow.</p>
+  <div class="context">a stacking context (z-index 1)<div class="inside">z-index 100, but inside it</div></div>
+  <div class="above">z-index 2: over the purple box</div>
+</body>
+</html>

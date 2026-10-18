@@ -81,6 +81,7 @@ Layout :: struct {
 	images:     [dynamic]Image_Item,
 	viewport:   [2]f32, // the size this layout was made for (width, height of the page view)
 	height:     f32,    // total content height
+	layers:     [dynamic]Layer, // paint order of boxes, images and runs, see stacking.odin
 	fixed:      Fixed_Layer, // position: fixed, drawn last and not scrolled
 	clips:      [dynamic]Clip_Rect, // see Clip
 }
@@ -100,6 +101,7 @@ Fixed_Layer :: struct {
 	boxes:  [dynamic]Box,
 	runs:   [dynamic]Text_Run,
 	images: [dynamic]Image_Item,
+	layers: [dynamic]Layer, // paint order, see stacking.odin
 }
 
 PAGE_BACKGROUND :: dom.Color{255, 255, 255, 255}
@@ -169,7 +171,7 @@ build :: proc(doc: ^dom.Document, viewport: [2]f32, measure: Measure_Text, image
 	finish_line(&b)
 	b.last_box = {width = viewport.x, height = viewport.y, index = -1}
 	end_containing_block(&b)
-	draw_positioned_last(&b)
+	l.layers = resolve_layers(&b)
 	l.height = max(b.y + b.pending_margin, b.overflow)
 	place_fixed(&b) // they don't make the page taller
 	for f in b.floats {
@@ -247,7 +249,8 @@ Builder :: struct {
 	last_float_top: f32,  // a float is never placed above an earlier one
 	unfloat:        ^dom.Node, // the float whose own box is being laid out right now
 	offset:         [2]f32, // of the open position: relative inline elements, see layout_element
-	positioned:     [dynamic][2]int, // box ranges [first, end) of positioned elements, drawn last
+	positioned:     [dynamic]Positioned, // positioned elements, for the paint order (stacking.odin)
+	seq:            int,                 // counts starts and ends of positioned elements
 	containing:     [dynamic]Containing_Block, // open positioned elements, see position.odin
 	fixed_waiting:  [dynamic]Waiting_Absolute, // position: fixed, placed at the end
 	inline_fragments: [dynamic]Inline_Fragment, // decorated inline elements on the current line, see inline.odin
@@ -363,10 +366,14 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 		clip_contents(b, clipped, clips_x, clips_y, offset if moves_as_block else {})
 	}
 	moved := display_range_start(b)
+	pre := b.seq
+	if moves_as_block {
+		b.seq += 1
+	}
 	defer if moves_as_block {
 		moved = display_range_end(b, moved)
 		shift_items(b, moved, offset.y, offset.x)
-		add_positioned(b, moved.first_box, moved.end_box)
+		add_positioned(b, moved, style.z_index, pre)
 	}
 	inline_offset := offset if !moves_as_block else {}
 	if style.display == .Inline && node.parent != nil {

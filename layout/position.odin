@@ -24,8 +24,9 @@ import "../dom"
 // they don't scroll. They are placed after everything else into their own
 // layer (Layout.fixed, in viewport coordinates), see place_fixed.
 //
-// Positioned elements are drawn on top of the normal flow. An empty clip rect
-// hides an absolute element (clipped_away).
+// Positioned elements are drawn on top of the normal flow, ordered by
+// z-index (stacking.odin). An empty clip rect hides an absolute element
+// (clipped_away).
 
 @(private)
 Containing_Block :: struct {
@@ -124,15 +125,15 @@ place_fixed :: proc(b: ^Builder) {
 	l.boxes = make([dynamic]Box, b.allocator)
 	l.runs = make([dynamic]Text_Run, b.allocator)
 	l.images = make([dynamic]Image_Item, b.allocator)
-	b.positioned = make([dynamic][2]int, b.allocator)
+	b.positioned = make([dynamic]Positioned, b.allocator)
 
 	viewport := Placed_Box{width = b.viewport.x, height = b.viewport.y, index = -1}
 	for w in b.fixed_waiting {
 		layout_absolute(b, w, viewport)
 	}
-	draw_positioned_last(b)
+	layers := resolve_layers(b)
 
-	l.fixed = {l.boxes, l.runs, l.images}
+	l.fixed = {l.boxes, l.runs, l.images, layers}
 	l.boxes, l.runs, l.images = page_boxes, page_runs, page_images
 	b.positioned, b.overflow = page_positioned, page_overflow
 }
@@ -240,6 +241,8 @@ layout_absolute :: proc(b: ^Builder, w: Waiting_Absolute, cb: Placed_Box) {
 			style.height = dom.px(max(inner, 0) + inset[.Top] + inset[.Bottom])
 		}
 	}
+	pre := b.seq
+	b.seq += 1
 	placed := display_range_start(b)
 	old_style := fix_percentages(b, style, cb.width)
 	bottom := layout_in_own_context(b, node, x, x + width, y, node)
@@ -253,42 +256,8 @@ layout_absolute :: proc(b: ^Builder, w: Waiting_Absolute, cb: Placed_Box) {
 		shift_items(b, placed, dy)
 		bottom += dy
 	}
-	add_positioned(b, placed.first_box, placed.end_box)
+	add_positioned(b, placed, node.style.z_index, pre)
 	b.overflow = max(b.overflow, bottom)
-}
-
-// Positioned elements are drawn on top of the normal flow (in document order,
-// like z-index: auto). Their boxes are collected here; inner ranges are
-// part of an outer one, which ends later.
-@(private)
-add_positioned :: proc(b: ^Builder, first, end: int) {
-	if first == end {
-		return
-	}
-	for len(b.positioned) > 0 && b.positioned[len(b.positioned) - 1][0] >= first {
-		pop(&b.positioned)
-	}
-	append(&b.positioned, [2]int{first, end})
-}
-
-// Moves the boxes of positioned elements to the end of the box list. Text and
-// images are drawn after all boxes anyway.
-@(private)
-draw_positioned_last :: proc(b: ^Builder) {
-	if len(b.positioned) == 0 {
-		return
-	}
-	boxes := make([dynamic]Box, 0, len(b.layout.boxes), b.allocator)
-	next := 0
-	for r in b.positioned {
-		append(&boxes, ..b.layout.boxes[next:r[0]])
-		next = r[1]
-	}
-	append(&boxes, ..b.layout.boxes[next:])
-	for r in b.positioned {
-		append(&boxes, ..b.layout.boxes[r[0]:r[1]])
-	}
-	b.layout.boxes = boxes
 }
 
 // The offset of a position: relative element: left wins over right, top over

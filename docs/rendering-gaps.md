@@ -42,7 +42,7 @@ Ordered by how much they change what a page looks like, weighed against how big 
 11. **CSS grid** (2 / 70): the page layout of Wikipedia (the table of contents on the left) and MDN.
 12. **Negative margins on floats**: the Python docs put their sidebar next to the content with `float: left; margin-left: -100%`; it ends up below the content.
 13. ~~**`<details>`** without `open` (2 / 25) and **`<sup>`/`<sub>`** (2 / 105)~~: done. Still open: `<noscript>` (we hide it, but without JavaScript a browser shows it; lexbor would have to parse its content as markup).
-14. **`z-index`** (6 / 233), **`position: sticky`** (4 / 6), **`display: contents`**, **`-webkit-box`**.
+14. ~~**`z-index`** (6 / 233)~~: done (layers in paint order, stacking contexts; not for positioned inline elements). Still open: **`position: sticky`** (4 / 6), **`display: contents`**, **`-webkit-box`**.
 
 ### Drawing
 
