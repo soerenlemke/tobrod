@@ -130,7 +130,7 @@ The detailed developer notes (in German) are in [CLAUDE.md](CLAUDE.md).
 The full list, measured against Firefox on real pages, is in [docs/rendering-gaps.md](docs/rendering-gaps.md). In short:
 
 - no JavaScript yet
-- SVG images are drawn by tobrod's own small renderer: filled and stroked shapes and paths, no dashes, gradients or inline `<svg>` yet; no WebP (its place stays empty, like a broken image; no `alt` text yet), no video playback (the poster image is shown)
+- SVG images are drawn by tobrod's own small renderer: filled, stroked and dashed shapes and paths, no gradients or inline `<svg>` yet; no WebP (its place stays empty, like a broken image; no `alt` text yet), no video playback (the poster image is shown)
 - fonts: only Latin characters (Latin-1 and a few more); other scripts show `?`
 - layout: no CSS grid, no percentage heights in the flow, no scrolling inside boxes (`overflow: scroll/auto` just clip), `position: sticky` behaves like `static`, no `rowspan`
 - `@media` queries are evaluated once, for the window size at load time
@@ -185,7 +185,7 @@ Stage 4 — HTML & CSS
 - [x] `z-index` (paint order in layers, stacking contexts)
 - [ ] `position: sticky`
 - [x] SVG images: own renderer for filled and stroked shapes and paths (package `svg`)
-- [ ] SVG: inline `<svg>`, `<use>`, gradients, dashes
+- [ ] SVG: inline `<svg>`, `<use>`, gradients
 
 Stage 5 — Threads
 
