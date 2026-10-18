@@ -3,6 +3,7 @@ package ui
 import "core:math"
 import "core:strings"
 import rl "vendor:raylib"
+import rlgl "vendor:raylib/rlgl"
 import "../dom"
 import "../layout"
 
@@ -17,6 +18,7 @@ PageView :: struct {
 	image_sizes:    layout.Image_Sizes,      // their natural sizes, for the layout
 	svg_textures:   map[^dom.Node]rl.Texture2D, // inline <svg>s, drawn at their layout size
 	loading:        bool,                    // the page or its images are still loading (set_loading)
+	group_target:   rl.RenderTexture2D,      // layers with opacity are drawn into it first (draw_layer)
 }
 
 page_view_init :: proc(window_width, window_height: i32) -> PageView {
@@ -54,6 +56,9 @@ page_view_destroy :: proc(pv: ^PageView) {
 	delete(pv.images)
 	delete(pv.image_sizes)
 	delete(pv.svg_textures)
+	if pv.group_target.id != 0 {
+		rl.UnloadRenderTexture(pv.group_target)
+	}
 }
 
 // Drops the cached layout; the next render builds a new one.
@@ -113,11 +118,50 @@ page_view_render :: proc(pv: ^PageView) {
 	rl.DrawRectangleRec(pv.rect, rl.Color(pv.page_layout.background))
 	l := pv.page_layout
 	for layer in l.layers {
-		draw_display_list(pv, l.boxes[layer.boxes[0]:layer.boxes[1]], l.images[layer.images[0]:layer.images[1]], l.runs[layer.runs[0]:layer.runs[1]], pv.scroll_y)
+		draw_layer(pv, layer, l.boxes[layer.boxes[0]:layer.boxes[1]], l.images[layer.images[0]:layer.images[1]], l.runs[layer.runs[0]:layer.runs[1]], pv.scroll_y)
 	}
 	for layer in l.fixed.layers {
-		draw_display_list(pv, l.fixed.boxes[layer.boxes[0]:layer.boxes[1]], l.fixed.images[layer.images[0]:layer.images[1]], l.fixed.runs[layer.runs[0]:layer.runs[1]], 0)
+		draw_layer(pv, layer, l.fixed.boxes[layer.boxes[0]:layer.boxes[1]], l.fixed.images[layer.images[0]:layer.images[1]], l.fixed.runs[layer.runs[0]:layer.runs[1]], 0)
 	}
+}
+
+// A layer with opacity is a group: it is drawn opaque into a texture of the
+// window's size first (at the same coordinates, so the clip rectangles stay
+// right), which is then drawn faded onto the page. Drawn straight onto the
+// page, a background would shine through the text on it.
+@(private)
+draw_layer :: proc(pv: ^PageView, layer: layout.Layer, boxes: []layout.Box, images: []layout.Image_Item, runs: []layout.Text_Run, scroll_y: f32) {
+	if layer.fade <= 0 {
+		draw_display_list(pv, boxes, images, runs, scroll_y)
+		return
+	}
+	if layer.fade >= 1 {
+		return // opacity: 0
+	}
+	w, h := rl.GetScreenWidth(), rl.GetScreenHeight()
+	if pv.group_target.id == 0 || pv.group_target.texture.width != w || pv.group_target.texture.height != h {
+		if pv.group_target.id != 0 {
+			rl.UnloadRenderTexture(pv.group_target)
+		}
+		pv.group_target = rl.LoadRenderTexture(w, h)
+	}
+
+	rl.BeginTextureMode(pv.group_target)
+	rl.ClearBackground({0, 0, 0, 0})
+	// colors are blended as usual, but the alpha adds up instead of being
+	// multiplied by itself: the texture holds premultiplied colors
+	rlgl.SetBlendFactorsSeparate(rlgl.SRC_ALPHA, rlgl.ONE_MINUS_SRC_ALPHA, rlgl.ONE, rlgl.ONE_MINUS_SRC_ALPHA, rlgl.FUNC_ADD, rlgl.FUNC_ADD)
+	rl.BeginBlendMode(.CUSTOM_SEPARATE)
+	draw_display_list(pv, boxes, images, runs, scroll_y)
+	rl.EndBlendMode()
+	rl.EndTextureMode()
+
+	// premultiplied: the tint fades color and alpha alike
+	a := u8((1 - layer.fade) * 255 + 0.5)
+	rl.BeginBlendMode(.ALPHA_PREMULTIPLY)
+	// OpenGL render textures are upside down: a negative source height flips it
+	rl.DrawTextureRec(pv.group_target.texture, {0, 0, f32(w), -f32(h)}, {0, 0}, {a, a, a, a})
+	rl.EndBlendMode()
 }
 
 // Draws boxes, images and runs; scroll_y is how far they are scrolled up.
@@ -162,13 +206,14 @@ draw_display_list :: proc(pv: ^PageView, boxes: []layout.Box, images: []layout.I
 		}
 		set_clip(pv, image.clip, scroll_y, &current)
 		dest := rl.Rectangle{pv.rect.x + image.x, pv.rect.y + top, image.width, image.height}
+		tint := rl.Color(dom.faded({255, 255, 255, 255}, image.fade)) // opacity
 		if image.svg != nil {
 			if texture, ok := inline_svg_texture(pv, image.svg, image.width, image.height); ok {
-				rl.DrawTexturePro(texture, {0, 0, f32(texture.width), f32(texture.height)}, dest, {0, 0}, 0, rl.WHITE)
+				rl.DrawTexturePro(texture, {0, 0, f32(texture.width), f32(texture.height)}, dest, {0, 0}, 0, tint)
 			}
 		} else if texture, ok := pv.images[image.src]; ok {
 			source := rl.Rectangle{0, 0, f32(texture.width), f32(texture.height)}
-			rl.DrawTexturePro(texture, source, dest, {0, 0}, 0, rl.WHITE)
+			rl.DrawTexturePro(texture, source, dest, {0, 0}, 0, tint)
 		} else if pv.loading {
 			draw_image_placeholder(dest)
 		}

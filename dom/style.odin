@@ -28,6 +28,9 @@ Style :: struct {
 	offset:      Edges,      // top, right, bottom, left (the "inset" properties); .Auto by default
 	clip:        Maybe(Edges), // clip: rect(top, right, bottom, left) of absolute elements, auto = that edge of the box
 	overflow:    [2]Overflow,  // x, y; not inherited
+	// opacity of the element together with its ancestors', as how much it is
+	// faded out: 0 = opaque (so the zero value is right), 1 = invisible
+	fade:        f32,
 	// text decoration, see text_style.odin: the element's own lines (not
 	// inherited) and the lines drawn through its text (own + ancestors')
 	text_decoration_line:  Decoration_Lines,
@@ -191,6 +194,7 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		line_height = parent.line_height,
 		text_align  = parent.text_align,
 		visibility  = parent.visibility,
+		fade        = parent.fade, // the ancestors' opacity applies to everything inside
 		list_style  = parent.list_style,
 		list_inside = parent.list_inside,
 		white_space = parent.white_space,
@@ -399,6 +403,10 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 				style.z_index = z
 			}
 		}
+	case "opacity":
+		if opacity, ok := parse_opacity(value); ok {
+			style.fade = 1 - (1 - parent.fade) * opacity
+		}
 	case "position":
 		switch value {
 		case "static", "initial", "unset":
@@ -583,7 +591,7 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 // font-size comes before the box properties, because em in margins refers to it.
 STYLE_PROPERTIES :: [?]string {
 	"display", "color", "font", "font-size", "font-weight", "line-height", "font-family", "font-style", "text-align",
-	"visibility", "position", "z-index", "inset", "top", "right", "bottom", "left", "clip",
+	"visibility", "opacity", "position", "z-index", "inset", "top", "right", "bottom", "left", "clip",
 	"text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color", "white-space", "text-transform", "overflow-wrap", "word-wrap", "word-break", "letter-spacing", "overflow", "overflow-x", "overflow-y", "float", "clear", "list-style", "list-style-type", "list-style-position", "vertical-align", "border-collapse", "border-spacing", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
@@ -705,4 +713,32 @@ parse_overflow :: proc(value: string) -> (Overflow, bool) {
 		return .Clip, true
 	}
 	return .Visible, false
+}
+
+// opacity: a number or a percentage, clamped to 0..1. initial and unset are
+// 1 (it isn't inherited; the ancestors' opacity is already in parent.fade).
+@(private)
+parse_opacity :: proc(value: string) -> (opacity: f32, ok: bool) {
+	switch value {
+	case "initial", "unset", "inherit":
+		return 1, true
+	}
+	number := value
+	percent := strings.has_suffix(value, "%")
+	if percent {
+		number = value[:len(value) - 1]
+	}
+	v := strconv.parse_f32(number) or_return
+	if percent {
+		v /= 100
+	}
+	return clamp(v, 0, 1), true
+}
+
+// A color faded out by an element's opacity (Style.fade).
+faded :: proc(c: Color, fade: f32) -> Color {
+	if fade <= 0 {
+		return c
+	}
+	return {c.r, c.g, c.b, u8(f32(c.a) * (1 - fade) + 0.5)}
 }

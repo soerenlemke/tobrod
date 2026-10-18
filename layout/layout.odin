@@ -55,6 +55,7 @@ Image_Item :: struct {
 	x, y, width, height: f32,
 	link:                string, // href of the surrounding <a>, "" if none
 	hidden:              bool,   // visibility: hidden
+	fade:                f32,    // opacity, as in dom.Style.fade: 0 = opaque
 	clip:                Clip,
 }
 
@@ -261,6 +262,7 @@ Builder :: struct {
 	offset:         [2]f32, // of the open position: relative inline elements, see layout_element
 	positioned:     [dynamic]Positioned, // positioned elements, for the paint order (stacking.odin)
 	seq:            int,                 // counts starts and ends of positioned elements
+	using layer_state: Layer_State,      // opacity of the current layer (enter_layer)
 	containing:     [dynamic]Containing_Block, // open positioned elements, see position.odin
 	fixed_waiting:  [dynamic]Waiting_Absolute, // position: fixed, placed at the end
 	inline_fragments: [dynamic]Inline_Fragment, // decorated inline elements on the current line, see inline.odin
@@ -363,11 +365,16 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	// (defer is per block in Odin, so these are at proc level.)
 	offset := relative_offset(b, style)
 	moves_as_block := style.position == .Relative && (style.display != .Inline || style.float != .None) && !is_replaced_element(node.tag)
+	// opacity: a block gets a layer that is drawn as a group (stacking.odin);
+	// absolute and fixed ones get it in layout_absolute
+	groups := has_own_opacity(node) && style.position != .Absolute && style.position != .Fixed &&
+		(style.display != .Inline || style.float != .None) && !is_replaced_element(node.tag) && !b.measuring
+	layered := moves_as_block || groups
 	// overflow: hidden cuts off the content when the element is done: after a
 	// relative shift (this defer runs after the one below)
 	clips_x, clips_y := clips_overflow(style)
 	clips := (clips_x || clips_y) && !b.measuring && style.display != .Inline && !is_replaced_element(node.tag)
-	if (moves_as_block || clips) && style.float == .None {
+	if (layered || clips) && style.float == .None {
 		finish_line(b) // the lines before belong to the parent
 	}
 	clipped := display_range_start(b)
@@ -377,13 +384,21 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	}
 	moved := display_range_start(b)
 	pre := b.seq
-	if moves_as_block {
-		b.seq += 1
+	z := style.z_index if moves_as_block else nil
+	if groups && z == nil {
+		z = 0 // opacity < 1 makes a stacking context
 	}
-	defer if moves_as_block {
+	layer_state: Layer_State
+	layer_fade: f32
+	if layered {
+		b.seq += 1
+		layer_state, layer_fade = enter_layer(b, style, z != nil)
+	}
+	defer if layered {
 		moved = display_range_end(b, moved)
 		shift_items(b, moved, offset.y, offset.x)
-		add_positioned(b, moved, style.z_index, pre)
+		leave_layer(b, layer_state)
+		add_positioned(b, moved, z, pre, layer_fade)
 	}
 	inline_offset := offset if !moves_as_block else {}
 	if style.display == .Inline && node.parent != nil {
@@ -577,9 +592,7 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	b.last_box = {box_x, top.y, box_width, b.y - top.y, border, box_index}
 	if box_index >= 0 {
 		box := Box{box_x, top.y, box_width, b.y - top.y, box_background, border, {}, 0, box_radius(b, style, box_width, b.y - top.y)}
-		for edge in dom.Edge {
-			box.border_color[edge] = dom.border_color(style.border[edge], style.color)
-		}
+		set_box_colors(b, &box, style, box_background)
 		b.layout.boxes[box_index] = box
 	}
 
@@ -838,7 +851,7 @@ place_text :: proc(b: ^Builder, word: string, style: dom.Style) {
 	// same style as the previous run: extend it instead of starting a new one
 	if b.can_extend && len(b.line) > 0 {
 		last := &b.line[len(b.line) - 1]
-		if b.can_extend && same_style(last^, style) && last.link == b.link && last.hidden == (style.visibility == .Hidden) {
+		if b.can_extend && same_style(b, last^, style) && last.link == b.link && last.hidden == (style.visibility == .Hidden) {
 			separator := " " if space_width > 0 else ""
 			last.text = strings.concatenate({last.text, separator, word}, b.allocator)
 			b.x += space_width + width
@@ -856,10 +869,10 @@ place_text :: proc(b: ^Builder, word: string, style: dom.Style) {
 		font_size = style.font_size,
 		font      = font,
 		letter_spacing = style.letter_spacing,
-		color     = style.color,
+		color     = dom.faded(style.color, item_fade(b, style)),
 		link      = b.link,
 		hidden    = style.visibility == .Hidden,
-		decoration = style.decoration,
+		decoration = faded_decoration(b, style),
 		line_height = dom.line_height_px(style),
 		// a space that is itself decorated (inside the same link) is drawn
 		// with the line, like "with a" -> "bold" in <a>with a <b>bold</b></a>
@@ -935,7 +948,7 @@ place_marker :: proc(b: ^Builder, marker: Pending_Marker) {
 		line_height = dom.line_height_px(style) - style.font_size + font_size,
 		font_size = font_size,
 		font      = font,
-		color     = style.color,
+		color     = dom.faded(style.color, item_fade(b, style)),
 		hidden    = style.visibility == .Hidden,
 	})
 }
@@ -1098,6 +1111,7 @@ layout_image :: proc(b: ^Builder, node: ^dom.Node) {
 		svg    = node if node.tag == "svg" else nil,
 		link   = b.link,
 		hidden = node.style.visibility == .Hidden,
+		fade   = item_fade(b, node.style),
 	})
 	b.x += space_width + width
 	b.pending_space = false
@@ -1204,9 +1218,10 @@ add_margin :: proc(b: ^Builder, margin: f32) {
 }
 
 @(private)
-same_style :: proc(run: Text_Run, style: dom.Style) -> bool {
-	return run.font_size == style.font_size && run.font == font_of(style) && run.color == style.color && run.letter_spacing == style.letter_spacing &&
-		run.decoration == style.decoration
+same_style :: proc(b: ^Builder, run: Text_Run, style: dom.Style) -> bool {
+	// the colors as the run has them: faded by opacity
+	return run.font_size == style.font_size && run.font == font_of(style) && run.color == dom.faded(style.color, item_fade(b, style)) &&
+		run.letter_spacing == style.letter_spacing && run.decoration == faded_decoration(b, style)
 }
 
 // 1-based position of a list item among its <li> siblings.
@@ -1298,4 +1313,22 @@ baseline_shift :: proc(align: dom.Vertical_Align, parent_font_size: f32) -> f32 
 		return parent_font_size / 5
 	}
 	return 0
+}
+
+// The colors of a box (background and borders), faded by the opacity of the
+// element and its ancestors (the part its layer doesn't draw, item_fade).
+@(private)
+set_box_colors :: proc(b: ^Builder, box: ^Box, style: dom.Style, background: dom.Color) {
+	fade := item_fade(b, style)
+	box.color = dom.faded(background, fade)
+	for edge in dom.Edge {
+		box.border_color[edge] = dom.faded(dom.border_color(style.border[edge], style.color), fade)
+	}
+}
+
+@(private)
+faded_decoration :: proc(b: ^Builder, style: dom.Style) -> dom.Decoration {
+	d := style.decoration
+	d.color = dom.faded(d.color, item_fade(b, style))
+	return d
 }
