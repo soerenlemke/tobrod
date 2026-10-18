@@ -1,0 +1,20 @@
+name: Idea or feature
+description: Something tobrod could learn
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        tobrod is a learning project: steps that are small and easy to follow fit best. Please check the [roadmap](https://github.com/soerenlemke/tobrod#roadmap) and [docs/rendering-gaps.md](https://github.com/soerenlemke/tobrod/blob/main/docs/rendering-gaps.md) first. New libraries are only added after talking about it.
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: What should tobrod be able to do? On which pages does it matter?
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How (optional)
+      description: An idea how it could be built, or what it would need.

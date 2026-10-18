@@ -200,6 +200,8 @@ Stage 6 — JavaScript
 
 ## Development
 
+Contributions are welcome – see [CONTRIBUTING.md](CONTRIBUTING.md) for how to build, test and compare tobrod with a real browser, and the [Code of Conduct](CODE_OF_CONDUCT.md). A page that looks wrong is worth an issue.
+
 tobrod is a hobby and learning project. Much of it was developed together with an AI assistant (Claude); the commits show this with a `Co-Authored-By` line.
 
 ## License
