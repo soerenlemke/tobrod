@@ -1211,3 +1211,37 @@ test_inline_svg :: proc(t: ^testing.T) {
 		testing.expect(t, image.svg != nil && image.src == "", "drawn from the DOM")
 	}
 }
+
+@(test)
+test_opacity :: proc(t: ^testing.T) {
+	// a block with opacity gets a layer of its own, drawn faded as a group
+	// (after the normal flow: it is a stacking context); its items keep their
+	// colors. Inside it there are no more layers: the nested opacity fades
+	// the items themselves (0.5 * 50% = 0.25, of which the layer draws 0.5).
+	doc, err := dom.parse(`<body style="margin: 0"><div style="opacity: 0.5; background: #f00">a` +
+		`<p style="opacity: 50%; color: #00f">b <img width="4" height="4"></p>` +
+		`<p style="opacity: 1">c</p></div><p>d <span style="opacity: 0.5">e</span></p></body>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer dom.destroy(doc)
+
+	l := build(doc, {1000, 600}, fake_measure)
+	defer destroy(l)
+	if len(l.layers) != 2 || len(l.boxes) != 1 || len(l.runs) != 5 || len(l.images) != 1 {
+		testing.fail_now(t, fmt.tprintf("%d layers, %d boxes, %d runs, %d images", len(l.layers), len(l.boxes), len(l.runs), len(l.images)))
+	}
+	// the normal flow: d, and e - an inline element is faded by itself
+	testing.expect_value(t, l.layers[0].fade, 0)
+	testing.expect_value(t, l.runs[0].color[3], 255)
+	testing.expect_value(t, l.runs[1].color[3], 128)
+	// the group
+	group := l.layers[1]
+	testing.expect_value(t, group.fade, 0.5)
+	testing.expect_value(t, group.runs, [2]int{2, 5})
+	testing.expect_value(t, l.boxes[0].color, dom.Color{255, 0, 0, 255})
+	testing.expect_value(t, l.runs[2].color[3], 255)                    // a
+	testing.expect_value(t, l.runs[3].color, dom.Color{0, 0, 255, 128}) // b
+	testing.expect_value(t, l.images[0].fade, 0.5)
+	testing.expect_value(t, l.runs[4].color[3], 255) // c: opacity 1 doesn't undo the group's
+}

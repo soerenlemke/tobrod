@@ -243,9 +243,15 @@ layout_absolute :: proc(b: ^Builder, w: Waiting_Absolute, cb: Placed_Box) {
 	}
 	pre := b.seq
 	b.seq += 1
+	z := style.z_index
+	if has_own_opacity(node) && z == nil {
+		z = 0 // opacity < 1 makes a stacking context
+	}
+	layer_state, layer_fade := enter_layer(b, style^, z != nil)
 	placed := display_range_start(b)
 	old_style := fix_percentages(b, style, cb.width)
 	bottom := layout_in_own_context(b, node, x, x + width, y, node)
+	leave_layer(b, layer_state)
 	style^ = old_style
 	style.height, style.border_box = old_height, old_border_box
 	placed = display_range_end(b, placed)
@@ -256,7 +262,7 @@ layout_absolute :: proc(b: ^Builder, w: Waiting_Absolute, cb: Placed_Box) {
 		shift_items(b, placed, dy)
 		bottom += dy
 	}
-	add_positioned(b, placed, node.style.z_index, pre)
+	add_positioned(b, placed, z, pre, layer_fade)
 	b.overflow = max(b.overflow, bottom)
 }
 

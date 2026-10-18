@@ -156,9 +156,7 @@ place_inline_boxes :: proc(b: ^Builder, line_top, line_height: f32) {
 		if !ends {
 			box.radius[.Top_Right], box.radius[.Bottom_Right] = 0, 0
 		}
-		for edge in dom.Edge {
-			box.border_color[edge] = dom.border_color(style.border[edge], style.color)
-		}
+		set_box_colors(b, &box, style, style.background)
 		append(&b.layout.boxes, box)
 	}
 

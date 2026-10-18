@@ -1,6 +1,7 @@
 package layout
 
 import "core:slice"
+import "../dom"
 
 // Paint order: which items are drawn over which (CSS "stacking").
 //
@@ -21,10 +22,18 @@ import "core:slice"
 // While laying out, every positioned element is noted with its range of the
 // display list (add_positioned); resolve_layers then sorts the items into
 // layers, which the ui draws one after the other.
+//
+// opacity < 1 also makes an element a stacking context (with z-index 0). Its
+// layer is drawn as a group: everything in it opaque into an image of its
+// own, which is then faded (Layer.fade), so text on a background doesn't
+// let the background shine through. Inside a stacking context there are no
+// more layers, so there (and for inline elements) the colors of the items
+// themselves are faded instead (item_fade): the same where nothing overlaps.
 
 // The items of one layer, as ranges [first, end) of the lists of the layout.
 Layer :: struct {
 	boxes, images, runs: [2]int,
+	fade:                f32, // opacity of the group, as in dom.Style.fade: 0 = opaque
 }
 
 @(private)
@@ -32,14 +41,57 @@ Positioned :: struct {
 	using range: Display_Range,
 	z:           int,
 	stacking:    bool, // has a z-index: a stacking context
+	fade:        f32,  // the layer's opacity, if it gets one
 	pre, post:   int,  // when it started and ended: nesting of positioned elements
 }
 
 @(private)
-add_positioned :: proc(b: ^Builder, range: Display_Range, z: Maybe(int), pre: int) {
+add_positioned :: proc(b: ^Builder, range: Display_Range, z: Maybe(int), pre: int, fade: f32 = 0) {
 	value, has_z := z.?
-	append(&b.positioned, Positioned{range = range, z = value, stacking = has_z, pre = pre, post = b.seq})
+	append(&b.positioned, Positioned{range = range, z = value, stacking = has_z, fade = fade, pre = pre, post = b.seq})
 	b.seq += 1
+}
+
+// What enter_layer changes while a positioned element is laid out.
+@(private)
+Layer_State :: struct {
+	group_fade: f32,  // the opacity the current layer is drawn with
+	in_context: bool, // inside a stacking context: no layers of their own
+}
+
+// Called before the content of a positioned element (or one with opacity) is
+// laid out; returns the state to restore and the fade of its layer. Only an
+// element outside of stacking contexts gets a layer of its own (resolve_layers).
+@(private)
+enter_layer :: proc(b: ^Builder, style: dom.Style, stacking: bool) -> (saved: Layer_State, fade: f32) {
+	saved = {b.group_fade, b.in_context}
+	if stacking && !b.in_context {
+		fade = style.fade
+		b.group_fade = style.fade
+	}
+	b.in_context ||= stacking
+	return
+}
+
+@(private)
+leave_layer :: proc(b: ^Builder, saved: Layer_State) {
+	b.group_fade, b.in_context = saved.group_fade, saved.in_context
+}
+
+// Does the element have an opacity of its own (not only its ancestors')?
+@(private)
+has_own_opacity :: proc(node: ^dom.Node) -> bool {
+	return node.parent != nil && node.style.fade > node.parent.style.fade
+}
+
+// How much an item's colors are faded: its opacity, without the part its
+// layer is already drawn with.
+@(private)
+item_fade :: proc(b: ^Builder, style: dom.Style) -> f32 {
+	if b.group_fade >= 1 {
+		return 0 // the layer isn't drawn at all
+	}
+	return 1 - (1 - style.fade) / (1 - b.group_fade)
 }
 
 // Reorders boxes, images and runs of the layout into layers (see above) and
@@ -49,7 +101,7 @@ resolve_layers :: proc(b: ^Builder) -> [dynamic]Layer {
 	l := b.layout
 	layers := make([dynamic]Layer, b.allocator)
 	if len(b.positioned) == 0 {
-		append(&layers, Layer{{0, len(l.boxes)}, {0, len(l.images)}, {0, len(l.runs)}})
+		append(&layers, Layer{boxes = {0, len(l.boxes)}, images = {0, len(l.images)}, runs = {0, len(l.runs)}})
 		return layers
 	}
 
@@ -89,12 +141,13 @@ resolve_layers :: proc(b: ^Builder) -> [dynamic]Layer {
 	// document order. Group 0: z < 0, 1: the normal flow (layer -1), 2: z >= 0.
 	Key :: struct {
 		layer, group, z: int,
+		fade:            f32,
 	}
 	keys := make([dynamic]Key, context.temp_allocator)
 	append(&keys, Key{layer = -1, group = 1})
 	for i in 0 ..< len(entries) {
 		if owner[i] == i {
-			append(&keys, Key{layer = i, group = 0 if entries[i].z < 0 else 2, z = entries[i].z})
+			append(&keys, Key{layer = i, group = 0 if entries[i].z < 0 else 2, z = entries[i].z, fade = entries[i].fade})
 		}
 	}
 	slice.stable_sort_by(keys[:], proc(a, b: Key) -> bool {
@@ -105,7 +158,7 @@ resolve_layers :: proc(b: ^Builder) -> [dynamic]Layer {
 	images := make([dynamic]Image_Item, 0, len(l.images), b.allocator)
 	runs := make([dynamic]Text_Run, 0, len(l.runs), b.allocator)
 	for key in keys {
-		layer := Layer{boxes = {len(boxes), 0}, images = {len(images), 0}, runs = {len(runs), 0}}
+		layer := Layer{boxes = {len(boxes), 0}, images = {len(images), 0}, runs = {len(runs), 0}, fade = key.fade}
 		for box, k in l.boxes {
 			if box_of[k] == key.layer {
 				append(&boxes, box)
