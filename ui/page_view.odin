@@ -104,12 +104,18 @@ page_view_render :: proc(pv: ^PageView) {
 		return
 	}
 
-	// display list order: page background, boxes (parents first), images,
-	// text; then the same for the fixed elements, which don't scroll
+	// paint order: the page background, then layer by layer (the normal
+	// flow, positioned elements by z-index, see layout/stacking.odin) its
+	// boxes (parents first), images and text; then the same for the fixed
+	// elements, which don't scroll
 	rl.DrawRectangleRec(pv.rect, rl.Color(pv.page_layout.background))
 	l := pv.page_layout
-	draw_display_list(pv, l.boxes[:], l.images[:], l.runs[:], pv.scroll_y)
-	draw_display_list(pv, l.fixed.boxes[:], l.fixed.images[:], l.fixed.runs[:], 0)
+	for layer in l.layers {
+		draw_display_list(pv, l.boxes[layer.boxes[0]:layer.boxes[1]], l.images[layer.images[0]:layer.images[1]], l.runs[layer.runs[0]:layer.runs[1]], pv.scroll_y)
+	}
+	for layer in l.fixed.layers {
+		draw_display_list(pv, l.fixed.boxes[layer.boxes[0]:layer.boxes[1]], l.fixed.images[layer.images[0]:layer.images[1]], l.fixed.runs[layer.runs[0]:layer.runs[1]], 0)
+	}
 }
 
 // Draws boxes, images and runs; scroll_y is how far they are scrolled up.

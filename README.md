@@ -131,7 +131,7 @@ The full list, measured against Firefox on real pages, is in [docs/rendering-gap
 - no JavaScript yet
 - no SVG or WebP images (their place stays empty, like a broken image; no `alt` text yet), no video playback (the poster image is shown)
 - fonts: only Latin characters (Latin-1 and a few more); other scripts show `?`
-- layout: no CSS grid, no percentage heights in the flow, no `z-index`, no scrolling inside boxes (`overflow: scroll/auto` just clip), `position: sticky` behaves like `static`, no `rowspan`
+- layout: no CSS grid, no percentage heights in the flow, no scrolling inside boxes (`overflow: scroll/auto` just clip), `position: sticky` behaves like `static`, no `rowspan`
 - `@media` queries are evaluated once, for the window size at load time
 - form controls are drawn, but can't be used yet; no text selection, no tabs, no cookies
 
@@ -181,6 +181,7 @@ Stage 4 — HTML & CSS
 - [x] `position: relative` (with `top` / `right` / `bottom` / `left` / `inset`)
 - [x] `position: absolute` (containing block, static position, stretching, shrink-to-fit, hidden by an empty `clip`)
 - [x] `position: fixed` (own layer that doesn't scroll)
+- [x] `z-index` (paint order in layers, stacking contexts)
 - [ ] `position: sticky`
 - [ ] SVG
 

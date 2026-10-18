@@ -1,5 +1,6 @@
 package dom
 
+import "core:strconv"
 import "core:strings"
 
 // RGBA, 0..255 per channel. Our own type so dom doesn't depend on raylib.
@@ -21,6 +22,7 @@ Style :: struct {
 	white_space:    White_Space,    // inherited, see text_style.odin
 	text_transform: Text_Transform, // inherited
 	position:    Position,   // not inherited
+	z_index:     Maybe(int), // nil = auto; only for positioned elements (not inherited)
 	offset:      Edges,      // top, right, bottom, left (the "inset" properties); .Auto by default
 	clip:        Maybe(Edges), // clip: rect(top, right, bottom, left) of absolute elements, auto = that edge of the box
 	overflow:    [2]Overflow,  // x, y; not inherited
@@ -384,6 +386,15 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 		style.overflow.x = parse_overflow(value) or_else style.overflow.x
 	case "overflow-y":
 		style.overflow.y = parse_overflow(value) or_else style.overflow.y
+	case "z-index":
+		switch value {
+		case "auto", "initial", "unset", "inherit":
+			style.z_index = nil // inherit: z-index is hardly ever inherited on purpose
+		case:
+			if z, ok := strconv.parse_int(value); ok {
+				style.z_index = z
+			}
+		}
 	case "position":
 		switch value {
 		case "static", "initial", "unset":
@@ -534,7 +545,7 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 // font-size comes before the box properties, because em in margins refers to it.
 STYLE_PROPERTIES :: [?]string {
 	"display", "color", "font", "font-size", "font-weight", "line-height", "font-family", "font-style", "text-align",
-	"visibility", "position", "inset", "top", "right", "bottom", "left", "clip",
+	"visibility", "position", "z-index", "inset", "top", "right", "bottom", "left", "clip",
 	"text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color", "white-space", "text-transform", "overflow", "overflow-x", "overflow-y", "float", "clear", "list-style", "list-style-type", "list-style-position", "vertical-align", "border-collapse", "border-spacing", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
