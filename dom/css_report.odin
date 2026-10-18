@@ -12,7 +12,7 @@ import lxb "../vendor/lexbor"
 // - properties we don't read at all (line-height, white-space, transform, ...)
 // - values of properties we do read, but only approximate or ignore:
 //   display modes we fall back from (grid, contents, ...), sticky, and
-//   lengths with calc()
+//   calc() where we can't evaluate it (font-size, min(), ...)
 Css_Report :: struct {
 	allocator:  mem.Allocator,
 	properties: map[string]int, // property -> number of elements it applies to
@@ -58,7 +58,7 @@ SUPPORTED_DISPLAY :: []string {
 
 // Called by compute_style with what the walk found on one element.
 @(private)
-report_element :: proc(r: ^Css_Report, element: ^lxb.Dom_Element, declared: ^Declared) {
+report_element :: proc(r: ^Css_Report, element: ^lxb.Dom_Element, declared: ^Declared, props: ^Custom_Props) {
 	supported :: proc(property: string) -> bool {
 		for p in STYLE_PROPERTIES {
 			if p == property {
@@ -67,7 +67,7 @@ report_element :: proc(r: ^Css_Report, element: ^lxb.Dom_Element, declared: ^Dec
 		}
 		return false
 	}
-	check :: proc(r: ^Css_Report, element: ^lxb.Dom_Element, declared: ^Declared, property: string) {
+	check :: proc(r: ^Css_Report, element: ^lxb.Dom_Element, declared: ^Declared, props: ^Custom_Props, property: string) {
 		if !supported(property) {
 			report_count(r, &r.properties, property)
 			return
@@ -94,16 +94,50 @@ report_element :: proc(r: ^Css_Report, element: ^lxb.Dom_Element, declared: ^Dec
 			report_count(r, &r.values, strings.concatenate({"display: ", outer}, context.temp_allocator))
 		case property == "position" && value == "sticky":
 			report_count(r, &r.values, "position: sticky")
-		case strings.contains(value, "calc("):
+		case strings.contains(value, "calc(") && !calc_supported(property, value, props):
 			report_count(r, &r.values, strings.concatenate({"calc() in ", property}, context.temp_allocator))
 		}
 	}
 	for property in declared.plain_spec {
-		check(r, element, declared, property)
+		check(r, element, declared, props, property)
 	}
 	for property in declared.raw_values {
 		if !(property in declared.plain_spec) {
-			check(r, element, declared, property)
+			check(r, element, declared, props, property)
 		}
 	}
+}
+
+// calc() works in the lengths of the box model (they go through
+// parse_length), if we can evaluate every calc() in the value.
+@(private)
+calc_supported :: proc(property, value: string, props: ^Custom_Props) -> bool {
+	length_property :=
+		strings.has_prefix(property, "margin") ||
+		strings.has_prefix(property, "padding") ||
+		(strings.has_prefix(property, "border") && strings.has_suffix(property, "width")) ||
+		strings.has_suffix(property, "width") ||
+		strings.has_suffix(property, "height") ||
+		strings.has_suffix(property, "gap")
+	switch property {
+	case "top", "right", "bottom", "left", "inset", "flex-basis":
+		length_property = true
+	}
+	if !length_property {
+		return false
+	}
+	value := value
+	if contains_var(value) {
+		// like compute_style does it, see custom_props.odin
+		substituted := substitute_vars(value, props) or_return
+		value = strings.to_lower(substituted, context.temp_allocator)
+	}
+	for part in split_outside_parens(value, context.temp_allocator) {
+		if strings.contains(part, "calc(") {
+			if _, ok := parse_calc(part); !ok {
+				return false
+			}
+		}
+	}
+	return true
 }

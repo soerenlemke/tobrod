@@ -21,7 +21,7 @@ Border_Style :: enum {
 }
 
 // CSS initial values: medium width, no style (so not visible), currentcolor
-INITIAL_BORDER :: Border{width = {.Px, 3}}
+INITIAL_BORDER :: Border{width = {unit = .Px, value = 3}}
 INITIAL_BORDERS :: Borders {
 	.Top    = INITIAL_BORDER,
 	.Right  = INITIAL_BORDER,
@@ -115,7 +115,7 @@ parse_border_width :: proc(value: string) -> (width: Length, ok: bool) {
 	}
 	width = parse_length(value, false) or_return
 	// percentages are not allowed for border widths
-	return width, width.unit != .Percent && width.value >= 0
+	return width, !has_percent(width) && width.value >= 0
 }
 
 parse_border_style :: proc(value: string) -> (style: Border_Style, ok: bool) {

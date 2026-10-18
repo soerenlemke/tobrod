@@ -24,6 +24,9 @@
     .btn { display: inline-block; padding: 6px 12px; border: 1px solid #2563eb; background: #dbeafe; margin-right: 6px }
     .nav { display: inline-flex; gap: 12px; background: #f3f4f6; padding: 4px 8px }
     .tile { display: inline-block; width: 120px; padding: 8px; margin: 4px; background: #fde68a; vertical-align: top }
+    .calc-bar { width: calc(100% - 4em); margin: 0 auto; padding: 4px calc(1em - 8px); background: #dde7f5; border-left: 4px solid #4285f4 }
+    .calc-col { display: inline-block; box-sizing: border-box; width: calc(50% - 6px); margin-top: 8px; padding: 6px; background: #f3e3c3 }
+    .calc-col + .calc-col { margin-left: calc(2 * 6px) }
   </style>
 </head>
 <body>
@@ -66,6 +69,11 @@
        lined up on the text's baseline.</p>
     <p>An inline-flex bar: <span class="nav"><a href="#">Home</a><a href="#">Docs</a><a href="#">Blog</a></span> in a sentence.</p>
     <div><span class="tile">Tile one with a little text</span><span class="tile">Tile two</span><span class="tile">Tile three, a bit longer than the others</span><span class="tile">Tile four</span></div>
+  </div>
+  <div class="card">
+    <h2>calc()</h2>
+    <div class="calc-bar">width: calc(100% - 4em), centered</div>
+    <div><span class="calc-col">calc(50% - 6px)</span><span class="calc-col">and the other half, 12px apart</span></div>
   </div>
 </body>
 </html>

@@ -64,7 +64,9 @@ layout_inline_block :: proc(b: ^Builder, node: ^dom.Node) {
 
 	// the content, at y = 0 for now
 	drawn := display_range_start(b)
+	old_style := fix_percentages(b, &node.style, available)
 	bottom := layout_in_own_context(b, node, x, x + outer, 0, node)
+	node.style = old_style
 	drawn = display_range_end(b, drawn)
 
 	// the baseline: the bottom of the line box of its last text

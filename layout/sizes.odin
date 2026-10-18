@@ -23,7 +23,7 @@ clamp_width :: proc(b: ^Builder, style: dom.Style, available, inset, width: f32)
 	if style.max_width.unit != .Auto {
 		width = min(width, content_size(b, style, style.max_width, available, inset))
 	}
-	if style.min_width.unit != .Auto && style.min_width.value > 0 {
+	if style.min_width.unit != .Auto && !dom.is_zero(style.min_width) {
 		width = max(width, content_size(b, style, style.min_width, available, inset))
 	}
 	return max(width, 0)
@@ -45,4 +45,28 @@ content_size :: proc(b: ^Builder, style: dom.Style, length: dom.Length, availabl
 		size -= inset
 	}
 	return max(size, 0)
+}
+
+// Floats, inline blocks and absolute elements are laid out in their own
+// context, between edges worked out before. Inside, layout_block resolves
+// width, margins and padding again - against that space, the box itself.
+// Their percentages (also in calc()) refer to the containing block, though,
+// so for that layout they are replaced by their px values. Returns the style
+// as it was, to put back afterwards.
+@(private)
+fix_percentages :: proc(b: ^Builder, style: ^dom.Style, available: f32) -> (old: dom.Style) {
+	old = style^
+	fix :: proc(b: ^Builder, style: ^dom.Style, length: ^dom.Length, available: f32) {
+		if dom.has_percent(length^) {
+			length^ = dom.px(dom.resolve_length(length^, style.font_size, available, b.viewport))
+		}
+	}
+	fix(b, style, &style.width, available)
+	fix(b, style, &style.min_width, available)
+	fix(b, style, &style.max_width, available)
+	for edge in dom.Edge {
+		fix(b, style, &style.margin[edge], available)
+		fix(b, style, &style.padding[edge], available)
+	}
+	return
 }

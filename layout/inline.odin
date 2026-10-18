@@ -32,12 +32,12 @@ inline_decorated :: proc(style: dom.Style) -> bool {
 		return true
 	}
 	for edge in dom.Edge {
-		if style.border[edge].style != .None || style.padding[edge].value != 0 {
+		if style.border[edge].style != .None || !dom.is_zero(style.padding[edge]) {
 			return true
 		}
 	}
-	return (style.margin[.Left].unit != .Auto && style.margin[.Left].value != 0) ||
-		(style.margin[.Right].unit != .Auto && style.margin[.Right].value != 0)
+	return (style.margin[.Left].unit != .Auto && !dom.is_zero(style.margin[.Left])) ||
+		(style.margin[.Right].unit != .Auto && !dom.is_zero(style.margin[.Right]))
 }
 
 @(private)
