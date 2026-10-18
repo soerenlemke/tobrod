@@ -13,7 +13,7 @@ AddressBar :: struct {
 
 address_bar_init :: proc(window_width: i32) -> AddressBar {
 	bar := AddressBar {
-		rect = rl.Rectangle{x = 0, y = 0, width = f32(window_width), height = ADDRESS_BAR_HEIGHT},
+		rect = rl.Rectangle{x = 0, y = TAB_BAR_HEIGHT, width = f32(window_width), height = ADDRESS_BAR_HEIGHT},
 		focused = false,
 		bg_color = rl.Color{240, 240, 240, 255},
 		border_color = rl.Color{180, 180, 180, 255},
@@ -31,7 +31,7 @@ address_bar_render :: proc(bar: ^AddressBar) {
 	rl.DrawRectangleRec(bar.rect, bar.bg_color)
 
 	// border bottom
-	bottom_line := rl.Rectangle{0, bar.rect.height - 1, bar.rect.width, 1}
+	bottom_line := rl.Rectangle{0, bar.rect.y + bar.rect.height - 1, bar.rect.width, 1}
 	rl.DrawRectangleRec(bottom_line, bar.border_color)
 
 	// input field
@@ -60,7 +60,7 @@ address_bar_input_rect :: proc(bar: ^AddressBar) -> rl.Rectangle {
 	left := NAV_BUTTONS_LEFT + NAV_BUTTONS_WIDTH + 8
 	return rl.Rectangle {
 		x      = left,
-		y      = 6,
+		y      = bar.rect.y + 6,
 		width  = max(bar.rect.width - left - 8, 0),
 		height = 24,
 	}

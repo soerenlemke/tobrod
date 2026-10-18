@@ -9,7 +9,15 @@ import "core:fmt"
 import "core:strings"
 
 Browser :: struct {
-	window:      ui.MainWindow,
+	window: ui.MainWindow,
+	tabs:   [dynamic]^Tab, // same order as window.tabs
+}
+
+// A tab: its page in the ui (view) and what it needs to load pages. Every
+// tab has its own loader, i.e. its own worker thread and curl handle, so
+// tabs load independently (also in the background).
+Tab :: struct {
+	view:        ^ui.Tab_View,
 	page_loader: loader.Loader,  // field not named loader: that would hide the package
 	loading_id:  loader.Request_Id, // the page we are waiting for, 0 if none
 	// images of the current page that are still loading: request id -> src as
@@ -24,10 +32,9 @@ init :: proc(settings: ui.WindowSettings) -> (b: ^Browser, err: Maybe(ui.Error))
 		return nil, ui.Error{message = fmt.tprintf("curl init failed: %v", e.message)}
 	}
 
-	// on the heap: the ui callbacks and the loader keep pointers to it,
+	// on the heap: the ui callbacks and the loaders keep pointers to it,
 	// so it must not move (a returned struct would be copied)
 	b = new(Browser)
-	b.history = history_init()
 
 	main_window, ui_err := ui.init(settings)
 	if e, failed := ui_err.?; failed {
@@ -37,24 +44,55 @@ init :: proc(settings: ui.WindowSettings) -> (b: ^Browser, err: Maybe(ui.Error))
 	}
 	b.window = main_window
 
-	if e, failed := loader.init(&b.page_loader).?; failed {
+	if _, e := new_tab(b, 0); e != nil {
 		ui.destroy(&b.window)
 		free(b)
 		http.global_cleanup()
-		return nil, ui.Error{message = fmt.tprintf("http client init failed: %v", e.message)}
+		return nil, e
 	}
-
 	return b, nil
 }
 
 destroy :: proc(b: ^Browser) {
-	loader.destroy(&b.page_loader) // stops the worker before anything it uses goes away
-	forget_image_requests(b)
-	delete(b.image_requests)
+	for len(b.tabs) > 0 {
+		close_tab(b, len(b.tabs) - 1)
+	}
+	delete(b.tabs)
 	ui.destroy(&b.window)
-	history_destroy(&b.history)
 	free(b)
 	http.global_cleanup()
+}
+
+// A new, empty tab at index; not selected.
+@(private)
+new_tab :: proc(b: ^Browser, index: int) -> (tab: ^Tab, err: Maybe(ui.Error)) {
+	tab = new(Tab) // the loader's worker keeps a pointer to it
+	tab.history = history_init()
+	if e, failed := loader.init(&tab.page_loader).?; failed {
+		history_destroy(&tab.history)
+		free(tab)
+		return nil, ui.Error{message = fmt.tprintf("http client init failed: %v", e.message)}
+	}
+	tab.view = ui.tab_add(&b.window, index)
+	inject_at(&b.tabs, index, tab)
+	return tab, nil
+}
+
+@(private)
+close_tab :: proc(b: ^Browser, index: int) {
+	tab := b.tabs[index]
+	loader.destroy(&tab.page_loader) // stops the worker before anything it uses goes away
+	forget_image_requests(tab)
+	delete(tab.image_requests)
+	history_destroy(&tab.history)
+	ordered_remove(&b.tabs, index)
+	ui.tab_remove(&b.window, index) // the last one closes the window
+	free(tab)
+}
+
+@(private)
+active_tab :: proc(b: ^Browser) -> ^Tab {
+	return b.tabs[b.window.active]
 }
 
 // With a non-empty screenshot_path the window is captured to that file and run
@@ -71,39 +109,65 @@ register_callbacks :: proc(b: ^Browser) {
 	}
 
 	b.window.on_link_click_ctx = b
-	b.window.on_link_click = proc(href: string, ctx: rawptr) {
+	b.window.on_link_click = proc(href: string, new_tab: bool, ctx: rawptr) {
 		browser := cast(^Browser)ctx
-		base, _ := history_current(&browser.history)
+		base, _ := history_current(&active_tab(browser).history)
 		url, ok := http.resolve_url(base, href, context.temp_allocator)
 		if !ok || !http.is_loadable_url(url) {
 			return // e.g. mailto: or a broken href
 		}
-		navigate(browser, url)
+		if new_tab {
+			open_in_new_tab(browser, url)
+		} else {
+			navigate(browser, url)
+		}
 	}
 
 	b.window.on_navigate_ctx = b
 	b.window.on_navigate = proc(action: ui.Nav_Action, ctx: rawptr) {
 		browser := cast(^Browser)ctx
+		tab := active_tab(browser)
 		switch action {
 		case .Back:
-			if _, ok := history_back(&browser.history); ok {
-				open_current(browser)
+			if _, ok := history_back(&tab.history); ok {
+				open_current(browser, tab)
 			}
 		case .Forward:
-			if _, ok := history_forward(&browser.history); ok {
-				open_current(browser)
+			if _, ok := history_forward(&tab.history); ok {
+				open_current(browser, tab)
 			}
 		case .Reload:
-			open_current(browser)
+			open_current(browser, tab)
 		case .Stop:
-			stop_loading(browser)
+			stop_loading(browser, tab)
+		}
+	}
+
+	b.window.on_tab_ctx = b
+	b.window.on_tab = proc(event: ui.Tab_Event, ctx: rawptr) {
+		browser := cast(^Browser)ctx
+		switch event.kind {
+		case .New:
+			// right after the current tab, like a browser; the address bar
+			// waits for an address
+			index := browser.window.active + 1
+			if _, err := new_tab(browser, index); err == nil {
+				ui.tab_select(&browser.window, index)
+				browser.window.address_bar.focused = true
+			}
+		case .Select:
+			ui.tab_select(&browser.window, event.index)
+		case .Close:
+			close_tab(browser, event.index)
 		}
 	}
 
 	b.window.on_frame_ctx = b
 	b.window.on_frame = proc(ctx: rawptr) {
 		browser := cast(^Browser)ctx
-		receive_pages(browser)
+		for tab in browser.tabs {
+			receive_pages(browser, tab)
+		}
 	}
 }
 
@@ -117,89 +181,120 @@ navigate_typed :: proc(b: ^Browser, input: string) {
 	navigate(b, url)
 }
 
-// Opens a new page: a completed address or a clicked link.
-navigate :: proc(b: ^Browser, url: string) {
-	// url may point into the address bar's text, which open_current overwrites
-	url := strings.clone(url, context.temp_allocator)
-	history_push(&b.history, url)
-	open_current(b)
+// Opens what was typed (or given with --tab) in a new tab at the end,
+// loading in the background.
+open_tab_typed :: proc(b: ^Browser, input: string) {
+	url := http.complete_url(input, context.temp_allocator)
+	if url == "" {
+		return
+	}
+	if tab, err := new_tab(b, len(b.tabs)); err == nil {
+		navigate_tab(b, tab, url)
+	}
 }
 
-// Shows the current history entry in the address bar and starts loading it.
+// Opens a new page in the active tab: a completed address or a clicked link.
+navigate :: proc(b: ^Browser, url: string) {
+	navigate_tab(b, active_tab(b), url)
+}
+
 @(private)
-open_current :: proc(b: ^Browser) {
-	url, ok := history_current(&b.history)
+navigate_tab :: proc(b: ^Browser, tab: ^Tab, url: string) {
+	// url may point into the address bar's text, which open_current overwrites
+	url := strings.clone(url, context.temp_allocator)
+	history_push(&tab.history, url)
+	open_current(b, tab)
+}
+
+// A link opened with a middle click or Ctrl+click: a new tab right after
+// the current one, loading in the background (the current tab stays).
+@(private)
+open_in_new_tab :: proc(b: ^Browser, url: string) {
+	url := strings.clone(url, context.temp_allocator) // it points into the current page
+	tab, err := new_tab(b, b.window.active + 1)
+	if err != nil {
+		return
+	}
+	navigate_tab(b, tab, url)
+}
+
+// Shows the tab's current history entry in its address and starts loading it.
+@(private)
+open_current :: proc(b: ^Browser, tab: ^Tab) {
+	url, ok := history_current(&tab.history)
 	if !ok {
 		return
 	}
-	ui.address_bar_set_text(&b.window.address_bar, url)
-	ui.set_navigation_state(&b.window, history_can_back(&b.history), history_can_forward(&b.history))
+	ui.tab_set_address(&b.window, tab.view, url)
+	ui.set_navigation_state(&b.window, tab.view, history_can_back(&tab.history), history_can_forward(&tab.history))
 
 	// only starts loading; the page arrives later in receive_pages.
 	// The loader drops the queued images of the old page.
-	forget_image_requests(b)
+	forget_image_requests(tab)
 	// @media is evaluated for the current size of the page view
-	page_rect := b.window.page_view.rect
-	b.loading_id = loader.load(&b.page_loader, url, {page_rect.width, page_rect.height})
-	ui.set_loading(&b.window, true)
+	page_rect := tab.view.page_view.rect
+	tab.loading_id = loader.load(&tab.page_loader, url, {page_rect.width, page_rect.height})
+	ui.set_loading(&b.window, tab.view, true)
 }
 
 @(private)
-stop_loading :: proc(b: ^Browser) {
-	loader.cancel(&b.page_loader) // the page and its images
-	b.loading_id = 0
-	forget_image_requests(b)
-	ui.set_loading(&b.window, false)
+stop_loading :: proc(b: ^Browser, tab: ^Tab) {
+	loader.cancel(&tab.page_loader) // the page and its images
+	tab.loading_id = 0
+	forget_image_requests(tab)
+	ui.set_loading(&b.window, tab.view, false)
 }
 
-// Called once per frame: takes finished pages and images from the loader.
-// Results of older requests (another page meanwhile) are dropped.
+// Called once per frame and tab: takes finished pages and images from the
+// tab's loader. Results of older requests (another page meanwhile) are dropped.
 @(private)
-receive_pages :: proc(b: ^Browser) {
+receive_pages :: proc(b: ^Browser, tab: ^Tab) {
 	for {
-		result, ok := loader.poll(&b.page_loader)
+		result, ok := loader.poll(&tab.page_loader)
 		if !ok {
 			return
 		}
 		switch result.kind {
 		case .Page:
-			if result.id == b.loading_id {
-				show_page(b, &result)
+			if result.id == tab.loading_id {
+				show_page(b, tab, &result)
 			}
 		case .Resource:
-			if request, waiting := b.image_requests[result.id]; waiting {
+			if request, waiting := tab.image_requests[result.id]; waiting {
 				if result.error == "" {
-					ui.page_view_add_image(&b.window.page_view, request.src, result.url, result.content_type, result.data, request.mask)
+					ui.page_view_add_image(&tab.view.page_view, request.src, result.url, result.content_type, result.data, request.mask)
 				}
 				delete(request.src)
-				delete_key(&b.image_requests, result.id)
+				delete_key(&tab.image_requests, result.id)
 			}
 		}
 		loader.result_destroy(&result)
-		update_loading_state(b)
+		update_loading_state(b, tab)
 	}
 }
 
 @(private)
-show_page :: proc(b: ^Browser, result: ^loader.Result) {
-	b.loading_id = 0
+show_page :: proc(b: ^Browser, tab: ^Tab, result: ^loader.Result) {
+	tab.loading_id = 0
 
 	// after redirects we are somewhere else: remember and show that,
 	// links on the page are relative to it
-	if current, _ := history_current(&b.history); result.url != "" && result.url != current {
-		history_replace_current(&b.history, result.url)
-		ui.address_bar_set_text(&b.window.address_bar, result.url)
+	if current, _ := history_current(&tab.history); result.url != "" && result.url != current {
+		history_replace_current(&tab.history, result.url)
+		ui.tab_set_address(&b.window, tab.view, result.url)
 	}
 
 	if result.error != "" {
-		ui.page_view_set_content(&b.window.page_view, fmt.tprintf("Error: %s", result.error))
+		ui.tab_set_title(&b.window, tab.view, "Error")
+		ui.page_view_set_content(&tab.view.page_view, fmt.tprintf("Error: %s", result.error))
 		return
 	}
 	doc := result.document
 	result.document = nil
+	ui.tab_set_title(&b.window, tab.view, dom.document_title(doc))
 	// the page view owns the document from now on
-	ui.page_view_set_document(&b.window.page_view, doc)
-	request_images(b, doc)
+	ui.page_view_set_document(&tab.view.page_view, doc)
+	request_images(b, tab, doc)
 }
 
 // An image the loader is fetching for the page: src as written in the page
@@ -211,14 +306,14 @@ Image_Request :: struct {
 }
 
 // Queues the pictures of the page in the loader (<img src>, <video poster>,
-// the background and mask images of visible elements), each src only once. data: URLs need
-// no loading and go to the page view right away.
+// the background and mask images of visible elements), each src only once.
+// data: URLs need no loading and go to the page view right away.
 @(private)
-request_images :: proc(b: ^Browser, doc: ^dom.Document) {
-	base, _ := history_current(&b.history)
+request_images :: proc(b: ^Browser, tab: ^Tab, doc: ^dom.Document) {
+	base, _ := history_current(&tab.history)
 	requested := make(map[string]bool, allocator = context.temp_allocator)
 
-	fetch :: proc(b: ^Browser, src, base: string, mask: bool, requested: ^map[string]bool) {
+	fetch :: proc(tab: ^Tab, src, base: string, mask: bool, requested: ^map[string]bool) {
 		key := fmt.tprintf("%v %s", mask, src)
 		if src == "" || key in requested {
 			return
@@ -226,46 +321,46 @@ request_images :: proc(b: ^Browser, doc: ^dom.Document) {
 		requested[key] = true
 		if http.is_data_url(src) {
 			if data, content_type, ok := http.decode_data_url(src, context.temp_allocator); ok {
-				ui.page_view_add_image(&b.window.page_view, src, "", content_type, data, mask)
+				ui.page_view_add_image(&tab.view.page_view, src, "", content_type, data, mask)
 			}
 			return
 		}
 		url, resolved := http.resolve_url(base, src, context.temp_allocator)
 		if resolved && http.is_loadable_url(url) {
-			id := loader.load_resource(&b.page_loader, url)
-			b.image_requests[id] = {strings.clone(src), mask}
+			id := loader.load_resource(&tab.page_loader, url)
+			tab.image_requests[id] = {strings.clone(src), mask}
 		}
 	}
-	request :: proc(b: ^Browser, node: ^dom.Node, base: string, requested: ^map[string]bool) {
+	request :: proc(tab: ^Tab, node: ^dom.Node, base: string, requested: ^map[string]bool) {
 		if node.kind != .Element || node.style.display == .None {
 			return
 		}
 		// <img src> and the preview picture of <video poster>
 		if layout.is_replaced_element(node.tag) {
-			fetch(b, layout.image_source(node), base, false, requested)
+			fetch(tab, layout.image_source(node), base, false, requested)
 		}
-		fetch(b, node.style.background_image.image, base, false, requested)
-		fetch(b, node.style.mask.image, base, true, requested)
+		fetch(tab, node.style.background_image.image, base, false, requested)
+		fetch(tab, node.style.mask.image, base, true, requested)
 		for child in node.children {
-			request(b, child, base, requested)
+			request(tab, child, base, requested)
 		}
 	}
 	for child in doc.root.children {
-		request(b, child, base, &requested)
+		request(tab, child, base, &requested)
 	}
 }
 
 // Like in a browser, a page counts as loaded once its images are there too:
 // until then the loading bar runs and the stop button stays.
 @(private)
-update_loading_state :: proc(b: ^Browser) {
-	ui.set_loading(&b.window, b.loading_id != 0 || len(b.image_requests) > 0)
+update_loading_state :: proc(b: ^Browser, tab: ^Tab) {
+	ui.set_loading(&b.window, tab.view, tab.loading_id != 0 || len(tab.image_requests) > 0)
 }
 
 @(private)
-forget_image_requests :: proc(b: ^Browser) {
-	for _, request in b.image_requests {
+forget_image_requests :: proc(tab: ^Tab) {
+	for _, request in tab.image_requests {
 		delete(request.src)
 	}
-	clear(&b.image_requests)
+	clear(&tab.image_requests)
 }

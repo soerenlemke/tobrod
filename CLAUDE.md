@@ -38,6 +38,7 @@ Stand 2026-10-17 auf macOS und Windows (Odin `dev-2026-05`, nach `setup.ps1`): `
 `tobrod` hat zwei Kommandozeilen-Optionen (geparst mit `core:flags`, Unix-Stil):
 
 - `--url <url>` lädt die URL direkt beim Start (wie Eingabe in der Adressleiste + Enter).
+- `--tab <url>` (mehrfach möglich) öffnet weitere Tabs mit diesen URLs, im Hintergrund (für Screenshots der Tab-Leiste; der Screenshot wartet nur auf den aktiven Tab).
 - `--scroll <px>` (nur mit `--screenshot`): scrollt nach dem Laden so weit nach unten, bevor das Bild gemacht wird – zum Prüfen von Stellen weiter unten auf einer Seite.
 - `--record <dir>` / `--replay <dir>`: jede HTTP-Antwort in einem Ordner speichern bzw. nur aus ihm beantworten, ohne Netz (`http/recording.odin`, siehe „Vergleich mit einem echten Browser“).
 - `--screenshot <pfad>` wartet, bis die Seite geladen ist (und mindestens `SCREENSHOT_AFTER_FRAMES` Frames), speichert das Fenster als PNG und beendet sich. Ladebalken/Stopp-Button sind deshalb auf Screenshots nie zu sehen. Exit-Code 1, wenn das Bild nicht geschrieben werden kann.
@@ -73,7 +74,7 @@ Was als Nächstes fehlt, messen zwei Werkzeuge auf den Seiten in [tools/pages.tx
 
 ```
 main.odin               Einstiegspunkt: CLI-Optionen (--url, --screenshot) → browser.init → register_callbacks → navigate → run
-browser/browser.odin    Package browser: verbindet UI und HTTP-Client (Orchestrierung, Navigation)
+browser/browser.odin    Package browser: verbindet UI und HTTP-Client (Orchestrierung, Navigation, Tabs: je History + Loader)
 browser/history.odin    History: besuchte URLs + Index (push, back, forward, replace_current)
 http/client.odin        Package http: synchroner GET über libcurl easy-API
 http/header.odin        header_value: Header aus der rohen Antwort lesen
@@ -117,7 +118,8 @@ layout/inline_block.odin display: inline-block/inline-flex: atomare Box in der Z
 layout/inline.odin      Inline-Elemente: Padding/Rahmen/Margin in der Zeile, Hintergrund-Box pro Zeile
 layout/flex.odin        Flexbox: Items, Basisgrößen, Zeilen, grow/shrink, justify-content, align-items
 ui/                     Package ui: raylib-Fenster, Komponenten, Rendering
-  main_window.odin        MainWindow, init/destroy, Haupt-Loop (run)
+  main_window.odin        MainWindow, Tab_View, Tabs anlegen/schließen/wechseln, init/destroy, Haupt-Loop (run)
+  tab_bar.odin            Tab-Leiste: Tabs, ×, +, Tastenkürzel → Tab_Event
   address_bar.odin        Adressleiste: Eingabe, Fokus, Enter → Callback
   nav_buttons.odin        Zurück/Vor/Neu laden bzw. Stopp: mit Formen gezeichnet, Klick + Tastenkürzel → Callback
   rounded_box.odin        Boxen mit border-radius: Umriss aus Punkten, Hintergrund als Dreiecksfächer, Rahmen als Streifen
@@ -146,17 +148,18 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 
 ### Ablauf
 
-1. `main` baut `ui.WindowSettings` (1024×768, „Browser“) und ruft `browser.init`; der `Browser` liegt auf dem **Heap** (`^Browser`), weil UI-Callbacks und der Worker-Thread Pointer darauf halten – eine zurückgegebene Struct-Kopie würde sie ungültig machen.
-2. `browser.init`: zuerst `http.global_init` (vor jedem Thread), dann `ui.init` (raylib-Fenster, resizable, Escape schließt das Fenster **nicht** (`SetExitKey(.KEY_NULL)`), Fonts, AddressBar, PageView), dann `loader.init` (Worker-Thread mit eigenem curl-Handle). Bei Fehlern wird das bereits Erstellte wieder abgebaut. `destroy` beendet zuerst den Loader.
-3. `browser.register_callbacks` setzt `on_url_submit`, `on_link_click`, `on_navigate` und `on_frame` (jeweils mit `_ctx` = Pointer auf den `Browser`) im `MainWindow`. Das ist der Mechanismus, mit dem die UI nach oben kommuniziert, ohne `browser`/`http` zu importieren.
+1. `main` baut `ui.WindowSettings` (1024×800, „Browser“: darin Tab-Leiste 32 px + Adressleiste 36 px, die Seitenansicht bleibt 1024 × 732, so groß wie Firefox' Bilder in `compare.py`, das 68 px Kopf abschneidet) und ruft `browser.init`; der `Browser` liegt auf dem **Heap** (`^Browser`), weil UI-Callbacks und der Worker-Thread Pointer darauf halten – eine zurückgegebene Struct-Kopie würde sie ungültig machen.
+2. `browser.init`: zuerst `http.global_init` (vor jedem Thread), dann `ui.init` (raylib-Fenster, resizable, Escape schließt das Fenster **nicht** (`SetExitKey(.KEY_NULL)`), Fonts, AddressBar), dann der erste Tab (`new_tab`: `loader.init` = Worker-Thread mit eigenem curl-Handle, `ui.tab_add` = PageView). Bei Fehlern wird das bereits Erstellte wieder abgebaut. `destroy` schließt alle Tabs (beendet zuerst jeweils den Loader).
+3. `browser.register_callbacks` setzt `on_url_submit`, `on_link_click` (mit `new_tab` bei Mittelklick/Strg+Klick), `on_navigate`, `on_tab` und `on_frame` (jeweils mit `_ctx` = Pointer auf den `Browser`) im `MainWindow`. Das ist der Mechanismus, mit dem die UI nach oben kommuniziert, ohne `browser`/`http` zu importieren.
 4. `browser.run` → `ui.run`: klassischer raylib-Loop pro Frame:
-   - `on_frame` → `browser.receive_pages` (holt fertige Seiten vom Loader, nie blockierend)
-   - Resize → `address_bar_handle_resize`, `page_view_handle_resize`
+   - `on_frame` → `browser.receive_pages` für jeden Tab (holt fertige Seiten von dessen Loader, nie blockierend)
+   - Resize → `address_bar_handle_resize`, `page_view_handle_resize` für alle Tabs
+   - `tab_bar_handle_input` zuerst (Klick auf Tab/×/+, Mittelklick, Strg+T/W/Tab/1–9 → `on_tab`; kann den Tab wechseln oder schließen, nach dem letzten endet die Schleife); dann übernehmen die Buttons den Zustand des aktiven Tabs
    - `nav_buttons_handle_input` (Klick auf Zurück/Vor/Neu laden/Stopp, Alt+←/→, F5/Strg+R, Escape beim Laden → `on_navigate`)
    - `address_bar_handle_input` (Klick-Fokus nur aufs Eingabefeld, Zeichen, Backspace, Enter, Escape)
    - `page_view_handle_mouse` (Hand-Cursor über Links, Linksklick → `on_link_click`)
    - Mausrad → `page_view_handle_scroll`
-   - `BeginDrawing` → `page_view_render`, dann `address_bar_render`, `nav_buttons_render` und beim Laden `loading_bar_render` (liegen oben drüber) → `EndDrawing`
+   - `BeginDrawing` → `page_view_render` (aktiver Tab), dann `tab_bar_render`, `address_bar_render`, `nav_buttons_render` und beim Laden `loading_bar_render` (liegen oben drüber) → `EndDrawing`
    - `free_all(context.temp_allocator)` am Frame-Ende
 5. Enter in der Adressleiste oder `--url` → `navigate_typed` (ergänzt das Schema per `http.complete_url`) → `navigate`; Linkklick → `navigate` direkt. `navigate` → `history_push` → `open_current`: Adressleiste und Button-Zustand setzen, `loader.load(url)` → `loading_id` merken, `ui.set_loading(true)`. **Es wird nicht gewartet**, das Fenster bleibt bedienbar.
    Pro Frame holt `receive_pages` Ergebnisse ab: Ergebnisse mit einer anderen ID als `loading_id` (veraltet) werden verworfen. Sonst `set_loading(false)`; bei Redirect `history_replace_current` + Adressleiste; Fehler → `page_view_set_content("Error: …")`, sonst `page_view_set_document` (Dokument wurde im Worker geparst). Beim Rendern baut die PageView bei Bedarf das Layout und zeichnet die Runs.
@@ -185,13 +188,15 @@ Import-Pfade sind relativ, z. B. `import "../ui"`, `import "../vendor/curl"`.
 - Fehler: `Maybe(Http_Error)` mit curl-Code und `easy_strerror`-Text.
 
 **browser**
+- Tabs: `Browser.tabs` (`[dynamic]^Tab`, gleiche Reihenfolge wie `window.tabs`), ein `Tab` (auf dem Heap, sein Loader-Worker hält einen Pointer) hat `view` (`^ui.Tab_View`), einen **eigenen Loader** (eigener Worker-Thread und curl-Handle, Tabs laden also unabhängig, auch im Hintergrund), `loading_id`, `image_requests` und eine eigene `History`. `navigate`/Zurück/Vor/Neu laden/Stopp wirken auf den aktiven Tab, die Funktionen darunter (`open_current`, `receive_pages`, `show_page`, `request_images`) bekommen den Tab. Neuer Tab (Strg+T, „+“) rechts vom aktiven, ausgewählt, mit fokussierter Adressleiste; ein Link mit Mittelklick/Strg+Klick öffnet einen Hintergrund-Tab rechts vom aktiven (`open_in_new_tab`); `--tab` hängt Tabs hinten an (`open_tab_typed`). Der Titel kommt aus `<title>` (`dom.document_title`: Leerraum zusammengefasst, ein `<title>` in `<svg>` zählt nicht), bei Fehlern „Error“.
 - `History` (`entries` gehören der History, `index` = aktueller Eintrag, -1 wenn leer). `history_push` verwirft die Vor-Einträge; `history_push`/`history_replace_current` klonen erst und geben dann frei, weil der übergebene String in die History zeigen kann. Der aktuelle Eintrag ist die Basis für relative Links (kein separates `current_url`).
 - Bilder: Nach dem Anzeigen einer Seite sammelt `request_images` alle `<img src>` und `<video poster>` (jeden `src` einmal), löst sie gegen die Seiten-URL auf und übergibt sie dem Loader; `image_requests` merkt sich Request-ID → `src` (wie in der Seite, der Schlüssel fürs Layout). Fertige Bilder gehen an `ui.page_view_add_image`, Fehler werden still verworfen (das Bild bleibt leer, siehe PageView). Eine neue Navigation oder Stopp vergisst die offenen Bild-Aufträge.
 - Wie im Browser gilt eine Seite erst als geladen, wenn auch ihre Bilder da sind (`load`-Event): `update_loading_state` lässt Ladebalken/Stopp-Button an, solange Seite oder Bilder ausstehen. Dadurch wartet auch der Screenshot-Modus auf die Bilder.
 - `navigate` klont die URL in den Temp-Allocator, weil sie in den Text der Adressleiste zeigen kann, den `open_current` überschreibt.
 
 **ui**
-- `MainWindow` besitzt `AddressBar`, `NavButtons`, `PageView`, `loading` und die Callbacks (Submit, Link, Navigation, Frame).
+- `MainWindow` besitzt `AddressBar`, `NavButtons`, die Tabs (`tabs: [dynamic]^Tab_View`, `active`) und die Callbacks (Submit, Link, Navigation, Tab, Frame). `Tab_View` (auf dem Heap, der Browser hält Pointer) = `PageView`, `title`, `address` (was die Adressleiste in diesem Tab zeigt), `loading`, `can_back`/`can_forward`; Setter `set_loading`, `set_navigation_state`, `tab_set_address`, `tab_set_title` nehmen den Tab. Die UI ändert die Tabs nie selbst: `tab_bar.odin` meldet `Tab_Event` (`New`, `Select`, `Close` mit Index), der Browser ruft `tab_add`/`tab_remove`/`tab_select` (die Reihenfolge beider Listen ist gleich); der letzte geschlossene Tab schließt das Fenster (`should_close`). Beim Wechsel zeigt die Adressleiste die Adresse des Tabs, der Fenstertitel wird „Titel - Browser“.
+- Tab-Leiste (`tab_bar.odin`, `TAB_BAR_HEIGHT` = 32, `CHROME_HEIGHT` = Tab-Leiste + Adressleiste): Tabs teilen sich die Breite (höchstens 220 px), Titel (oder Adresse, oder „New Tab“) auf die Breite gekürzt (`fit_text`, Binärsuche, weil es jeden Frame läuft), Kreisel beim Laden, × zum Schließen, „+“ dahinter; der aktive Tab hat die Farbe der Adressleiste.
 - Ladebalken (`loading_bar.odin`): unbestimmter Fortschritt, ein Segment (30 % Breite) läuft in 1,2 s von links nach rechts, berechnet aus `rl.GetTime()`. Funktioniert nur, weil die Hauptschleife während des Ladens weiterläuft. `page_view_handle_mouse` kopiert den Link vor dem Callback in den Temp-Allocator, weil das Laden der neuen Seite das Layout (und damit den String) zerstört.
 - `AddressBar`: Text in einem `strings.Builder`; Eingabefeld (`address_bar_input_rect`) beginnt rechts der Navigations-Buttons und reicht bis 8 px vor den rechten Rand. Nur ein Klick ins Eingabefeld fokussiert.
 - `NavButtons`: `can_back`/`can_forward` (gesetzt vom Browser über `set_navigation_state`), `loading` (über `set_loading`: dann zeigt der dritte Button Stopp ✕ statt Reload, `Nav_Action.Stop` teilt sich den Platz mit `.Reload`), Buttons à 24 px; Icons mit `DrawLineEx`/`DrawRing`/`DrawTriangle` gezeichnet (Inter hat kein ↻). raylib lässt Dreiecke mit Ecken im Uhrzeigersinn weg (Backface Culling) → `draw_triangle_any_order`. Deaktivierte Buttons grau, Hover hellgrau hinterlegt. Fokusfarbe Blau `{66,133,244}`.
@@ -328,7 +333,7 @@ Beim Durchsehen aufgefallen (Stand 2026-10-17), noch nicht behoben:
 ## Roadmap (Kurzfassung, Details im README)
 
 - Stage 1 HTTP-Client – erledigt
-- Stage 2 Fenster & UI – Fenster, Adressleiste, klickbare Links und Navigation (zurück/vor/neu laden) stehen; Schema-Ergänzung; offen: Tabs
+- Stage 2 Fenster & UI – erledigt: Fenster, Tabs, Adressleiste, klickbare Links und Navigation (zurück/vor/neu laden); Schema-Ergänzung
 - Stage 3 Rohtext-Rendering – erledigt (Text, Umbruch, Scrollen)
 - Stage 4 HTML & CSS – lexbor-Bindings und eigener DOM-Baum (`dom`) fertig, CSS-Kaskade über lexbor gebunden; `display`, `color`, `font-size`, `font-weight` werden berechnet (Vererbung + Defaults + CSS); Package `layout` erzeugt positionierte Text-Runs, die UI zeichnet sie mit Größe, Fett, Kursiv (Inter), Monospace (JetBrains Mono) und Farbe. Links sind klickbar (relative URLs über curl). Box-Modell (margin, padding, width, max-width, height, min-/max-height, auto-Zentrierung, `overflow`, auch für Inline-Elemente, Hintergründe, Rahmen), `text-align`, `vw`/`vh`, Bilder (PNG/JPG/GIF/BMP/QOI, laden im Hintergrund, Platzhalter nur beim Laden). `border-radius`, Formular-Controls (nur gezeichnet). `opacity`, `background-image`, `mask-image`, `box-shadow`. Externe Stylesheets, `@media`, `visibility`, `position: relative`, `absolute` und `fixed`, `list-style`. CSS-Variablen (`var()`), Tabellen (ohne `rowspan`), Floats, Flexbox (Grundlagen), CSS Grid. `calc()` in Längen. `z-index`. SVG (eigener Renderer, als `<img>` und inline). Offen: Prozent-Höhen, WebP, `position: sticky`, Scrollen in Boxen, `vertical-align` für Inline-Inhalt.
 - Stage 5 Threads – erledigt: Laden + Parsen im Worker-Thread (`loader`), Ergebnisse per Queue, eigener curl-Handle pro Thread, Abbrechen; Ladebalken + Stopp-Button

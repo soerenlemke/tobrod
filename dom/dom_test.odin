@@ -74,3 +74,13 @@ test_parse_display :: proc(t: ^testing.T) {
 		testing.expect_value(t, ok, c.ok)
 	}
 }
+
+@(test)
+test_document_title :: proc(t: ^testing.T) {
+	doc, _ := parse("<html><head><title>\n  Hello   tabs \n</title></head><body><svg><title>no</title></svg></body></html>")
+	defer destroy(doc)
+	testing.expect_value(t, document_title(doc), "Hello tabs")
+	empty, _ := parse("<p>no title</p>")
+	defer destroy(empty)
+	testing.expect_value(t, document_title(empty), "")
+}

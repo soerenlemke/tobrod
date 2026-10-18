@@ -37,8 +37,8 @@ from pathlib import Path
 
 from PIL import Image, ImageChops
 
-PAGE_VIEW = (1024, 732)  # tobrod's default window (1024 x 768) minus the address bar
-ADDRESS_BAR = 36
+PAGE_VIEW = (1024, 732)  # tobrod's default window (1024 x 800) minus tabs and address bar
+CHROME = 68  # tab bar (32) + address bar (36) above the page
 OUT = Path("screenshots/compare")
 
 FIREFOX_PATHS = [
@@ -117,7 +117,7 @@ def run_tobrod(tobrod, url, out, recording=()):
         return False
     # only the page view, without the address bar
     with Image.open(window) as im:
-        im.crop((0, ADDRESS_BAR, PAGE_VIEW[0], ADDRESS_BAR + PAGE_VIEW[1])).save(out)
+        im.crop((0, CHROME, PAGE_VIEW[0], CHROME + PAGE_VIEW[1])).save(out)
     window.unlink()
     return True
 
