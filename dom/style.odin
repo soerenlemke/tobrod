@@ -20,6 +20,8 @@ Style :: struct {
 	list_inside: bool,       // list-style-position: inside, the marker starts the first line (inherited)
 	white_space:    White_Space,    // inherited, see text_style.odin
 	text_transform: Text_Transform, // inherited
+	overflow_wrap:  Overflow_Wrap,  // inherited: may long words be broken? (also word-break)
+	letter_spacing: f32,            // px added after every character (inherited)
 	position:    Position,   // not inherited
 	offset:      Edges,      // top, right, bottom, left (the "inset" properties); .Auto by default
 	clip:        Maybe(Edges), // clip: rect(top, right, bottom, left) of absolute elements, auto = that edge of the box
@@ -191,6 +193,8 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		list_inside = parent.list_inside,
 		white_space = parent.white_space,
 		text_transform = parent.text_transform,
+		overflow_wrap = parent.overflow_wrap,
+		letter_spacing = parent.letter_spacing,
 		border_collapse = parent.border_collapse,
 		border_spacing  = parent.border_spacing,
 		caption_bottom  = parent.caption_bottom,
@@ -494,6 +498,40 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 		case:
 			style.white_space = parse_white_space(value) or_else style.white_space
 		}
+	case "overflow-wrap", "word-wrap":
+		switch value {
+		case "inherit", "unset":
+			style.overflow_wrap = parent.overflow_wrap
+		case "normal", "initial":
+			style.overflow_wrap = .Normal
+		case "break-word":
+			style.overflow_wrap = .Break_Word
+		case "anywhere":
+			style.overflow_wrap = .Anywhere
+		}
+	case "word-break":
+		// one setting for both: break-all breaks anywhere and fills lines,
+		// the old break-word is overflow-wrap: anywhere
+		switch value {
+		case "inherit", "unset":
+			style.overflow_wrap = parent.overflow_wrap
+		case "break-all":
+			style.overflow_wrap = .Break_All
+		case "break-word":
+			style.overflow_wrap = .Anywhere
+		}
+	case "letter-spacing":
+		switch value {
+		case "inherit", "unset":
+			style.letter_spacing = parent.letter_spacing
+		case "normal", "initial":
+			style.letter_spacing = 0
+		case:
+			// em refers to the own font size and is inherited as px
+			if length, ok := parse_length(value, false); ok && !has_percent(length) {
+				style.letter_spacing = resolve_length(length, style.font_size, 0, {})
+			}
+		}
 	case "text-transform":
 		switch value {
 		case "inherit", "unset":
@@ -535,7 +573,7 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 STYLE_PROPERTIES :: [?]string {
 	"display", "color", "font", "font-size", "font-weight", "line-height", "font-family", "font-style", "text-align",
 	"visibility", "position", "inset", "top", "right", "bottom", "left", "clip",
-	"text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color", "white-space", "text-transform", "overflow", "overflow-x", "overflow-y", "float", "clear", "list-style", "list-style-type", "list-style-position", "vertical-align", "border-collapse", "border-spacing", "caption-side",
+	"text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color", "white-space", "text-transform", "overflow-wrap", "word-wrap", "word-break", "letter-spacing", "overflow", "overflow-x", "overflow-y", "float", "clear", "list-style", "list-style-type", "list-style-position", "vertical-align", "border-collapse", "border-spacing", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
 	"box-sizing", "width", "height", "min-width", "min-height", "max-height", "max-width",

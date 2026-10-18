@@ -194,3 +194,12 @@ Text_Transform :: enum {
 	Lowercase,
 	Capitalize, // the first letter of each word
 }
+
+// Whether a word that doesn't fit into a line may be broken between its
+// letters (overflow-wrap, word-wrap, word-break in one).
+Overflow_Wrap :: enum {
+	Normal,     // never: the word sticks out
+	Break_Word, // only if it doesn't fit on a line of its own; doesn't make the min-content smaller
+	Anywhere,   // like break-word, but every letter is a break opportunity (also for min-content)
+	Break_All,  // word-break: break-all: also to fill the rest of a line
+}

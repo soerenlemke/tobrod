@@ -173,7 +173,7 @@ draw_display_list :: proc(pv: ^PageView, boxes: []layout.Box, images: []layout.I
 		text_c := strings.clone_to_cstring(run.text, context.temp_allocator)
 		pos := rl.Vector2{pv.rect.x + run.x, pv.rect.y + top}
 		color := rl.Color(run.color)
-		rl.DrawTextEx(font_for(run.font), text_c, pos, run.font_size, 0, color)
+		rl.DrawTextEx(font_for(run.font), text_c, pos, run.font_size, run.letter_spacing, color)
 		draw_decoration(run, pos)
 	}
 }
