@@ -1,13 +1,33 @@
 package ui
 
+import "core:fmt"
+import "../layout"
 import rl "vendor:raylib"
 
-// Global fonts for text rendering, initialized once via fonts_init
+// Global fonts for text rendering, initialized once via fonts_init.
+// font (Inter regular) is also the font of the address bar.
 font: rl.Font
-font_bold: rl.Font
+page_fonts: [Face]rl.Font
 
-FONT_REGULAR_PATH :: "assets/fonts/Inter_18pt-Regular.ttf"
-FONT_BOLD_PATH :: "assets/fonts/Inter-Bold.ttf"
+// The font files: Inter (sans-serif) in four styles, JetBrains Mono in two
+// (monospace italic is drawn upright).
+Face :: enum {
+	Regular,
+	Bold,
+	Italic,
+	Bold_Italic,
+	Mono,
+	Mono_Bold,
+}
+
+FONT_PATHS :: [Face]cstring {
+	.Regular     = "assets/fonts/Inter_18pt-Regular.ttf",
+	.Bold        = "assets/fonts/Inter-Bold.ttf",
+	.Italic      = "assets/fonts/Inter-Italic.ttf",
+	.Bold_Italic = "assets/fonts/Inter-BoldItalic.ttf",
+	.Mono        = "assets/fonts/JetBrainsMono-Regular.ttf",
+	.Mono_Bold   = "assets/fonts/JetBrainsMono-Bold.ttf",
+}
 
 fonts_init :: proc() -> Maybe(Error) {
 	// raylib only bakes the 95 ASCII glyphs into the font texture by default,
@@ -15,20 +35,34 @@ fonts_init :: proc() -> Maybe(Error) {
 	codepoints := font_codepoints()
 	defer delete(codepoints)
 
-	ok: bool
-	if font, ok = load_font(FONT_REGULAR_PATH, codepoints[:]); !ok {
-		return Error{message = "could not load font " + FONT_REGULAR_PATH}
+	paths := FONT_PATHS
+	for face in Face {
+		ok: bool
+		if page_fonts[face], ok = load_font(paths[face], codepoints[:]); !ok {
+			for loaded in Face.Regular ..< face {
+				rl.UnloadFont(page_fonts[loaded])
+			}
+			return Error{message = fmt.tprintf("could not load font %s", paths[face])}
+		}
 	}
-	if font_bold, ok = load_font(FONT_BOLD_PATH, codepoints[:]); !ok {
-		rl.UnloadFont(font)
-		return Error{message = "could not load font " + FONT_BOLD_PATH}
-	}
+	font = page_fonts[.Regular]
 	return nil
 }
 
-// Regular or bold font for a piece of text.
-font_for :: proc(bold: bool) -> rl.Font {
-	return font_bold if bold else font
+// The raylib font for a piece of text of the page.
+font_for :: proc(f: layout.Font) -> rl.Font {
+	if f.mono {
+		return page_fonts[.Mono_Bold if f.bold else .Mono]
+	}
+	switch {
+	case f.bold && f.italic:
+		return page_fonts[.Bold_Italic]
+	case f.bold:
+		return page_fonts[.Bold]
+	case f.italic:
+		return page_fonts[.Italic]
+	}
+	return page_fonts[.Regular]
 }
 
 @(private)
@@ -70,6 +104,7 @@ font_codepoints :: proc() -> [dynamic]rune {
 }
 
 fonts_close :: proc() {
-	rl.UnloadFont(font)
-	rl.UnloadFont(font_bold)
+	for f in page_fonts {
+		rl.UnloadFont(f)
+	}
 }

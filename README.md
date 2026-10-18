@@ -21,7 +21,7 @@ It is a toy: it renders many real pages surprisingly well (try a Wikipedia artic
 - **HTML**: parsed by lexbor into tobrod's own DOM tree; presentational attributes (`bgcolor`, `align`, `valign`, `cellpadding`, `<center>`, `<font>`, ...), `<details>`/`<summary>`, `<sup>`/`<sub>`; plain text documents are shown like in Chrome
 - **CSS**: `<style>`, `style=""` and external stylesheets, `@media` queries, custom properties (`var()`), `calc()` in lengths, inheritance and the user agent defaults
 - **Layout**: block and inline layout with margin collapsing, the box model (margin, padding, borders, width / min-width / max-width, height / min-height / max-height, `box-sizing`, `margin: auto`), `overflow: hidden`, `position: relative`, `absolute` and `fixed`, backgrounds (also of inline elements like `code` or `mark`, one box per line), `text-align`, lists, images, tables, floats, flexbox and inline blocks (`inline-block`, `inline-flex`)
-- **Rendering**: text in regular and bold [Inter](https://github.com/rsms/inter) with sizes, colors, `line-height` and `text-decoration`, boxes, borders, images (PNG, JPG, GIF, BMP, QOI)
+- **Rendering**: text in [Inter](https://github.com/rsms/inter) (regular, bold, italic) and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) with sizes, colors, `line-height` and `text-decoration`, boxes, borders, images (PNG, JPG, GIF, BMP, QOI)
 
 See the [roadmap](#roadmap) for the details and [known limitations](#known-limitations) for what's missing.
 
@@ -152,6 +152,7 @@ Stage 3 — Text rendering
 
 - [x] Text rendering, wrapping, scrolling
 - [x] Regular and bold font, sizes, colors
+- [x] Italic and monospace fonts (`font-family`, `font-style`, `font`, `<code>`, `<em>`, ...)
 
 Stage 4 — HTML & CSS
 
@@ -203,6 +204,7 @@ Third-party parts keep their own licenses:
 | | License |
 |---|---|
 | [Inter](https://github.com/rsms/inter) font in `assets/fonts/` | SIL Open Font License 1.1, see [assets/fonts/OFL.txt](assets/fonts/OFL.txt) |
+| [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) font in `assets/fonts/` | SIL Open Font License 1.1, see [assets/fonts/OFL-JetBrainsMono.txt](assets/fonts/OFL-JetBrainsMono.txt) |
 | curl bindings in `vendor/curl/` (modified copy of Odin's `vendor:curl`) | zlib license (Odin), see [vendor/curl/LICENSE-odin](vendor/curl/LICENSE-odin) |
 | curl headers in `vendor/curl/c/` and the [curl](https://curl.se) submodule | curl license, see [vendor/curl/LICENSE](vendor/curl/LICENSE) |
 | [lexbor](https://github.com/lexbor/lexbor) submodule (v3.0.1) | Apache License 2.0 |

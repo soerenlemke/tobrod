@@ -22,7 +22,7 @@ Text_Run :: struct {
 	x, y:      f32,
 	width:     f32,
 	font_size: f32,
-	bold:      bool,
+	font:      Font,
 	color:     dom.Color,
 	link:      string, // href of the surrounding <a>, as written in the page; "" if none
 	hidden:    bool,   // visibility: hidden - takes up space, but is dropped in finish_line
@@ -100,7 +100,16 @@ Fixed_Layer :: struct {
 
 PAGE_BACKGROUND :: dom.Color{255, 255, 255, 255}
 
-Measure_Text :: #type proc(text: string, font_size: f32, bold: bool) -> f32
+Measure_Text :: #type proc(text: string, font_size: f32, font: Font) -> f32
+
+// Which of the ui's fonts a piece of text is drawn in.
+Font :: struct {
+	mono, bold, italic: bool,
+}
+
+font_of :: proc(style: dom.Style) -> Font {
+	return {mono = style.font_family == .Mono, bold = style.font_weight >= BOLD_WEIGHT, italic = style.font_italic}
+}
 
 // The content area of text, what an inline background covers: about the
 // height of the font's glyphs, independent of line-height.
@@ -636,12 +645,12 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 	if len(word) == 0 {
 		return
 	}
-	bold := style.font_weight >= BOLD_WEIGHT
-	width := b.measure(word, style.font_size, bold)
+	font := font_of(style)
+	width := b.measure(word, style.font_size, font)
 
 	space_width: f32 = 0
 	if b.pending_space {
-		space_width = b.measure(" ", b.space_style.font_size, b.space_style.font_weight >= BOLD_WEIGHT)
+		space_width = b.measure(" ", b.space_style.font_size, font_of(b.space_style))
 	}
 	inline_left := b.pending_inline_left // padding etc. of inline elements starting here
 
@@ -678,7 +687,7 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 		y         = b.offset.y, // the line's y is added in finish_line
 		width     = width,
 		font_size = style.font_size,
-		bold      = bold,
+		font      = font,
 		color     = style.color,
 		link      = b.link,
 		hidden    = style.visibility == .Hidden,
@@ -699,7 +708,7 @@ place_spaces :: proc(b: ^Builder, spaces: string, style: dom.Style) {
 	if line_empty(b) {
 		start_line(b, dom.line_height_px(style))
 	}
-	b.x += b.measure(spaces, style.font_size, style.font_weight >= BOLD_WEIGHT)
+	b.x += b.measure(spaces, style.font_size, font_of(style))
 	b.pending_space = false
 	b.can_extend = false // the run would lose the exact spacing
 }
@@ -737,10 +746,10 @@ set_pending_marker :: proc(b: ^Builder, node: ^dom.Node) {
 @(private)
 place_marker :: proc(b: ^Builder, marker: Pending_Marker) {
 	style := marker.style
-	bold := style.font_weight >= BOLD_WEIGHT
-	gap := b.measure(" ", style.font_size, bold)
+	font := font_of(style)
+	gap := b.measure(" ", style.font_size, font)
 	font_size := style.font_size * marker.scale
-	width := b.measure(marker.text, font_size, bold)
+	width := b.measure(marker.text, font_size, font)
 	x := marker.right - gap - width
 	if style.list_inside {
 		x = b.x
@@ -757,7 +766,7 @@ place_marker :: proc(b: ^Builder, marker: Pending_Marker) {
 		y           = -(style.font_size - font_size) / 2,
 		line_height = dom.line_height_px(style) - style.font_size + font_size,
 		font_size = font_size,
-		bold      = bold,
+		font      = font,
 		color     = style.color,
 		hidden    = style.visibility == .Hidden,
 	})
@@ -898,7 +907,7 @@ layout_image :: proc(b: ^Builder, node: ^dom.Node) {
 
 	space_width: f32 = 0
 	if b.pending_space {
-		space_width = b.measure(" ", b.space_style.font_size, b.space_style.font_weight >= BOLD_WEIGHT)
+		space_width = b.measure(" ", b.space_style.font_size, font_of(b.space_style))
 	}
 	inline_left := b.pending_inline_left
 	if !line_empty(b) && b.x + space_width + inline_left + width > b.line_right {
@@ -1017,7 +1026,7 @@ add_margin :: proc(b: ^Builder, margin: f32) {
 
 @(private)
 same_style :: proc(run: Text_Run, style: dom.Style) -> bool {
-	return run.font_size == style.font_size && run.bold == (style.font_weight >= BOLD_WEIGHT) && run.color == style.color &&
+	return run.font_size == style.font_size && run.font == font_of(style) && run.color == style.color &&
 		run.decoration == style.decoration
 }
 

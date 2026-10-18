@@ -169,7 +169,7 @@ draw_display_list :: proc(pv: ^PageView, boxes: []layout.Box, images: []layout.I
 		text_c := strings.clone_to_cstring(run.text, context.temp_allocator)
 		pos := rl.Vector2{pv.rect.x + run.x, pv.rect.y + top}
 		color := rl.Color(run.color)
-		rl.DrawTextEx(font_for(run.bold), text_c, pos, run.font_size, 0, color)
+		rl.DrawTextEx(font_for(run.font), text_c, pos, run.font_size, 0, color)
 		draw_decoration(run, pos)
 	}
 }
@@ -228,9 +228,9 @@ draw_image_placeholder :: proc(rect: rl.Rectangle) {
 
 // The Measure_Text proc for layout: asks raylib how wide the text is.
 @(private)
-measure_text :: proc(text: string, font_size: f32, bold: bool) -> f32 {
+measure_text :: proc(text: string, font_size: f32, font: layout.Font) -> f32 {
 	text_c := strings.clone_to_cstring(text, context.temp_allocator)
-	return rl.MeasureTextEx(font_for(bold), text_c, font_size, 0).x
+	return rl.MeasureTextEx(font_for(font), text_c, font_size, 0).x
 }
 
 // Hand cursor over links, a left click on a link goes to on_link_click.

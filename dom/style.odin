@@ -11,6 +11,8 @@ Style :: struct {
 	color:       Color,
 	font_size:   f32, // px
 	font_weight: int, // 1..1000, 400 = normal, 700 = bold
+	font_family: Font_Family, // inherited, see font_style.odin
+	font_italic: bool,        // font-style: italic (inherited)
 	line_height: Line_Height, // inherited, see text_style.odin
 	text_align:  Text_Align,
 	visibility:  Visibility, // inherited, but a child can be visible again
@@ -177,6 +179,8 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		color       = parent.color,
 		font_size   = parent.font_size,
 		font_weight = parent.font_weight,
+		font_family = parent.font_family,
+		font_italic = parent.font_italic,
 		line_height = parent.line_height,
 		text_align  = parent.text_align,
 		visibility  = parent.visibility,
@@ -230,6 +234,13 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		style.vertical_align = .Sub
 	case "small":
 		style.font_size = parent.font_size / 1.2
+	case "code", "kbd", "samp", "tt", "pre", "listing", "xmp", "plaintext":
+		style.font_family = .Mono
+		if parent.font_family != .Mono {
+			style.font_size = parent.font_size * MONO_SCALE
+		}
+	case "i", "em", "cite", "var", "dfn", "address":
+		style.font_italic = true
 	case "a":
 		style.color = LINK_COLOR
 		style.text_decoration_line = {.Underline}
@@ -293,6 +304,28 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 				style.font_size = size
 			}
 		}
+	case "font-family":
+		switch value {
+		case "inherit", "unset":
+			style.font_family = parent.font_family
+		case "initial":
+			style.font_family = .Sans
+		case:
+			if family, ok := parse_font_family(value); ok {
+				style.font_family = family
+			}
+		}
+	case "font-style":
+		switch value {
+		case "inherit", "unset":
+			style.font_italic = parent.font_italic
+		case "initial":
+			style.font_italic = false
+		case:
+			style.font_italic = parse_font_style(value) or_else style.font_italic
+		}
+	case "font":
+		apply_font_shorthand(style, value, parent)
 	case "font-weight":
 		switch value {
 		case "inherit", "unset":
@@ -472,7 +505,7 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 // later declaration should win; we don't know the order, the longhand wins.
 // font-size comes before the box properties, because em in margins refers to it.
 STYLE_PROPERTIES :: [?]string {
-	"display", "color", "font-size", "font-weight", "line-height", "text-align",
+	"display", "color", "font", "font-size", "font-weight", "line-height", "font-family", "font-style", "text-align",
 	"visibility", "position", "inset", "top", "right", "bottom", "left", "clip",
 	"text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color", "overflow", "overflow-x", "overflow-y", "float", "clear", "list-style", "list-style-type", "list-style-position", "vertical-align", "border-collapse", "border-spacing", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
