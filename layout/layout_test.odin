@@ -5,6 +5,7 @@ import "core:strings"
 import "core:testing"
 import "core:unicode/utf8"
 import "../dom"
+import "../svg"
 
 // Every character is half as wide as the font size: exact numbers, no window needed.
 fake_measure :: proc(text: string, font_size: f32, font: Font) -> f32 {
@@ -1403,4 +1404,29 @@ test_box_shadow_box :: proc(t: ^testing.T) {
 	testing.expect_value(t, shadows.count, 2)
 	testing.expect_value(t, shadows.list[0], Box_Shadow{x = 10, y = 2, blur = 3, color = {0, 0, 255, 255}})
 	testing.expect_value(t, shadows.list[1], Box_Shadow{spread = 1, color = {255, 0, 0, 255}, inset = true})
+}
+
+@(test)
+test_transform :: proc(t: ^testing.T) {
+	// a translation moves the items (percentages of the element's own size);
+	// a rotation goes to the element's layer as a matrix around its center
+	doc, err := dom.parse(`<body style="margin: 0"><div style="width: 100px; height: 20px; transform: translate(50%, 10px)">a</div>` +
+		`<div style="width: 100px; height: 20px; transform: rotate(180deg)">b</div><p>c</p></body>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer dom.destroy(doc)
+	l := build(doc, {1000, 600}, fake_measure)
+	defer destroy(l)
+	testing.expect_value(t, run_at(l, "a"), [2]f32{50, 12})
+	found := false
+	for layer in l.layers {
+		if m, ok := layer.transform.?; ok {
+			found = true
+			// rotating by 180 degrees around (50, 30) maps (0, 20) to (100, 40)
+			p := svg.apply(m, {0, 20})
+			testing.expect(t, abs(p.x - 100) < 1e-3 && abs(p.y - 40) < 1e-3, "rotated around the center")
+		}
+	}
+	testing.expect(t, found, "a layer with the rotation")
 }

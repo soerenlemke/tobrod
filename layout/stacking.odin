@@ -2,6 +2,7 @@ package layout
 
 import "core:slice"
 import "../dom"
+import "../svg"
 
 // Paint order: which items are drawn over which (CSS "stacking").
 //
@@ -34,6 +35,7 @@ import "../dom"
 Layer :: struct {
 	boxes, images, runs: [2]int,
 	fade:                f32, // opacity of the group, as in dom.Style.fade: 0 = opaque
+	transform:           Maybe(svg.Matrix), // rotate/scale/skew, in page coordinates (transform.odin)
 }
 
 @(private)
@@ -42,13 +44,15 @@ Positioned :: struct {
 	z:           int,
 	stacking:    bool, // has a z-index: a stacking context
 	fade:        f32,  // the layer's opacity, if it gets one
+	transform:   Maybe(svg.Matrix), // in the coordinates of its box at anchor (transform.odin)
+	anchor:      [2]f32,
 	pre, post:   int,  // when it started and ended: nesting of positioned elements
 }
 
 @(private)
-add_positioned :: proc(b: ^Builder, range: Display_Range, z: Maybe(int), pre: int, fade: f32 = 0) {
+add_positioned :: proc(b: ^Builder, range: Display_Range, z: Maybe(int), pre: int, fade: f32 = 0, transform: Maybe(svg.Matrix) = nil, anchor: [2]f32 = {}) {
 	value, has_z := z.?
-	append(&b.positioned, Positioned{range = range, z = value, stacking = has_z, fade = fade, pre = pre, post = b.seq})
+	append(&b.positioned, Positioned{range = range, z = value, stacking = has_z, fade = fade, transform = transform, anchor = anchor, pre = pre, post = b.seq})
 	b.seq += 1
 }
 
@@ -142,12 +146,13 @@ resolve_layers :: proc(b: ^Builder) -> [dynamic]Layer {
 	Key :: struct {
 		layer, group, z: int,
 		fade:            f32,
+		transform:       Maybe(svg.Matrix),
 	}
 	keys := make([dynamic]Key, context.temp_allocator)
 	append(&keys, Key{layer = -1, group = 1})
 	for i in 0 ..< len(entries) {
 		if owner[i] == i {
-			append(&keys, Key{layer = i, group = 0 if entries[i].z < 0 else 2, z = entries[i].z, fade = entries[i].fade})
+			append(&keys, Key{layer = i, group = 0 if entries[i].z < 0 else 2, z = entries[i].z, fade = entries[i].fade, transform = transform_of(entries[i])})
 		}
 	}
 	slice.stable_sort_by(keys[:], proc(a, b: Key) -> bool {
@@ -158,7 +163,7 @@ resolve_layers :: proc(b: ^Builder) -> [dynamic]Layer {
 	images := make([dynamic]Image_Item, 0, len(l.images), b.allocator)
 	runs := make([dynamic]Text_Run, 0, len(l.runs), b.allocator)
 	for key in keys {
-		layer := Layer{boxes = {len(boxes), 0}, images = {len(images), 0}, runs = {len(runs), 0}, fade = key.fade}
+		layer := Layer{boxes = {len(boxes), 0}, images = {len(images), 0}, runs = {len(runs), 0}, fade = key.fade, transform = key.transform}
 		for box, k in l.boxes {
 			if box_of[k] == key.layer {
 				append(&boxes, box)
@@ -179,4 +184,12 @@ resolve_layers :: proc(b: ^Builder) -> [dynamic]Layer {
 	}
 	l.boxes, l.images, l.runs = boxes, images, runs
 	return layers
+}
+
+@(private)
+transform_of :: proc(p: Positioned) -> Maybe(svg.Matrix) {
+	if m, ok := p.transform.?; ok {
+		return absolute_transform(m, p.anchor)
+	}
+	return nil
 }

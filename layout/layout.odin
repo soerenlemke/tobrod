@@ -59,6 +59,7 @@ Image_Item :: struct {
 	link:                string, // href of the surrounding <a>, "" if none
 	hidden:              bool,   // visibility: hidden
 	fade:                f32,    // opacity, as in dom.Style.fade: 0 = opaque
+	transform:           Maybe(Matrix), // in its own coordinates: (0, 0) is its top left corner
 	clip:                Clip,
 }
 
@@ -372,7 +373,10 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	// absolute and fixed ones get it in layout_absolute
 	groups := has_own_opacity(node) && style.position != .Absolute && style.position != .Fixed &&
 		(style.display != .Inline || style.float != .None) && !is_replaced_element(node.tag) && !b.measuring
-	layered := moves_as_block || groups
+	// transform: also a stacking context (transform.odin); inline elements can't be transformed
+	transformed := style.transform.count > 0 && style.position != .Absolute && style.position != .Fixed &&
+		(style.display != .Inline || style.float != .None) && !is_replaced_element(node.tag) && !b.measuring
+	layered := moves_as_block || groups || transformed
 	// overflow: hidden cuts off the content when the element is done: after a
 	// relative shift (this defer runs after the one below)
 	clips_x, clips_y := clips_overflow(style)
@@ -388,8 +392,8 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	moved := display_range_start(b)
 	pre := b.seq
 	z := style.z_index if moves_as_block else nil
-	if groups && z == nil {
-		z = 0 // opacity < 1 makes a stacking context
+	if (groups || transformed) && z == nil {
+		z = 0 // opacity < 1 and transform make a stacking context
 	}
 	layer_state: Layer_State
 	layer_fade: f32
@@ -401,7 +405,15 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 		moved = display_range_end(b, moved)
 		shift_items(b, moved, offset.y, offset.x)
 		leave_layer(b, layer_state)
-		add_positioned(b, moved, z, pre, layer_fade)
+		transform: Maybe(svg.Matrix)
+		anchor: [2]f32
+		if transformed {
+			box := b.last_box // the element's own border box, before the relative shift
+			box.x += offset.x
+			box.y += offset.y
+			transform, anchor = apply_element_transform(b, style, moved, box)
+		}
+		add_positioned(b, moved, z, pre, layer_fade, transform, anchor)
 	}
 	inline_offset := offset if !moves_as_block else {}
 	if style.display == .Inline && node.parent != nil {
@@ -1119,6 +1131,7 @@ layout_image :: proc(b: ^Builder, node: ^dom.Node) {
 		link   = b.link,
 		hidden = node.style.visibility == .Hidden,
 		fade   = item_fade(b, node.style),
+		transform = image_transform(b, node.style, width, height),
 	})
 	b.x += space_width + width
 	b.pending_space = false

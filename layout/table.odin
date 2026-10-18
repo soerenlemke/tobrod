@@ -457,6 +457,13 @@ shift_items :: proc(b: ^Builder, p: Display_Range, dy: f32, dx: f32 = 0) {
 		clip.x += dx
 		clip.y += dy
 	}
+	// and the boxes transformed elements inside are anchored at
+	for &e in b.positioned {
+		if e.transform != nil && e.first_box >= p.first_box && e.end_box <= p.end_box && e.first_run >= p.first_run &&
+		   e.end_run <= p.end_run && e.first_image >= p.first_image && e.end_image <= p.end_image {
+			e.anchor += {dx, dy}
+		}
+	}
 }
 
 // What a part of the layout added to the display list: [first, end) per list.

@@ -244,8 +244,8 @@ layout_absolute :: proc(b: ^Builder, w: Waiting_Absolute, cb: Placed_Box) {
 	pre := b.seq
 	b.seq += 1
 	z := style.z_index
-	if has_own_opacity(node) && z == nil {
-		z = 0 // opacity < 1 makes a stacking context
+	if (has_own_opacity(node) || style.transform.count > 0) && z == nil {
+		z = 0 // opacity < 1 and transform make a stacking context
 	}
 	layer_state, layer_fade := enter_layer(b, style^, z != nil)
 	placed := display_range_start(b)
@@ -257,12 +257,15 @@ layout_absolute :: proc(b: ^Builder, w: Waiting_Absolute, cb: Placed_Box) {
 	placed = display_range_end(b, placed)
 
 	// only bottom: the element is moved up so that it ends there
+	own_box := b.last_box
 	if !set[.Top] && set[.Bottom] {
 		dy := cb.y + cb.height - offset[.Bottom] - bottom
 		shift_items(b, placed, dy)
 		bottom += dy
+		own_box.y += dy
 	}
-	add_positioned(b, placed, z, pre, layer_fade)
+	transform, anchor := apply_element_transform(b, node.style, placed, own_box)
+	add_positioned(b, placed, z, pre, layer_fade, transform, anchor)
 	b.overflow = max(b.overflow, bottom)
 }
 
