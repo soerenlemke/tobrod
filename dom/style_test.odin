@@ -442,14 +442,14 @@ test_css_report :: proc(t: ^testing.T) {
 	doc, err := parse(`<html><head><style>
 		p { letter-spacing: 1px; color: red; display: grid }
 		.s { --gap: 4px; position: sticky; width: calc(100% - 2em); font-size: calc(1em + 2px); margin-left: calc(min(1px, 2px) + 1em); margin-right: calc(var(--gap)*-1) }
-	</style></head><body><p>a</p><p class="s">b</p><div style="white-space: nowrap"></div></body></html>`, report = &report)
+	</style></head><body><p>a</p><p class="s">b</p><div style="text-overflow: ellipsis"></div></body></html>`, report = &report)
 	if e, ok := err.?; ok {
 		testing.fail_now(t, e.message)
 	}
 	defer destroy(doc)
 
 	testing.expect_value(t, report.properties["letter-spacing"], 2)
-	testing.expect_value(t, report.properties["white-space"], 1)
+	testing.expect_value(t, report.properties["text-overflow"], 1)
 	testing.expect(t, !("color" in report.properties), "color is supported")
 	testing.expect_value(t, report.values["display: grid"], 2)
 	testing.expect_value(t, report.values["position: sticky"], 1)

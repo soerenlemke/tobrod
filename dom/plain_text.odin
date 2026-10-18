@@ -26,6 +26,8 @@ from_plain_text :: proc(text: string) -> (doc: ^Document, err: Maybe(Parse_Error
 		element.style = default_style(tag, false, parent.style)
 		parent = element
 	}
+	// long lines wrap, like in Chrome (its text/plain style is pre-wrap)
+	parent.style.white_space = .Pre_Wrap
 
 	text_node := new_node(.Text, parent, allocator)
 	text_node.text = strings.clone(text, allocator)

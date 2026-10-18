@@ -49,7 +49,7 @@ layout_inline_block :: proc(b: ^Builder, node: ^dom.Node) {
 		space_width = b.measure(" ", b.space_style.font_size, font_of(b.space_style))
 	}
 	inline_left := b.pending_inline_left
-	if !line_empty(b) && b.x + space_width + inline_left + outer > b.line_right {
+	if !line_empty(b) && wraps_before(node) && b.x + space_width + inline_left + outer > b.line_right {
 		finish_line(b)
 		space_width = 0
 	}

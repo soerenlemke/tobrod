@@ -18,6 +18,8 @@ Style :: struct {
 	visibility:  Visibility, // inherited, but a child can be visible again
 	list_style:  List_Style, // inherited from ul/ol to the li
 	list_inside: bool,       // list-style-position: inside, the marker starts the first line (inherited)
+	white_space:    White_Space,    // inherited, see text_style.odin
+	text_transform: Text_Transform, // inherited
 	position:    Position,   // not inherited
 	offset:      Edges,      // top, right, bottom, left (the "inset" properties); .Auto by default
 	clip:        Maybe(Edges), // clip: rect(top, right, bottom, left) of absolute elements, auto = that edge of the box
@@ -187,6 +189,8 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		visibility  = parent.visibility,
 		list_style  = parent.list_style,
 		list_inside = parent.list_inside,
+		white_space = parent.white_space,
+		text_transform = parent.text_transform,
 		border_collapse = parent.border_collapse,
 		border_spacing  = parent.border_spacing,
 		caption_bottom  = parent.caption_bottom,
@@ -237,6 +241,9 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		style.font_size = parent.font_size / 1.2
 	case "code", "kbd", "samp", "tt", "pre", "listing", "xmp", "plaintext":
 		style.font_family = .Mono
+		if tag == "pre" || tag == "listing" || tag == "xmp" || tag == "plaintext" {
+			style.white_space = .Pre
+		}
 		if parent.font_family != .Mono {
 			style.font_size = parent.font_size * MONO_SCALE
 		}
@@ -480,6 +487,26 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 		case "inherit", "unset":
 			style.list_inside = parent.list_inside
 		}
+	case "white-space":
+		switch value {
+		case "inherit", "unset":
+			style.white_space = parent.white_space
+		case:
+			style.white_space = parse_white_space(value) or_else style.white_space
+		}
+	case "text-transform":
+		switch value {
+		case "inherit", "unset":
+			style.text_transform = parent.text_transform
+		case "none", "initial":
+			style.text_transform = .None
+		case "uppercase":
+			style.text_transform = .Uppercase
+		case "lowercase":
+			style.text_transform = .Lowercase
+		case "capitalize":
+			style.text_transform = .Capitalize
+		}
 	case "text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color":
 		apply_text_declaration(style, property, value)
 	case "line-height":
@@ -508,7 +535,7 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 STYLE_PROPERTIES :: [?]string {
 	"display", "color", "font", "font-size", "font-weight", "line-height", "font-family", "font-style", "text-align",
 	"visibility", "position", "inset", "top", "right", "bottom", "left", "clip",
-	"text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color", "overflow", "overflow-x", "overflow-y", "float", "clear", "list-style", "list-style-type", "list-style-position", "vertical-align", "border-collapse", "border-spacing", "caption-side",
+	"text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color", "white-space", "text-transform", "overflow", "overflow-x", "overflow-y", "float", "clear", "list-style", "list-style-type", "list-style-position", "vertical-align", "border-collapse", "border-spacing", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
 	"box-sizing", "width", "height", "min-width", "min-height", "max-height", "max-width",

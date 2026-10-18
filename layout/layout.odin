@@ -5,6 +5,8 @@ import "core:mem"
 import "core:mem/virtual"
 import "core:strconv"
 import "core:strings"
+import "core:unicode"
+import "core:unicode/utf8"
 import "../dom"
 
 // Turns a styled DOM into a "display list" of background boxes and positioned
@@ -286,9 +288,21 @@ layout_node :: proc(b: ^Builder, node: ^dom.Node) {
 			return
 		}
 		style := node.parent.style
-		if in_pre(node) {
+		switch {
+		case dom.keeps_spaces(style.white_space):
 			layout_pre_text(b, node.text, style)
-		} else {
+		case style.white_space == .Pre_Line:
+			// line breaks are kept, spaces collapse
+			rest := node.text
+			first := true
+			for line in strings.split_iterator(&rest, "\n") {
+				if !first {
+					line_break(b, style)
+				}
+				first = false
+				layout_text(b, line, style)
+			}
+		case:
 			layout_text(b, node.text, style)
 		}
 	case .Element:
@@ -599,8 +613,8 @@ layout_text :: proc(b: ^Builder, text: string, style: dom.Style) {
 	}
 }
 
-// Text inside <pre>: spaces and line breaks are kept. Long lines still wrap
-// (like white-space: pre-wrap), so plain text documents stay readable.
+// Text with white-space: pre or pre-wrap: spaces and line breaks are kept;
+// long lines only wrap with pre-wrap (place_word decides).
 @(private)
 layout_pre_text :: proc(b: ^Builder, text: string, style: dom.Style) {
 	rest := text
@@ -646,6 +660,7 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 	if len(word) == 0 {
 		return
 	}
+	word := transform_text(word, style.text_transform)
 	font := font_of(style)
 	width := b.measure(word, style.font_size, font)
 
@@ -655,8 +670,9 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 	}
 	inline_left := b.pending_inline_left // padding etc. of inline elements starting here
 
-	// wrap; a word wider than the line stays alone on its line
-	if !line_empty(b) && b.x + space_width + inline_left + width > b.line_right {
+	// wrap (unless white-space forbids it); a word wider than the line stays
+	// alone on its line
+	if !line_empty(b) && dom.wraps(style.white_space) && b.x + space_width + inline_left + width > b.line_right {
 		finish_line(b)
 		space_width = 0
 	}
@@ -911,7 +927,7 @@ layout_image :: proc(b: ^Builder, node: ^dom.Node) {
 		space_width = b.measure(" ", b.space_style.font_size, font_of(b.space_style))
 	}
 	inline_left := b.pending_inline_left
-	if !line_empty(b) && b.x + space_width + inline_left + width > b.line_right {
+	if !line_empty(b) && wraps_before(node) && b.x + space_width + inline_left + width > b.line_right {
 		finish_line(b)
 		space_width = 0
 	}
@@ -1031,16 +1047,6 @@ same_style :: proc(run: Text_Run, style: dom.Style) -> bool {
 		run.decoration == style.decoration
 }
 
-@(private)
-in_pre :: proc(node: ^dom.Node) -> bool {
-	for n := node.parent; n != nil; n = n.parent {
-		if n.kind == .Element && (n.tag == "pre" || n.tag == "textarea") {
-			return true
-		}
-	}
-	return false
-}
-
 // 1-based position of a list item among its <li> siblings.
 @(private)
 list_index :: proc(node: ^dom.Node) -> int {
@@ -1059,6 +1065,32 @@ list_index :: proc(node: ^dom.Node) -> int {
 @(private)
 is_space :: proc(c: u8) -> bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'
+}
+
+// Whether the line may wrap before an image or inline block: that is up to
+// the white-space of the text it stands in (its parent's), not its own (an
+// <input> keeps its own text on one line, but can still wrap as a whole).
+@(private)
+wraps_before :: proc(node: ^dom.Node) -> bool {
+	return node.parent == nil || dom.wraps(node.parent.style.white_space)
+}
+
+// text-transform on a word. capitalize: the first letter of each word.
+@(private)
+transform_text :: proc(word: string, transform: dom.Text_Transform) -> string {
+	switch transform {
+	case .None:
+	case .Uppercase:
+		return strings.to_upper(word, context.temp_allocator)
+	case .Lowercase:
+		return strings.to_lower(word, context.temp_allocator)
+	case .Capitalize:
+		first, size := utf8.decode_rune_in_string(word)
+		if unicode.is_lower(first) {
+			return strings.concatenate({strings.to_upper(word[:size], context.temp_allocator), word[size:]}, context.temp_allocator)
+		}
+	}
+	return word
 }
 
 // The next word of text, split at white space as CSS sees it: unlike

@@ -60,11 +60,13 @@ form_control_style :: proc(node: ^Node, style: ^Style) {
 		control_look(node, style)
 		button_look(style)
 		style.text_align = .Left
+		style.white_space = .Nowrap
 		style.padding[.Right] = px(22) // room for the arrow
 		style.position = .Relative // the arrow is placed at its right edge
 	case "textarea":
 		control_look(node, style)
 		style.font_family = .Mono
+		style.white_space = .Pre_Wrap
 		cols := attribute_int(node, "cols", 20)
 		rows := attribute_int(node, "rows", 2)
 		// a monospace character is 0.6em wide; padding and border are inside
@@ -73,6 +75,7 @@ form_control_style :: proc(node: ^Node, style: ^Style) {
 		style.overflow = {.Hidden, .Hidden}
 	case "input":
 		control_look(node, style)
+		style.white_space = .Pre // the value stays on one line, with its spaces
 		switch input_type(node) {
 		case "hidden":
 			style.display = .None

@@ -53,6 +53,8 @@ apply_html_hints :: proc(node: ^Node, style: ^Style, parent: Style) {
 			if n, ok := strconv.parse_f32(value); ok && n >= 0 {
 				style.border_spacing = n
 			}
+		case "nowrap":
+			style.white_space = .Nowrap
 		case "border":
 			// <table border> without a number means 1
 			n := strconv.parse_f32(value) or_else 1
@@ -122,6 +124,8 @@ html_hint_supported :: proc(tag, name: string) -> bool {
 		}
 	case "cellpadding", "cellspacing", "border":
 		return tag == "table"
+	case "nowrap":
+		return tag == "td" || tag == "th"
 	}
 	return false
 }
