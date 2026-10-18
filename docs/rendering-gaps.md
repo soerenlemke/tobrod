@@ -3,7 +3,7 @@
 How we find out what to implement next, and the current list. It comes from two tools that run over the pages in [tools/pages.txt](../tools/pages.txt). The list has twelve real pages: two Wikipedia articles, odin-lang.org, example.com, the first web page at CERN, danluu.com, Hacker News, Lobsters, rust-lang.org, the Python tutorial, MDN and a GitHub repository.
 
 - **`tools/compare.py`** renders every page with Firefox and with tobrod at the size of tobrod's page view (1024 × 732). Firefox runs headless with JavaScript off and a light theme. The report (`screenshots/compare/index.html`) shows both pictures and where they differ. Fonts are rasterized differently, so the percentages are only a rough guide; the pictures show what is missing.
-- **`tools/cssreport`** loads the same pages the way tobrod does and counts the CSS that applies to elements but that tobrod ignores or only approximates. The result is a table sorted by how many pages use each property. Properties without a visible effect on a page you only look at, like `transition`, `cursor` or `user-select`, are listed separately.
+- **`tools/cssreport`** loads the same pages the way tobrod does and counts the CSS that applies to elements but that tobrod ignores or only approximates. The result is a table sorted by how many pages use each property. Properties without a visible effect on a page you only look at, like `transition`, `cursor` or `user-select`, are listed separately. Two more tables cover HTML: visible elements a browser renders in its own way (form controls, SVG, `<details>`, italic `<em>`, monospace `<code>`, ...) and presentational attributes like `bgcolor` or `align`.
 
 ```sh
 odin build . && python tools/compare.py tools/pages.txt
@@ -25,7 +25,7 @@ Ordered by how much they change what a page looks like, weighed against how big 
 
 2. ~~**`text-decoration`** (9 / 4260)~~: done. Underline, overline and line-through, propagated to the text inside, the UA underline of links.
 3. ~~**`line-height`** (9 / 1980)~~: done (numbers, lengths, percentages, inherited like in CSS). Not yet from the `font` shorthand.
-4. **`font-style: italic`** (5 / 209) and **`font-family`** (9 / 1650): we have one font, Inter, in regular and bold. Italic, a serif and a monospace font would each need another font file (OFL, like Inter). Web fonts (`@font-face`) are a bigger step after that.
+4. **`font-style: italic`** (5 / 209) and **`font-family`** (9 / 1650): we have one font, Inter, in regular and bold. HTML adds to this: `<code>` (6 / 203) and `<pre>` (3 / 10) should be monospace, `<i>` (2 / 141), `<cite>` (1 / 48) and `<em>` italic. Italic, a serif and a monospace font would each need another font file (OFL, like Inter). Web fonts (`@font-face`) are a bigger step after that.
 5. **`white-space`** (8 / 1202): `nowrap` and `pre` outside of `<pre>`; navigation bars and labels wrap where they shouldn't.
 6. **`text-transform`** (6 / 289), **`letter-spacing`** (4 / 296), **`word-break`**/**`overflow-wrap`** (5 / 196): smaller, easy steps.
 
@@ -34,22 +34,22 @@ Ordered by how much they change what a page looks like, weighed against how big 
 7. ~~**`display: inline-block`** (7 / 1963) and **`inline-flex`** (6 / 128)~~: done. Still missing: **`vertical-align`** for inline content (`top`, `middle`, ...), inline blocks sit on the baseline.
 8. ~~**`box-sizing: border-box`** (7 / 251) and **`min-width`** (8 / 154)~~: done.
 9. ~~**`calc()`** in lengths (5 pages; margins, widths, heights)~~: done (`+ - * /`, nested, mixed units resolved in the layout). Not yet in `font-size`, and no `min()`/`max()`/`clamp()`.
-10. **HTML attributes for presentation**: `bgcolor`, `width`, `align`, `valign`, `cellpadding` on tables (Hacker News is built with them), `<center>`, `<font color>`. They are not CSS, so the CSS report doesn't see them, but the comparison does.
+10. **HTML attributes for presentation**: `bgcolor`, `width`, `align`, `valign`, `cellpadding` on tables (Hacker News is built with them: `td[valign]` 60, `td[align]` 30), `<center>` (1 / 33, we even draw it inline), `<font color>`.
 11. **CSS grid** (2 / 70): the page layout of Wikipedia (the table of contents on the left) and MDN.
 12. **Negative margins on floats**: the Python docs put their sidebar next to the content with `float: left; margin-left: -100%`; it ends up below the content.
-13. **`<details>`** without `open` should only show its `<summary>` (Lobsters shows every hidden menu).
+13. **`<details>`** without `open` (2 / 25) should only show its `<summary>` (Lobsters shows every hidden menu). Also small: `<sup>`/`<sub>` (2 / 105, Wikipedia's references), `<noscript>` (we hide it, but without JavaScript a browser shows it).
 14. **`z-index`** (6 / 233), **`position: sticky`** (4 / 6), **`display: contents`**, **`-webkit-box`**.
 
 ### Drawing
 
-15. **SVG images**: almost every logo and icon (Wikipedia, odin-lang.org, GitHub, MDN). They need an SVG rasterizer, which means a new library.
+15. **SVG images**: almost every logo and icon (Wikipedia, odin-lang.org, GitHub, MDN): `<img>` with an SVG source on 7 pages, inline `<svg>` on 3 (128 elements). They need an SVG rasterizer, which means a new library.
 16. **`border-radius`** (8 / 2514): raylib can draw rounded rectangles, so this is a small step.
 17. **`background-image`** with a raster image, **`background-size`/`-position`/`-repeat`** (5 / 164).
 18. **`opacity`** (4 / 367), **`box-shadow`** (6 / 102), **`transform`** (4 / 220), **`mask-image`** (icons, 4 / 286).
 
 ### Forms
 
-19. **`<input>`, `<select>`, `<button>`, `<textarea>`**: they show their text (or all options of a `<select>`) instead of a control (Rust, Python docs, Wikipedia search).
+19. **`<input>` (5 / 12), `<button>` (3 / 28), `<select>`, `<textarea>`**: they show their text (or all options of a `<select>`) instead of a control (Rust, Python docs, Wikipedia search).
 
 ### Not visible on a static page
 

@@ -13,10 +13,14 @@ import lxb "../vendor/lexbor"
 // - values of properties we do read, but only approximate or ignore:
 //   display modes we fall back from (grid, contents, ...), sticky, and
 //   calc() where we can't evaluate it (font-size, min(), ...)
+// - HTML elements and attributes we don't render the way a browser does
+//   (element_report.odin)
 Css_Report :: struct {
 	allocator:  mem.Allocator,
 	properties: map[string]int, // property -> number of elements it applies to
 	values:     map[string]int, // "display: grid" -> number of elements
+	elements:   map[string]int, // "input" -> number of visible elements
+	attributes: map[string]int, // "td[bgcolor]" -> number of visible elements
 }
 
 css_report_init :: proc(allocator := context.allocator) -> Css_Report {
@@ -24,18 +28,18 @@ css_report_init :: proc(allocator := context.allocator) -> Css_Report {
 		allocator  = allocator,
 		properties = make(map[string]int, allocator = allocator),
 		values     = make(map[string]int, allocator = allocator),
+		elements   = make(map[string]int, allocator = allocator),
+		attributes = make(map[string]int, allocator = allocator),
 	}
 }
 
 css_report_destroy :: proc(r: ^Css_Report) {
-	for key in r.properties {
-		delete(key, r.allocator)
+	for m in ([]^map[string]int{&r.properties, &r.values, &r.elements, &r.attributes}) {
+		for key in m {
+			delete(key, r.allocator)
+		}
+		delete(m^)
 	}
-	for key in r.values {
-		delete(key, r.allocator)
-	}
-	delete(r.properties)
-	delete(r.values)
 }
 
 @(private)

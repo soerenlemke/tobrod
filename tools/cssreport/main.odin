@@ -2,7 +2,8 @@ package cssreport
 
 // Loads pages like tobrod does (HTML + external stylesheets, @media for a
 // 1024 x 732 page view) and lists the CSS they use that tobrod doesn't
-// support, sorted by how many pages use it. A guide for what to implement next.
+// support, and the HTML elements and attributes it doesn't render like a
+// browser, sorted by how many pages use them. A guide for what to implement next.
 //
 //   odin run tools/cssreport -- de.wikipedia.org/wiki/Webbrowser odin-lang.org
 //   odin run tools/cssreport -- @tools/pages.txt     (one URL per line)
@@ -43,6 +44,11 @@ Row :: struct {
 	pages, elements: int,
 }
 
+// key -> pages using it / elements over all pages
+Tally :: struct {
+	pages, elements: map[string]int,
+}
+
 main :: proc() {
 	urls := make([dynamic]string)
 	for arg in os.args[1:] {
@@ -77,9 +83,7 @@ main :: proc() {
 		os.exit(1)
 	}
 
-	// key -> pages using it / elements over all pages
-	pages := make(map[string]int)
-	elements := make(map[string]int)
+	css, elements, attributes: Tally
 	loaded := 0
 	for url in urls {
 		url := http.complete_url(url, context.temp_allocator)
@@ -100,29 +104,65 @@ main :: proc() {
 		}
 		dom.destroy(doc)
 		loaded += 1
-		fmt.eprintfln("%s: %d unsupported properties, %d approximated values", base, len(report.properties), len(report.values))
+		fmt.eprintfln("%s: %d unsupported properties, %d approximated values, %d elements, %d attributes",
+			base, len(report.properties), len(report.values), len(report.elements), len(report.attributes))
 
-		add :: proc(pages, elements: ^map[string]int, key: string, count: int) {
-			if !(key in pages) {
-				key := strings.clone(key)
-				pages[key] = 0
-				elements[key] = 0
-			}
-			pages[key] += 1
-			elements[key] += count
-		}
 		for key, count in report.properties {
-			add(&pages, &elements, key, count)
+			add(&css, key, count)
 		}
 		for key, count in report.values {
-			add(&pages, &elements, strings.concatenate({"= ", key}, context.temp_allocator), count)
+			add(&css, strings.concatenate({"= ", key}, context.temp_allocator), count)
+		}
+		for key, count in report.elements {
+			add(&elements, key, count)
+		}
+		for key, count in report.attributes {
+			add(&attributes, key, count)
 		}
 		free_all(context.temp_allocator)
 	}
 
+	visible := make([dynamic]Row)
+	invisible := make([dynamic]Row)
+	for row in sorted_rows(css) {
+		append(&invisible if slice.contains(NO_VISIBLE_EFFECT, row.key) else &visible, row)
+	}
+
+	fmt.printfln("# Unsupported CSS and HTML on %d pages\n", loaded)
+	fmt.println("Properties tobrod doesn't read, and values it only approximates,")
+	fmt.println("counted per element the cascade applies them to.\n")
+	print_table(visible[:], "CSS")
+	fmt.println("\n## Without a visible effect on a static page\n")
+	print_table(invisible[:], "CSS")
+
+	fmt.println("\n## HTML elements\n")
+	fmt.println("Visible elements a browser renders in its own way that tobrod doesn't (yet).\n")
+	fmt.println("| element | what is missing | pages | elements |")
+	fmt.println("|---|---|---:|---:|")
+	for row in sorted_rows(elements) {
+		fmt.printfln("| `%s` | %s | %d | %d |", row.key, dom.element_gap_reason(row.key), row.pages, row.elements)
+	}
+
+	fmt.println("\n## Presentational HTML attributes\n")
+	fmt.println("Attributes browsers turn into CSS (bgcolor, align, ...), on visible elements.\n")
+	print_table(sorted_rows(attributes), "attribute")
+}
+
+add :: proc(t: ^Tally, key: string, count: int) {
+	if !(key in t.pages) {
+		key := strings.clone(key)
+		t.pages[key] = 0
+		t.elements[key] = 0
+	}
+	t.pages[key] += 1
+	t.elements[key] += count
+}
+
+// Most pages first, then most elements.
+sorted_rows :: proc(t: Tally) -> []Row {
 	rows := make([dynamic]Row)
-	for key, n in pages {
-		append(&rows, Row{key, n, elements[key]})
+	for key, n in t.pages {
+		append(&rows, Row{key, n, t.elements[key]})
 	}
 	slice.sort_by(rows[:], proc(a, b: Row) -> bool {
 		if a.pages != b.pages {
@@ -133,23 +173,11 @@ main :: proc() {
 		}
 		return a.key < b.key
 	})
-
-	visible := make([dynamic]Row)
-	invisible := make([dynamic]Row)
-	for row in rows {
-		append(&invisible if slice.contains(NO_VISIBLE_EFFECT, row.key) else &visible, row)
-	}
-
-	fmt.printfln("# Unsupported CSS on %d pages\n", loaded)
-	fmt.println("Properties tobrod doesn't read, and values it only approximates,")
-	fmt.println("counted per element the cascade applies them to.\n")
-	print_table(visible[:])
-	fmt.println("\n## Without a visible effect on a static page\n")
-	print_table(invisible[:])
+	return rows[:]
 }
 
-print_table :: proc(rows: []Row) {
-	fmt.println("| CSS | pages | elements |")
+print_table :: proc(rows: []Row, title: string) {
+	fmt.printfln("| %s | pages | elements |", title)
 	fmt.println("|---|---:|---:|")
 	for row in rows {
 		fmt.printfln("| `%s` | %d | %d |", strings.trim_prefix(row.key, "= "), row.pages, row.elements)
