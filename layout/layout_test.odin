@@ -7,7 +7,7 @@ import "core:unicode/utf8"
 import "../dom"
 
 // Every character is half as wide as the font size: exact numbers, no window needed.
-fake_measure :: proc(text: string, font_size: f32, bold: bool) -> f32 {
+fake_measure :: proc(text: string, font_size: f32, font: Font) -> f32 {
 	return f32(utf8.rune_count_in_string(text)) * font_size * 0.5
 }
 
@@ -26,7 +26,7 @@ build_html :: proc(t: ^testing.T, html: string, width: f32) -> (doc: ^dom.Docume
 runs_to_string :: proc(l: ^Layout) -> string {
 	b := strings.builder_make(context.temp_allocator)
 	for run in l.runs {
-		fmt.sbprintf(&b, "%s@%.6g,%.6g %v%s\n", run.text, run.x, run.y, run.font_size, " bold" if run.bold else "")
+		fmt.sbprintf(&b, "%s@%.6g,%.6g %v%s\n", run.text, run.x, run.y, run.font_size, " bold" if run.font.bold else "")
 	}
 	return strings.to_string(b)
 }
@@ -57,7 +57,7 @@ test_inline_styles :: proc(t: ^testing.T) {
 	if len(l.runs) != 3 do return
 	testing.expect_value(t, l.runs[0].text, "a")
 	testing.expect_value(t, l.runs[1].text, "bold")
-	testing.expect(t, l.runs[1].bold, "expected bold run")
+	testing.expect(t, l.runs[1].font.bold, "expected bold run")
 	testing.expect_value(t, l.runs[1].x, 8 + 8 + 8) // "a" + space
 	testing.expect_value(t, l.runs[2].color, dom.Color{255, 0, 0, 255})
 	testing.expect_value(t, l.runs[2].y, l.runs[0].y)
@@ -94,9 +94,10 @@ test_hidden_br_and_pre :: proc(t: ^testing.T) {
 	defer dom.destroy(doc)
 	defer destroy(l)
 
-	// pre keeps the two spaces (x moves 16px) and the empty line;
-	// the spaces split the run because the exact spacing must stay
-	expected := "a@8,10 16\nb@8,30 16\nx@8,66 16\ny@32,66 16\nz@8,106 16\n"
+	// pre keeps the two spaces (x moves 13px) and the empty line; the spaces
+	// split the run because the exact spacing must stay. pre is monospace at
+	// 13px (margin 1em = 13, lines 16.25 high)
+	expected := "a@8,10 16\nb@8,30 16\nx@8,62.625 13\ny@27.5,62.625 13\nz@8,95.125 13\n"
 	testing.expect_value(t, runs_to_string(l), expected)
 }
 
@@ -110,8 +111,9 @@ test_plain_text :: proc(t: ^testing.T) {
 	l := build(doc, {800, 600}, fake_measure)
 	defer destroy(l)
 
-	// separate runs per word in pre text (spaces are kept exactly)
-	expected := "line@8,18 16\none@48,18 16\nline@8,38 16\ntwo@48,38 16\n"
+	// separate runs per word in pre text (spaces are kept exactly), monospace
+	// at 13px like in Chrome
+	expected := "line@8,14.625 13\none@40.5,14.625 13\nline@8,30.875 13\ntwo@40.5,30.875 13\n"
 	testing.expect_value(t, runs_to_string(l), expected)
 }
 
@@ -1013,4 +1015,18 @@ test_table_fixed_column :: proc(t: ^testing.T) {
 
 	if len(l.runs) != 2 do return
 	testing.expect_value(t, l.runs[1].x, 18)
+}
+
+@(test)
+test_fonts_split_runs :: proc(t: ^testing.T) {
+	// a run has one font: the code and the italic word are runs of their own
+	doc, l := build_html(t, `<p>a b <code>c</code> <i>d</i> <b><i>e</i></b></p>`, 800)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.runs) != 5 do return
+	testing.expect_value(t, l.runs[0].text, "a b")
+	testing.expect_value(t, l.runs[1].font, Font{mono = true})
+	testing.expect_value(t, l.runs[2].font, Font{italic = true})
+	testing.expect_value(t, l.runs[4].font, Font{bold = true, italic = true})
 }
