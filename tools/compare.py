@@ -9,11 +9,26 @@ report (screenshots/compare/index.html) shows Firefox, tobrod and a picture of
 where they differ. Fonts are rasterized differently, so the numbers are only a
 rough guide; the pictures show what is missing.
 
+Real pages are frozen in a snapshot (snapshots/ by default, not in git: it is
+the pages' content): the first run records every response tobrod gets
+(tobrod --record) and keeps Firefox's picture; later runs replay them
+(tobrod --replay) and reuse the picture, without the network and without
+Firefox. So runs are fast and before/after pictures show only what changed
+in tobrod. Local addresses (the fixtures in testdata/) are always loaded live.
+
+    --refresh         record the pages again (they changed, or tobrod loads more)
+    --live            no snapshot: load everything, render Firefox every time
+    --snapshot DIR    another snapshot directory
+    --tobrod PATH     another tobrod binary (e.g. one built from main)
+
 Needs Pillow (pip install pillow) and Firefox; set FIREFOX if it is not in the
 default place. Build tobrod first (odin build .). Run from the repository root.
 """
 
+import argparse
 import html
+import re
+import shutil
 import os
 import subprocess
 import sys
@@ -84,9 +99,19 @@ def run_firefox(firefox, profile, url, out):
     return out.exists()
 
 
-def run_tobrod(tobrod, url, out):
+def is_local(url):
+    host = url.split("://", 1)[-1].split("/")[0].rsplit(":", 1)[0].strip("[]")
+    return host in ("localhost", "::1") or host.endswith(".localhost") or host.replace(".", "").isdigit()
+
+
+def slug(url):
+    """A file name for a URL: https://en.wikipedia.org/wiki/X -> en.wikipedia.org_wiki_X"""
+    return re.sub(r"[^A-Za-z0-9.-]+", "_", url.split("://", 1)[-1]).strip("_")[:120]
+
+
+def run_tobrod(tobrod, url, out, recording=()):
     window = out.with_suffix(".window.png")
-    args = [tobrod, "--url", url, "--screenshot", str(window)]
+    args = [tobrod, "--url", url, "--screenshot", str(window), *recording]
     result = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
     if result.returncode != 0 or not window.exists():
         return False
@@ -125,21 +150,44 @@ def read_urls(args):
 
 
 def main():
-    urls = read_urls(sys.argv[1:])
+    parser = argparse.ArgumentParser(usage=__doc__)
+    parser.add_argument("urls", nargs="*")
+    parser.add_argument("--snapshot", default="snapshots")
+    parser.add_argument("--live", action="store_true")
+    parser.add_argument("--refresh", action="store_true")
+    parser.add_argument("--tobrod")
+    opts = parser.parse_args()
+    urls = read_urls(opts.urls)
     if not urls:
         sys.exit(__doc__)
-    firefox, tobrod, profile = firefox_path(), tobrod_path(), firefox_profile()
+    tobrod = str(Path(opts.tobrod).resolve()) if opts.tobrod else tobrod_path()
+    snapshot = Path(opts.snapshot)
+    firefox = profile = None  # only started when a page has to be rendered by it
     OUT.mkdir(parents=True, exist_ok=True)
 
     rows = []
     for i, url in enumerate(urls):
         url = complete(url)
-        print(f"[{i + 1}/{len(urls)}] {url}", flush=True)
         ff, tb, df = (OUT / f"{i:02}-{kind}.png" for kind in ("firefox", "tobrod", "diff"))
         for old in (ff, tb, df):
             old.unlink(missing_ok=True)
-        ok_ff = run_firefox(firefox, profile, url, ff)
-        ok_tb = run_tobrod(tobrod, url, tb)
+
+        frozen = snapshot / "firefox" / f"{slug(url)}.png"
+        replay = not opts.live and not is_local(url) and frozen.exists() and not opts.refresh
+        record = not opts.live and not is_local(url) and not replay
+        print(f"[{i + 1}/{len(urls)}] {url}" + (" (replay)" if replay else " (recording)" if record else ""), flush=True)
+        if replay:
+            shutil.copy(frozen, ff)
+            ok_ff = True
+            ok_tb = run_tobrod(tobrod, url, tb, ["--replay", str(snapshot)])
+        else:
+            if firefox is None:
+                firefox, profile = firefox_path(), firefox_profile()
+            ok_ff = run_firefox(firefox, profile, url, ff)
+            ok_tb = run_tobrod(tobrod, url, tb, ["--record", str(snapshot)] if record else [])
+            if record and ok_ff:
+                frozen.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(ff, frozen)
         share = diff(ff, tb, df) if ok_ff and ok_tb else None
         rows.append((url, ff.name if ok_ff else None, tb.name if ok_tb else None, df.name if share is not None else None, share))
 

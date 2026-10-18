@@ -7,6 +7,10 @@ package cssreport
 //
 //   odin run tools/cssreport -- de.wikipedia.org/wiki/Webbrowser odin-lang.org
 //   odin run tools/cssreport -- @tools/pages.txt     (one URL per line)
+//   odin run tools/cssreport -- --replay snapshots @tools/pages.txt
+//
+// --record <dir> / --replay <dir> save the responses or answer from them
+// (http/recording.odin); tools/compare.py records the pages to snapshots/.
 
 import "core:fmt"
 import "core:os"
@@ -51,8 +55,19 @@ Tally :: struct {
 
 main :: proc() {
 	urls := make([dynamic]string)
-	for arg in os.args[1:] {
-		if strings.has_prefix(arg, "@") {
+	mode, dir := http.Recording_Mode.Off, ""
+	args := os.args[1:]
+	for len(args) > 0 {
+		arg := args[0]
+		args = args[1:]
+		if arg == "--record" || arg == "--replay" {
+			if len(args) == 0 {
+				fmt.eprintln(arg, "needs a directory")
+				os.exit(1)
+			}
+			mode, dir = .Record if arg == "--record" else .Replay, args[0]
+			args = args[1:]
+		} else if strings.has_prefix(arg, "@") {
 			data, read_err := os.read_entire_file(arg[1:], context.allocator)
 			if read_err != nil {
 				fmt.eprintln("cannot read", arg[1:])
@@ -69,7 +84,11 @@ main :: proc() {
 		}
 	}
 	if len(urls) == 0 {
-		fmt.eprintln("usage: cssreport <url>... | @file")
+		fmt.eprintln("usage: cssreport [--record <dir> | --replay <dir>] <url>... | @file")
+		os.exit(1)
+	}
+	if err, failed := http.set_recording(mode, dir).?; failed {
+		fmt.eprintln(err.message)
 		os.exit(1)
 	}
 

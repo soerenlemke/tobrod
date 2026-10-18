@@ -20,3 +20,6 @@ vendor/lexbor-src/build/
 # debug symbols and incremental link files (Windows)
 *.pdb
 *.ilk
+
+# recorded real pages (tools/compare.py, --record/--replay): their content, not ours
+/snapshots/

@@ -71,6 +71,8 @@ Type a URL into the address bar and press Enter; the scheme can be left out (`ex
 | `--url <url>` | load this URL on startup |
 | `--screenshot <file.png>` | wait until the page (and its images) has loaded, save a PNG of the window and exit |
 | `--scroll <px>` | with `--screenshot`: scroll down this far first |
+| `--record <dir>` | save every HTTP response to this directory |
+| `--replay <dir>` | answer every request from a directory made with `--record`, without the network |
 
 The screenshot mode is used for visual tests with the pages in [testdata/](testdata/):
 
@@ -97,8 +99,10 @@ Two tools compare tobrod with a real browser on the pages in [tools/pages.txt](t
 
 ```sh
 odin build . && python tools/compare.py tools/pages.txt   # Firefox and tobrod side by side (needs Firefox and Pillow)
-odin run tools/cssreport -- @tools/pages.txt              # the CSS these pages use that tobrod ignores
+odin run tools/cssreport -- --replay snapshots @tools/pages.txt   # the CSS and HTML these pages use that tobrod ignores
 ```
+
+The first run of `compare.py` records the pages into `snapshots/` (every response tobrod gets, and Firefox's picture); later runs replay them, offline and in a fraction of the time, so before/after pictures only show what changed in tobrod. `--refresh` records them again. The snapshots are the pages' content and stay out of git.
 
 What they found, ordered by impact, is in [docs/rendering-gaps.md](docs/rendering-gaps.md).
 

@@ -7,10 +7,10 @@ How we find out what to implement next, and the current list. It comes from two 
 
 ```sh
 odin build . && python tools/compare.py tools/pages.txt
-odin run tools/cssreport -- @tools/pages.txt
+odin run tools/cssreport -- --replay snapshots @tools/pages.txt
 ```
 
-Both read the pages live, so the numbers change with the pages.
+The pages are frozen: the first run of `compare.py` records them into `snapshots/` (not in git), later runs and the report replay that recording. `compare.py --refresh` records them again, so the numbers change only then.
 
 ## The list (October 2026)
 
