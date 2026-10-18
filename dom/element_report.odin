@@ -14,10 +14,10 @@ import "core:strings"
 // Element -> what a browser does that we don't. Some only show the element's
 // look from the UA stylesheet (italic, monospace) that we can't draw yet.
 ELEMENT_GAPS :: [?][2]string {
-	{"input", "form control, nothing is drawn"},
-	{"button", "form control, only its text"},
-	{"select", "form control, all options as text"},
-	{"textarea", "form control, only its text"},
+	{"input: range", "drawn as a text field"},
+	{"input: color", "drawn as a text field"},
+	{"input: date", "drawn as a text field"},
+	{"input: time", "drawn as a text field"},
 	{"progress", "form control, nothing is drawn"},
 	{"meter", "form control, nothing is drawn"},
 	{"svg", "inline SVG, needs an SVG renderer"},
@@ -32,17 +32,6 @@ ELEMENT_GAPS :: [?][2]string {
 	{"embed", "plugin content"},
 	{"dialog", "hidden unless open"},
 	{"noscript", "we hide it, but have no JavaScript"},
-	{"i", "italic"},
-	{"em", "italic"},
-	{"cite", "italic"},
-	{"var", "italic"},
-	{"dfn", "italic"},
-	{"address", "italic"},
-	{"code", "monospace"},
-	{"kbd", "monospace"},
-	{"samp", "monospace"},
-	{"tt", "monospace"},
-	{"pre", "monospace"},
 	{"q", "quotation marks"},
 	{"ruby", "annotations above the text"},
 	{"marquee", "scrolling text"},
@@ -113,8 +102,16 @@ is_visible :: proc(node: ^Node) -> bool {
 element_gap :: proc(node: ^Node) -> (key: string, ok: bool) {
 	switch node.tag {
 	case "input":
+		// the types we don't draw (yet): as a text field
 		type, _ := attribute(node, "type")
-		return "input", !strings.equal_fold(type, "hidden")
+		type = strings.to_lower(type, context.temp_allocator)
+		switch type {
+		case "range", "color", "date", "time":
+			return strings.concatenate({"input: ", type}, context.temp_allocator), true
+		case "datetime-local", "month", "week":
+			return "input: date", true
+		}
+		return "", false
 	case "img":
 		src, _ := attribute(node, "src")
 		src = strings.to_lower(src, context.temp_allocator)
