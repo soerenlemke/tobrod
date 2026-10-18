@@ -59,6 +59,7 @@ Style :: struct {
 	border_radius: [Corner]Length, // rounded corners (not inherited), see border_style.odin
 	mask:        Image_Layer, // mask-image: icons (not inherited), see image_layer.odin
 	background_image: Image_Layer, // background-image etc. (not inherited)
+	box_shadow:  Shadows, // see shadow_style.odin (not inherited)
 	flex:        Flex,   // flexbox, see flex_style.odin (align-*, gap also for grid)
 	grid:        Grid,   // grid containers and items, see grid_style.odin
 }
@@ -305,6 +306,8 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 		apply_image_layer_declaration(style, property, value)
 	case "background-image", "background-size", "background-position", "background-repeat":
 		apply_image_layer_declaration(style, property, value)
+	case "box-shadow", "-webkit-box-shadow":
+		style.box_shadow = parse_box_shadow(strings.to_lower(value, context.temp_allocator), style.color) or_else style.box_shadow
 	case "display":
 		switch value {
 		case "inherit":
@@ -621,6 +624,7 @@ STYLE_PROPERTIES :: [?]string {
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
 	"box-sizing", "width", "height", "min-width", "min-height", "max-height", "max-width",
 	"background", "background-color", "background-image", "background-size", "background-position", "background-repeat",
+	"-webkit-box-shadow", "box-shadow",
 	"flex-direction", "flex-wrap", "flex-flow", "justify-content", "align-items", "align-self",
 	"gap", "row-gap", "column-gap", "flex", "flex-grow", "flex-shrink", "flex-basis",
 	"grid-gap", "grid-row-gap", "grid-column-gap",

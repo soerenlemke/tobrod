@@ -1385,3 +1385,22 @@ test_grid_display_contents :: proc(t: ^testing.T) {
 	testing.expect_value(t, run_at(l, "s"), [2]f32{0, 2})
 	testing.expect_value(t, run_at(l, "m"), [2]f32{100, 2})
 }
+
+@(test)
+test_box_shadow_box :: proc(t: ^testing.T) {
+	// a box is made for a shadow alone; em and currentcolor are resolved
+	doc, err := dom.parse(`<body style="margin: 0"><div style="height: 10px; color: #00f; font-size: 10px; box-shadow: 1em 2px 3px, inset 0 0 0 1px red"></div></body>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer dom.destroy(doc)
+	l := build(doc, {1000, 600}, fake_measure)
+	defer destroy(l)
+	if len(l.boxes) != 1 {
+		testing.fail_now(t, fmt.tprintf("%d boxes", len(l.boxes)))
+	}
+	shadows := l.boxes[0].shadows
+	testing.expect_value(t, shadows.count, 2)
+	testing.expect_value(t, shadows.list[0], Box_Shadow{x = 10, y = 2, blur = 3, color = {0, 0, 255, 255}})
+	testing.expect_value(t, shadows.list[1], Box_Shadow{spread = 1, color = {255, 0, 0, 255}, inset = true})
+}
