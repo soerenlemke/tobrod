@@ -180,6 +180,18 @@ compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inh
 			apply_declaration(&style, property, value, parent)
 		}
 	}
+	// then the logical properties, as physical ones (logical.odin)
+	for property in LOGICAL_PROPERTIES {
+		if loses_to_physical(&declared, property) {
+			continue
+		}
+		if value, ok := lxb.element_style(element, property, context.temp_allocator); ok {
+			apply_logical(&style, property, value, parent)
+		}
+		if value, ok := raw_values[property]; ok {
+			apply_logical(&style, property, value, parent)
+		}
+	}
 	// floated elements and the children of a flex container are always
 	// block-level (CSS "blockification"); floats don't apply to flex items
 	if style.float != .None || is_flex_container(parent.display) {
