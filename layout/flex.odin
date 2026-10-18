@@ -92,21 +92,7 @@ layout_flex :: proc(b: ^Builder, node: ^dom.Node) {
 	box_index := reserve_box(b, style, border)
 
 	y := top + inset[.Top]
-	// absolute and fixed children are no items; their static position is the
-	// start of the content box
-	for child in node.children {
-		if child.kind != .Element || child.style.display == .None {
-			continue
-		}
-		#partial switch child.style.position {
-		case .Absolute:
-			wait_for_containing_block(b, child, {content_left, y})
-		case .Fixed:
-			if !b.measuring {
-				append(&b.fixed_waiting, Waiting_Absolute{child, {content_left, y}})
-			}
-		}
-	}
+	register_out_of_flow_children(b, node, content_left, y)
 	if column {
 		y = layout_flex_column(b, node, items[:], content_left, width, y, main_gap)
 	} else {
@@ -118,6 +104,25 @@ layout_flex :: proc(b: ^Builder, node: ^dom.Node) {
 	b.y = bottom
 	b.x = b.left
 	add_margin(b, margin[.Bottom])
+}
+
+// Absolute and fixed children of a flex or grid container are no items;
+// their static position is the start of the content box.
+@(private)
+register_out_of_flow_children :: proc(b: ^Builder, node: ^dom.Node, x, y: f32) {
+	for child in node.children {
+		if child.kind != .Element || child.style.display == .None {
+			continue
+		}
+		#partial switch child.style.position {
+		case .Absolute:
+			wait_for_containing_block(b, child, {x, y})
+		case .Fixed:
+			if !b.measuring {
+				append(&b.fixed_waiting, Waiting_Absolute{child, {x, y}})
+			}
+		}
+	}
 }
 
 @(private)
@@ -325,7 +330,9 @@ measure_flex_item :: proc(b: ^Builder, item: ^Flex_Item, container_width: f32, c
 	item.base = max(item.base, 0)
 }
 
-// The items of a flex container; loose text becomes an anonymous item.
+// The items of a flex or grid container; loose text becomes an anonymous
+// item. An element with display: contents has no box of its own: its
+// children are items in its place (MDN wraps its page parts in one).
 @(private)
 collect_flex_items :: proc(node: ^dom.Node) -> [dynamic]Flex_Item {
 	items := make([dynamic]Flex_Item, context.temp_allocator)
@@ -336,21 +343,28 @@ collect_flex_items :: proc(node: ^dom.Node) -> [dynamic]Flex_Item {
 			loose^ = make([dynamic]^dom.Node, context.temp_allocator)
 		}
 	}
-	for child in node.children {
-		if is_blank(child) {
-			continue
+	collect :: proc(container, parent: ^dom.Node, items: ^[dynamic]Flex_Item, loose: ^[dynamic]^dom.Node) {
+		for child in parent.children {
+			if is_blank(child) {
+				continue
+			}
+			if child.kind == .Text {
+				append(loose, child)
+				continue
+			}
+			style := child.style
+			if style.display == .None || style.position == .Absolute || style.position == .Fixed {
+				continue
+			}
+			if style.contents {
+				collect(container, child, items, loose)
+				continue
+			}
+			flush(container, items, loose)
+			append(items, Flex_Item{node = child})
 		}
-		if child.kind == .Text {
-			append(&loose, child)
-			continue
-		}
-		style := child.style
-		if style.display == .None || style.position == .Absolute || style.position == .Fixed {
-			continue
-		}
-		flush(node, &items, &loose)
-		append(&items, Flex_Item{node = child})
 	}
+	collect(node, node, &items, &loose)
 	flush(node, &items, &loose)
 	return items
 }

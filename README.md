@@ -132,7 +132,7 @@ The full list, measured against Firefox on real pages, is in [docs/rendering-gap
 - no JavaScript yet
 - SVG (as `<img>` and inline `<svg>`) is drawn by tobrod's own small renderer: filled, stroked and dashed shapes and paths, no gradients, `<use>` or text yet, and the page's CSS doesn't reach the SVG's parts; no WebP (its place stays empty, like a broken image; no `alt` text yet), no video playback (the poster image is shown)
 - fonts: only Latin characters (Latin-1 and a few more); other scripts show `?`
-- layout: no CSS grid, no percentage heights in the flow, no scrolling inside boxes (`overflow: scroll/auto` just clip), `position: sticky` behaves like `static`, no `rowspan`
+- layout: CSS grid only in its common form (no fr rows, dense packing or column flow), no percentage heights in the flow, no scrolling inside boxes (`overflow: scroll/auto` just clip), `position: sticky` behaves like `static`, no `rowspan`
 - `@media` queries are evaluated once, for the window size at load time
 - form controls are drawn, but can't be used yet; no text selection, no tabs, no cookies
 
@@ -178,7 +178,7 @@ Stage 4 — HTML & CSS
 - [x] Form controls (drawn only: `<input>`, `<button>`, `<select>`, `<textarea>`)
 - [x] Floats
 - [x] Flexbox
-- [ ] CSS grid
+- [x] CSS grid (templates, areas, line placement, auto placement, `fr`/`minmax()`/`repeat()`, alignment) and `display: contents` for its items
 - [x] `position: relative` (with `top` / `right` / `bottom` / `left` / `inset`)
 - [x] `position: absolute` (containing block, static position, stretching, shrink-to-fit, hidden by an empty `clip`)
 - [x] `position: fixed` (own layer that doesn't scroll)

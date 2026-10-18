@@ -9,6 +9,7 @@ Color :: [4]u8
 // Computed style of an element. Only what we use so far.
 Style :: struct {
 	display:     Display,
+	contents:    bool, // display: contents (laid out as inline, but in a flex or grid container its children are the items)
 	color:       Color,
 	font_size:   f32, // px
 	font_weight: int, // 1..1000, 400 = normal, 700 = bold
@@ -58,7 +59,8 @@ Style :: struct {
 	border_radius: [Corner]Length, // rounded corners (not inherited), see border_style.odin
 	mask:        Image_Layer, // mask-image: icons (not inherited), see image_layer.odin
 	background_image: Image_Layer, // background-image etc. (not inherited)
-	flex:        Flex,   // flexbox, see flex_style.odin
+	flex:        Flex,   // flexbox, see flex_style.odin (align-*, gap also for grid)
+	grid:        Grid,   // grid containers and items, see grid_style.odin
 }
 
 // justify is drawn like left for now
@@ -132,10 +134,12 @@ Display :: enum {
 	Table_Cell,
 	Table_Caption,
 	Flex, // flexbox container (layout/flex.odin)
-	// inline-level boxes that are laid out inside like a block / a flex
-	// container and placed in the line as a whole (layout/inline_block.odin)
+	Grid, // grid container (layout/grid.odin)
+	// inline-level boxes that are laid out inside like a block / a flex or
+	// grid container and placed in the line as a whole (layout/inline_block.odin)
 	Inline_Block,
 	Inline_Flex,
+	Inline_Grid,
 }
 
 // Whether the children of an element with this display are flex items.
@@ -143,9 +147,14 @@ is_flex_container :: proc(display: Display) -> bool {
 	return display == .Flex || display == .Inline_Flex
 }
 
+// Whether the children of an element with this display are grid items.
+is_grid_container :: proc(display: Display) -> bool {
+	return display == .Grid || display == .Inline_Grid
+}
+
 // Inline-level: placed in a line (text, inline elements, inline blocks).
 is_inline_level :: proc(display: Display) -> bool {
-	return display == .Inline || display == .Inline_Block || display == .Inline_Flex
+	return display == .Inline || display == .Inline_Block || display == .Inline_Flex || display == .Inline_Grid
 }
 
 // Vertical position of the content in a table cell (baseline is drawn like
@@ -305,6 +314,7 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 		case:
 			if display, ok := parse_display(value); ok {
 				style.display = display
+				style.contents = strings.trim_space(value) == "contents"
 			}
 		}
 	case "color":
@@ -585,6 +595,13 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 	case "flex", "flex-direction", "flex-wrap", "flex-flow", "justify-content", "align-items", "align-self",
 	     "gap", "row-gap", "column-gap", "flex-grow", "flex-shrink", "flex-basis":
 		apply_flex_declaration(style, property, value)
+	case "grid-gap", "grid-row-gap", "grid-column-gap":
+		// the old names of gap, row-gap and column-gap
+		apply_flex_declaration(style, property[len("grid-"):], value)
+	case "grid-template", "grid-template-columns", "grid-template-rows", "grid-template-areas", "grid-auto-rows", "grid-auto-columns",
+	     "justify-items", "justify-self", "grid-area", "grid-column", "grid-row",
+	     "grid-column-start", "grid-column-end", "grid-row-start", "grid-row-end":
+		apply_grid_declaration(style, property, strings.to_lower(strings.trim_space(value), context.temp_allocator))
 	case:
 		apply_box_declaration(style, property, value)
 	}
@@ -606,6 +623,10 @@ STYLE_PROPERTIES :: [?]string {
 	"background", "background-color", "background-image", "background-size", "background-position", "background-repeat",
 	"flex-direction", "flex-wrap", "flex-flow", "justify-content", "align-items", "align-self",
 	"gap", "row-gap", "column-gap", "flex", "flex-grow", "flex-shrink", "flex-basis",
+	"grid-gap", "grid-row-gap", "grid-column-gap",
+	"grid-template", "grid-template-columns", "grid-template-rows", "grid-template-areas", "grid-auto-rows", "grid-auto-columns",
+	"justify-items", "justify-self", "grid-area", "grid-column", "grid-row",
+	"grid-column-start", "grid-column-end", "grid-row-start", "grid-row-end",
 	"border", "border-width", "border-style", "border-color",
 	"border-top", "border-right", "border-bottom", "border-left",
 	"border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
@@ -647,7 +668,7 @@ default_display :: proc(tag: string) -> Display {
 
 // Maps a CSS display value as serialized by lexbor to our enum.
 // Layout modes we don't support yet fall back to their outer behavior:
-// grid acts like block, inline-grid like inline-block, contents like inline.
+// contents acts like inline.
 parse_display :: proc(value: string) -> (display: Display, ok: bool) {
 	// newer CSS allows two keywords ("block flow"), the first one is the outer display
 	outer := strings.trim_space(value)
@@ -663,9 +684,13 @@ parse_display :: proc(value: string) -> (display: Display, ok: bool) {
 		return .Flex, true
 	case "inline-flex":
 		return .Inline_Flex, true
-	case "inline-block", "inline-grid":
+	case "grid":
+		return .Grid, true
+	case "inline-grid":
+		return .Inline_Grid, true
+	case "inline-block":
 		return .Inline_Block, true
-	case "block", "grid", "flow-root":
+	case "block", "flow-root":
 		return .Block, true
 	case "table", "inline-table":
 		return .Table, true
