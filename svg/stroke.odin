@@ -195,3 +195,78 @@ add_polygon_list :: proc(result: ^[dynamic]Polygon, poly: Polygon) {
 	}
 	append(result, poly)
 }
+
+// Cuts the subpaths into dashes (stroke-dasharray): the pattern of dash and
+// gap lengths (in pixels) repeats along every subpath, starting offset into
+// the pattern. The dashes are open subpaths of their own, so each gets its
+// caps. A closed subpath is walked including its closing segment.
+dash_path :: proc(polygons: []Polygon, closed: []bool, pattern: []f32, offset: f32) -> (dashes: [dynamic]Polygon, dashes_closed: [dynamic]bool) {
+	dashes = make([dynamic]Polygon, context.temp_allocator)
+	dashes_closed = make([dynamic]bool, context.temp_allocator)
+	total: f32 = 0
+	for length in pattern {
+		total += length
+	}
+	if total <= 0 {
+		return
+	}
+	// where in the pattern a subpath starts
+	start_index, start_remaining := 0, pattern[0]
+	skip := offset - math.floor(offset / total) * total // also for a negative offset
+	for skip > 0 {
+		if skip < start_remaining {
+			start_remaining -= skip
+			break
+		}
+		skip -= start_remaining
+		start_index = (start_index + 1) % len(pattern)
+		start_remaining = pattern[start_index]
+	}
+
+	for poly, p in polygons {
+		if len(poly) < 2 {
+			continue
+		}
+		points := make([dynamic]Point, 0, len(poly) + 1, context.temp_allocator)
+		append(&points, ..poly[:])
+		if p < len(closed) && closed[p] && poly[0] != poly[len(poly) - 1] {
+			append(&points, poly[0])
+		}
+		index, remaining := start_index, start_remaining
+		on := index % 2 == 0
+		piece: Polygon
+		if on {
+			piece = make(Polygon, context.temp_allocator)
+			append(&piece, points[0])
+		}
+		for i in 0 ..< len(points) - 1 {
+			a, b := points[i], points[i + 1]
+			length := distance(a, b)
+			t: f32 = 0
+			for length - t > remaining {
+				t += remaining
+				q := a + (b - a) * (t / length)
+				if on {
+					append(&piece, q)
+					append(&dashes, piece)
+					append(&dashes_closed, false)
+				} else {
+					piece = make(Polygon, context.temp_allocator)
+					append(&piece, q)
+				}
+				on = !on
+				index = (index + 1) % len(pattern)
+				remaining = pattern[index]
+			}
+			remaining -= length - t
+			if on {
+				append(&piece, b)
+			}
+		}
+		if on && len(piece) >= 2 {
+			append(&dashes, piece)
+			append(&dashes_closed, false)
+		}
+	}
+	return
+}

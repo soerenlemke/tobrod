@@ -10,9 +10,9 @@ import "../dom"
 // Supported: the shapes path, rect (also rounded), circle, ellipse, line,
 // polygon and polyline; filled and stroked with a color (also currentColor,
 // the first color of a gradient), fill-rule, the stroke's width, caps, joins
-// and miter limit, fill-/stroke-opacity and opacity; transform; viewBox with
+// miter limit and dashes, fill-/stroke-opacity and opacity; transform; viewBox with
 // the default "xMidYMid meet" (and "none"); groups and nested svg. Not yet:
-// dashes, <use>, real gradients, text, clipping and masks.
+// <use>, real gradients, text, clipping and masks.
 //
 // dom lowercases all names: viewbox, lineargradient, fill-rule.
 
@@ -112,6 +112,8 @@ Paint :: struct {
 	line_cap:       Line_Cap,
 	line_join:      Line_Join,
 	miter_limit:    f32,
+	dash_array:     []f32, // in user units; empty = solid
+	dash_offset:    f32,
 	color:          [4]u8, // for currentColor
 }
 
@@ -226,7 +228,16 @@ draw_element :: proc(r: ^Renderer, node: ^dom.Node, parent_m: Matrix, parent_pai
 		}
 		if has_stroke && paint.stroke_width > 0 {
 			style := Stroke_Style{paint.stroke_width * pb.scale, paint.line_cap, paint.line_join, paint.miter_limit}
-			outline := stroke_outline(pb.polygons[:], pb.closed[:], style)
+			polygons, closed := pb.polygons[:], pb.closed[:]
+			if len(paint.dash_array) > 0 {
+				pattern := make([]f32, len(paint.dash_array), context.temp_allocator)
+				for length, i in paint.dash_array {
+					pattern[i] = length * pb.scale
+				}
+				dashes, dashes_closed := dash_path(polygons, closed, pattern, paint.dash_offset * pb.scale)
+				polygons, closed = dashes[:], dashes_closed[:]
+			}
+			outline := stroke_outline(polygons, closed, style)
 			fill(r.image.pixels, r.image.width, r.image.height, outline[:], .Nonzero, stroke_color, paint.stroke_opacity * opacity)
 		}
 	}
@@ -363,12 +374,52 @@ inherit_paint :: proc(r: ^Renderer, node: ^dom.Node, parent: Paint) -> Paint {
 			paint.line_join = .Bevel
 		}
 	}
+	if value, ok := property(node, "stroke-dasharray"); ok {
+		paint.dash_array = parse_dash_array(value) or_else parent.dash_array
+	}
+	if value, ok := property(node, "stroke-dashoffset"); ok {
+		if offset, valid := parse_number(strings.trim_suffix(value, "px")); valid {
+			paint.dash_offset = offset
+		}
+	}
 	if value, ok := property(node, "stroke-miterlimit"); ok {
 		if limit, valid := parse_number(value); valid && limit >= 1 {
 			paint.miter_limit = limit
 		}
 	}
 	return paint
+}
+
+// stroke-dasharray: "none" (solid) or dash and gap lengths, separated by
+// commas or spaces; an odd number of them is repeated to make it even. All
+// zero is solid; a negative length makes the value invalid.
+@(private)
+parse_dash_array :: proc(value: string) -> (pattern: []f32, ok: bool) {
+	if value == "none" {
+		return nil, true
+	}
+	spaced, _ := strings.replace_all(value, ",", " ", context.temp_allocator)
+	parts := strings.fields(spaced, context.temp_allocator)
+	lengths := make([dynamic]f32, 0, 2 * len(parts), context.temp_allocator)
+	total: f32 = 0
+	for part in parts {
+		length := strconv.parse_f32(strings.trim_suffix(part, "px")) or_return
+		if length < 0 {
+			return
+		}
+		append(&lengths, length)
+		total += length
+	}
+	if len(lengths) == 0 {
+		return
+	}
+	if total == 0 {
+		return nil, true
+	}
+	if len(lengths) % 2 == 1 {
+		append(&lengths, ..lengths[:])
+	}
+	return lengths[:], true
 }
 
 // A fill: none, a color, currentColor, or url(#gradient) - for which we take

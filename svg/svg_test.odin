@@ -204,3 +204,26 @@ test_render_stroke_and_fill :: proc(t: ^testing.T) {
 	testing.expect_value(t, pixel(image, 20, 7), [4]u8{255, 0, 0, 255})  // the edge at y = 2 * 4 = 8, 4px wide
 	testing.expect_value(t, pixel(image, 20, 10), [4]u8{0, 255, 0, 255}) // inside again
 }
+
+@(test)
+test_render_dashes :: proc(t: ^testing.T) {
+	// dashes of 4, gaps of 2 (one value: "4" would be 4 on, 4 off), 2px wide;
+	// the offset moves the pattern back along the line
+	image := render_svg(t, `<svg width="40" height="20">
+		<line x1="0" y1="5" x2="40" y2="5" stroke="#000" stroke-width="2" stroke-dasharray="4,2"/>
+		<line x1="0" y1="15" x2="40" y2="15" stroke="#000" stroke-width="2" stroke-dasharray="4 2" stroke-dashoffset="2"/>
+	</svg>`, 40, 20)
+
+	testing.expect_value(t, pixel(image, 1, 5)[3], 255) // dash 0..4
+	testing.expect_value(t, pixel(image, 4, 5)[3], 0)   // gap 4..6
+	testing.expect_value(t, pixel(image, 7, 5)[3], 255) // next dash 6..10
+	// with offset 2: dash 0..2, gap 2..4, dash 4..8
+	testing.expect_value(t, pixel(image, 1, 15)[3], 255)
+	testing.expect_value(t, pixel(image, 3, 15)[3], 0)
+	testing.expect_value(t, pixel(image, 5, 15)[3], 255)
+
+	pattern, ok := parse_dash_array("3")
+	testing.expect(t, ok && len(pattern) == 2, "an odd list is repeated")
+	_, bad := parse_dash_array("3 -1")
+	testing.expect(t, !bad, "negative lengths are invalid")
+}
