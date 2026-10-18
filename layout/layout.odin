@@ -25,6 +25,7 @@ Text_Run :: struct {
 	width:     f32,
 	font_size: f32,
 	font:      Font,
+	letter_spacing: f32, // px after every character
 	color:     dom.Color,
 	link:      string, // href of the surrounding <a>, as written in the page; "" if none
 	hidden:    bool,   // visibility: hidden - takes up space, but is dropped in finish_line
@@ -124,6 +125,7 @@ IMAGE_PLACEHOLDER_SIZE :: f32(16) // for an image whose size is not known (yet)
 // like in every browser.
 REPLACED_DEFAULT_SIZE :: [2]f32{300, 150}
 BOLD_WEIGHT :: 600              // from this font-weight on we draw bold
+FIT_TOLERANCE :: f32(0.01)      // px: text this much too wide still fits (rounding)
 
 // viewport is the visible page area: its width is the page width, both
 // together resolve vw/vh.
@@ -528,6 +530,15 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	if style.display == .List_Item {
 		set_pending_marker(b, node)
 	}
+	// measuring (shrink-to-fit): a block inside the measured box reaches as
+	// far as its own content plus its right padding, border and margin - not
+	// just to its text. Not the measured box itself (b.unfloat): its callers
+	// add its own sides, and a flex item wants its content size, not its width.
+	adds_own_sides := b.measuring && node != b.unfloat
+	outer_extent := b.extent
+	if adds_own_sides {
+		b.extent = b.left
+	}
 	for child in node.children {
 		layout_node(b, child)
 	}
@@ -535,6 +546,13 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	finish_line(b)
 	if style.display == .List_Item {
 		b.pending_marker = nil // an empty list item: no line got the marker
+	}
+	if adds_own_sides {
+		right := b.extent + inset[.Right]
+		if has_width {
+			right = box_x + box_width
+		}
+		b.extent = max(outer_extent, right + margin[.Right])
 	}
 	apply_block_height(b, style, inset[.Top], inset[.Top] + inset[.Bottom], available)
 	if inset[.Bottom] > 0 {
@@ -661,19 +679,134 @@ request_space :: proc(b: ^Builder, style: dom.Style) {
 	b.space_style = style
 }
 
-// Places a word on the current line, wrapping first if it doesn't fit.
+// Places a word on the current line, wrapping first if it doesn't fit; a
+// word too long for a line is broken if overflow-wrap/word-break allow it.
 @(private)
 place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 	if len(word) == 0 {
 		return
 	}
 	word := transform_text(word, style.text_transform)
+	// a word can have places to wrap inside it, like a space without the space:
+	// after a hyphen or a slash followed by a letter ("well-|known", "a/|path")
+	rest := word
+	for len(rest) > 0 {
+		part := rest
+		if dom.wraps(style.white_space) {
+			part = rest[:soft_break(rest)]
+		}
+		rest = rest[len(part):]
+		// break-word doesn't make the min-content smaller: not while measuring
+		breakable := style.overflow_wrap != .Normal && dom.wraps(style.white_space) && !(style.overflow_wrap == .Break_Word && b.measuring)
+		if !breakable || !place_broken_word(b, part, style) {
+			place_text(b, part, style)
+		}
+	}
+}
+
+// Where the first part of a word ends: after the first hyphen or slash
+// that has a letter before and after it, else the whole word.
+@(private)
+soft_break :: proc(word: string) -> int {
+	for i in 1 ..< len(word) - 1 {
+		if (word[i] == '-' || word[i] == '/') && is_letter(word[i - 1]) && is_letter(word[i + 1]) {
+			return i + 1
+		}
+	}
+	return len(word)
+}
+
+@(private)
+is_letter :: proc(c: u8) -> bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c >= 0x80 // also non-ASCII letters
+}
+
+// The width of text including letter-spacing (after every character).
+@(private)
+text_width :: proc(b: ^Builder, text: string, style: dom.Style) -> f32 {
+	return b.measure(text, style.font_size, font_of(style)) + style.letter_spacing * f32(utf8.rune_count_in_string(text))
+}
+
+// A word that doesn't fit, broken between letters into pieces that do.
+// Returns false if it isn't needed (the word fits on this line, or - unless
+// break-all - on the next one): then it is placed as usual. Floats next to
+// the line are not taken into account.
+@(private)
+place_broken_word :: proc(b: ^Builder, word: string, style: dom.Style) -> bool {
+	break_all := style.overflow_wrap == .Break_All
+	// a shrink-to-fit box is exactly as wide as its measured text; rounding
+	// must not make that text "too long" and break it
+	full := b.right - b.left + FIT_TOLERANCE
+	space := pending_width(b)
+	if line_empty(b) {
+		space = b.pending_inline_left
+	}
+	width := text_width(b, word, style)
+	if (line_empty(b) || b.x + space + width <= b.line_right + FIT_TOLERANCE) && width <= full - space {
+		return false // fits where it is
+	}
+	if !break_all && width <= full {
+		return false // fits on the next line: place_text wraps
+	}
+
+	rest := word
+	for len(rest) > 0 {
+		room := full - b.pending_inline_left
+		if !line_empty(b) {
+			if !break_all {
+				finish_line(b) // break-word: the long word starts a line of its own
+				continue
+			}
+			room = b.line_right + FIT_TOLERANCE - b.x - pending_width(b)
+		}
+		// the longest beginning that fits, at least one letter on an empty line
+		cut := 0
+		for i in 0 ..< len(rest) {
+			if i > 0 && utf8.rune_start(rest[i]) {
+				if text_width(b, rest[:i], style) > room {
+					break
+				}
+				cut = i
+			}
+		}
+		if text_width(b, rest, style) <= room {
+			cut = len(rest)
+		}
+		if cut == 0 {
+			if !line_empty(b) {
+				finish_line(b)
+				continue
+			}
+			_, cut = utf8.decode_rune_in_string(rest)
+		}
+		place_text(b, rest[:cut], style)
+		rest = rest[cut:]
+		if len(rest) > 0 {
+			finish_line(b)
+		}
+	}
+	return true
+}
+
+// The space (and padding etc. of inline elements) waiting before the next word.
+@(private)
+pending_width :: proc(b: ^Builder) -> f32 {
+	space: f32 = b.pending_inline_left
+	if b.pending_space {
+		space += text_width(b, " ", b.space_style)
+	}
+	return space
+}
+
+// Places a piece of text on the current line, wrapping first if it doesn't fit.
+@(private)
+place_text :: proc(b: ^Builder, word: string, style: dom.Style) {
 	font := font_of(style)
-	width := b.measure(word, style.font_size, font)
+	width := text_width(b, word, style)
 
 	space_width: f32 = 0
 	if b.pending_space {
-		space_width = b.measure(" ", b.space_style.font_size, font_of(b.space_style))
+		space_width = text_width(b, " ", b.space_style)
 	}
 	inline_left := b.pending_inline_left // padding etc. of inline elements starting here
 
@@ -712,6 +845,7 @@ place_word :: proc(b: ^Builder, word: string, style: dom.Style) {
 		width     = width,
 		font_size = style.font_size,
 		font      = font,
+		letter_spacing = style.letter_spacing,
 		color     = style.color,
 		link      = b.link,
 		hidden    = style.visibility == .Hidden,
@@ -732,7 +866,7 @@ place_spaces :: proc(b: ^Builder, spaces: string, style: dom.Style) {
 	if line_empty(b) {
 		start_line(b, dom.line_height_px(style))
 	}
-	b.x += b.measure(spaces, style.font_size, font_of(style))
+	b.x += text_width(b, spaces, style)
 	b.pending_space = false
 	b.can_extend = false // the run would lose the exact spacing
 }
@@ -931,7 +1065,7 @@ layout_image :: proc(b: ^Builder, node: ^dom.Node) {
 
 	space_width: f32 = 0
 	if b.pending_space {
-		space_width = b.measure(" ", b.space_style.font_size, font_of(b.space_style))
+		space_width = text_width(b, " ", b.space_style)
 	}
 	inline_left := b.pending_inline_left
 	if !line_empty(b) && wraps_before(node) && b.x + space_width + inline_left + width > b.line_right {
@@ -1050,7 +1184,7 @@ add_margin :: proc(b: ^Builder, margin: f32) {
 
 @(private)
 same_style :: proc(run: Text_Run, style: dom.Style) -> bool {
-	return run.font_size == style.font_size && run.font == font_of(style) && run.color == style.color &&
+	return run.font_size == style.font_size && run.font == font_of(style) && run.color == style.color && run.letter_spacing == style.letter_spacing &&
 		run.decoration == style.decoration
 }
 

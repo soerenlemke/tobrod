@@ -46,7 +46,7 @@ layout_inline_block :: proc(b: ^Builder, node: ^dom.Node) {
 	// into the line like a word: wrap if it doesn't fit
 	space_width: f32 = 0
 	if b.pending_space {
-		space_width = b.measure(" ", b.space_style.font_size, font_of(b.space_style))
+		space_width = text_width(b, " ", b.space_style)
 	}
 	inline_left := b.pending_inline_left
 	if !line_empty(b) && wraps_before(node) && b.x + space_width + inline_left + outer > b.line_right {

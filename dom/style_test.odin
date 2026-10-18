@@ -440,7 +440,7 @@ test_css_report :: proc(t: ^testing.T) {
 	report := css_report_init()
 	defer css_report_destroy(&report)
 	doc, err := parse(`<html><head><style>
-		p { letter-spacing: 1px; color: red; display: grid }
+		p { text-indent: 1px; color: red; display: grid }
 		.s { --gap: 4px; position: sticky; width: calc(100% - 2em); font-size: calc(1em + 2px); margin-left: calc(min(1px, 2px) + 1em); margin-right: calc(var(--gap)*-1) }
 	</style></head><body><p>a</p><p class="s">b</p><div style="text-overflow: ellipsis"></div></body></html>`, report = &report)
 	if e, ok := err.?; ok {
@@ -448,7 +448,7 @@ test_css_report :: proc(t: ^testing.T) {
 	}
 	defer destroy(doc)
 
-	testing.expect_value(t, report.properties["letter-spacing"], 2)
+	testing.expect_value(t, report.properties["text-indent"], 2)
 	testing.expect_value(t, report.properties["text-overflow"], 1)
 	testing.expect(t, !("color" in report.properties), "color is supported")
 	testing.expect_value(t, report.values["display: grid"], 2)
@@ -697,4 +697,32 @@ test_border_radius :: proc(t: ^testing.T) {
 	testing.expect_value(t, divs[3].style.border_radius[.Bottom_Left], em(2))
 	testing.expect_value(t, divs[3].style.border_radius[.Top_Left], px(8))
 	testing.expect_value(t, divs[4].style.border_radius[.Top_Left], px(0)) // negative: invalid, ignored
+}
+
+@(test)
+test_word_breaking_styles :: proc(t: ^testing.T) {
+	doc, err := parse(`<div style="word-wrap: break-word; letter-spacing: 0.1em; font-size: 20px"><span style="font-size: 10px">a</span></div>
+		<p style="word-break: break-all">b</p><p style="word-break: break-word; letter-spacing: normal">c</p>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer destroy(doc)
+
+	div := find_element(doc.root, "div")
+	testing.expect_value(t, div.style.overflow_wrap, Overflow_Wrap.Break_Word)
+	testing.expect_value(t, div.style.letter_spacing, 2)
+	span := find_element(div, "span")
+	testing.expect_value(t, span.style.letter_spacing, 2) // inherited as px, not as 0.1em
+	testing.expect_value(t, span.style.overflow_wrap, Overflow_Wrap.Break_Word)
+
+	body := find_element(doc.root, "body")
+	ps := make([dynamic]^Node, context.temp_allocator)
+	for child in body.children {
+		if child.kind == .Element && child.tag == "p" {
+			append(&ps, child)
+		}
+	}
+	testing.expect_value(t, ps[0].style.overflow_wrap, Overflow_Wrap.Break_All)
+	testing.expect_value(t, ps[1].style.overflow_wrap, Overflow_Wrap.Anywhere)
+	testing.expect_value(t, ps[1].style.letter_spacing, 0)
 }

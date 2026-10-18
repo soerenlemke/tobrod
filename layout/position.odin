@@ -99,7 +99,7 @@ static_position :: proc(b: ^Builder, node: ^dom.Node) -> (pos: [2]f32) {
 		pos = {b.x, b.y if !line_empty(b) else b.y + b.pending_margin}
 		if b.pending_space && !line_empty(b) {
 			// after the space that waits for the next word
-			pos.x += b.measure(" ", b.space_style.font_size, font_of(b.space_style))
+			pos.x += text_width(b, " ", b.space_style)
 		}
 	} else {
 		// a block would start on a new line

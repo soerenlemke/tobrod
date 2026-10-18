@@ -1092,3 +1092,78 @@ test_nowrap_cell :: proc(t: ^testing.T) {
 
 	testing.expect_value(t, runs_to_string(l), "aaa bbb ccc@0,2 16\n")
 }
+
+@(test)
+test_breaking_long_words :: proc(t: ^testing.T) {
+	// 10 characters fit into a line (8px each at 16px, 80px wide)
+	cases := []struct {
+		html, want: string,
+	} {
+		// normal: the long word sticks out of its line
+		{`<p>ab cdefghijklmn</p>`, "ab@0,2 16\ncdefghijklmn@0,22 16\n"},
+		// break-word: the long word gets a line of its own, then is broken
+		{`<p style="overflow-wrap: break-word">ab cdefghijklmn</p>`, "ab@0,2 16\ncdefghijkl@0,22 16\nmn@0,42 16\n"},
+		// word-wrap is the old name
+		{`<p style="word-wrap: break-word">cdefghijklmn</p>`, "cdefghijkl@0,2 16\nmn@0,22 16\n"},
+		// a word that fits on the next line is not broken
+		{`<p style="overflow-wrap: break-word">abcdefg hijklmn</p>`, "abcdefg@0,2 16\nhijklmn@0,22 16\n"},
+		// break-all: fills the rest of the line first
+		{`<p style="word-break: break-all">ab cdefghijklmn</p>`, "ab cdefghi@0,2 16\njklmn@0,22 16\n"},
+		// a hyphen (or slash) between letters is a place to wrap
+		{`<p>abc well-known</p>`, "abc well-@0,2 16\nknown@0,22 16\n"},
+		// break-word: rather after a slash than between letters
+		{`<p style="overflow-wrap: break-word">abcdefg/hijklmnop</p>`, "abcdefg/@0,2 16\nhijklmnop@0,22 16\n"},
+		// letter-spacing: 2px after every character (also the space)
+		{`<p style="letter-spacing: 2px">ab cd</p>`, "ab cd@0,2 16\n"},
+	}
+	for c in cases {
+		doc, l := build_html(t, strings.concatenate({`<body style="margin: 0"><style>p { margin: 0 }</style>`, c.html, `</body>`}, context.temp_allocator), 80)
+		testing.expectf(t, runs_to_string(l) == c.want, "%s:\n%s", c.html, runs_to_string(l))
+		destroy(l)
+		dom.destroy(doc)
+	}
+}
+
+@(test)
+test_letter_spacing_width :: proc(t: ^testing.T) {
+	doc, l := build_html(t, `<body style="margin: 0"><p style="margin: 0; letter-spacing: 0.25em">ab cd</p></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.runs) != 1 do return
+	// 5 characters: 5 x 8px + 5 x 4px (0.25em of 16px)
+	testing.expect_value(t, l.runs[0].width, 60)
+	testing.expect_value(t, l.runs[0].letter_spacing, 4)
+}
+
+@(test)
+test_break_word_min_content :: proc(t: ^testing.T) {
+	// a 40px table: break-word keeps the min-content of the cell at the whole
+	// word (the table grows), anywhere lets the word break in the cell
+	html :: `<body style="margin: 0"><table cellspacing="0" cellpadding="0" width="40"><tr><td style="overflow-wrap: %s">abcdefgh</td></tr></table></body>`
+	cases := []struct {
+		wrap, want: string,
+	} {
+		{"break-word", "abcdefgh@0,2 16\n"},
+		{"anywhere", "abcde@0,2 16\nfgh@0,22 16\n"},
+	}
+	for c in cases {
+		doc, l := build_html(t, fmt.tprintf(html, c.wrap), 400)
+		testing.expectf(t, runs_to_string(l) == c.want, "%s:\n%s", c.wrap, runs_to_string(l))
+		destroy(l)
+		dom.destroy(doc)
+	}
+}
+
+@(test)
+test_shrink_to_fit_counts_inner_padding :: proc(t: ^testing.T) {
+	// the inline block is as wide as the block inside it, with that block's
+	// padding (odin-lang.org's menu): "Home" fits and is not broken
+	doc, l := build_html(t, `<body style="margin: 0"><span style="display: inline-block; background: red"><a style="display: block; padding: 0 8px; overflow-wrap: break-word">Home</a></span></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, runs_to_string(l), "Home@8,2 16\n")
+	if len(l.boxes) != 1 do return
+	testing.expect_value(t, l.boxes[0].width, 8 + 32 + 8)
+}
