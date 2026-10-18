@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Background images</title>
+  <link rel="stylesheet" href="css/backgrounds.css">
+  <style>
+    body { font-family: sans-serif }
+    .row { display: flex; gap: 12px; margin-bottom: 12px }
+    .b { width: 180px; height: 100px; border: 4px solid #555; padding: 4px; font-size: 13px }
+    .once { background: #fff8e1 url(images/logo.png) no-repeat }
+    .tiled { background-image: url(images/logo.png) }
+    .row-x { background: url(images/logo.png) repeat-x left bottom }
+    .center { background: #fce4ec url(images/logo.png) no-repeat center }
+    .contain { background: #eee url(images/photo.jpg) no-repeat center / contain }
+    .cover { background: url(images/photo.jpg) center / cover }
+    .sized { background: url(images/logo.png) 10px 10px / 32px }
+    .round { background: url(images/photo.jpg) center / cover; border-radius: 16px }
+    .svg { background: #fff url(images/icon.svg) no-repeat 50% 50% / 48px }
+    .from-sheet { padding-right: 80px }
+    .inline { background: #ffeb3b url(images/logo.png) 0 50% / 16px no-repeat; padding-left: 20px }
+  </style>
+</head>
+<body>
+  <div class="row">
+    <div class="b once">no-repeat, top left</div>
+    <div class="b tiled">repeat (the default)</div>
+    <div class="b row-x">repeat-x at the bottom</div>
+    <div class="b center">centered</div>
+  </div>
+  <div class="row">
+    <div class="b contain">contain</div>
+    <div class="b cover">cover</div>
+    <div class="b sized">10px 10px / 32px</div>
+    <div class="b round">cover, rounded</div>
+  </div>
+  <div class="row">
+    <div class="b svg">an SVG, 48px</div>
+    <div class="b from-sheet">from a stylesheet in css/: right 8px center</div>
+  </div>
+  <p>An <span class="inline">inline element</span> with an icon.</p>
+</body>
+</html>

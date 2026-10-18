@@ -1273,3 +1273,29 @@ test_mask_tile :: proc(t: ^testing.T) {
 	testing.expect_value(t, l.boxes[2].mask.tile, [4]f32{0, 0, 10, 10})
 	testing.expect_value(t, l.boxes[2].mask.repeat, [2]bool{true, true})
 }
+
+@(test)
+test_background_tile :: proc(t: ^testing.T) {
+	// a background image is positioned in the padding box (inside the
+	// border), and a box is made for it even without a color or border
+	doc, err := dom.parse(`<body style="margin: 0">` +
+		`<div style="width: 40px; height: 20px; border: 5px solid red; background: url(i.png) no-repeat right bottom"></div>` +
+		`<div style="width: 40px; height: 20px; background-image: url(i.png)"></div></body>`)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	defer dom.destroy(doc)
+
+	sizes := make(Image_Sizes, context.temp_allocator)
+	sizes["i.png"] = {size = {10, 10}}
+	l := build(doc, {1000, 600}, fake_measure, sizes)
+	defer destroy(l)
+	if len(l.boxes) != 2 {
+		testing.fail_now(t, fmt.tprintf("%d boxes", len(l.boxes)))
+	}
+	// the border box is 50 x 30, the padding box 40 x 20 at 5, 5
+	testing.expect_value(t, l.boxes[0].background_image.tile, [4]f32{35, 15, 10, 10})
+	testing.expect_value(t, l.boxes[0].background_image.repeat, [2]bool{false, false})
+	testing.expect_value(t, l.boxes[1].background_image.src, "i.png")
+	testing.expect_value(t, l.boxes[1].background_image.tile, [4]f32{0, 0, 10, 10})
+}

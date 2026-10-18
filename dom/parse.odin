@@ -13,8 +13,11 @@ import lxb "../vendor/lexbor"
 // Returns the CSS and the URL it came from (after redirects, the base for its
 // own @imports); both only have to live until the next call.
 Stylesheet_Loader :: struct {
-	load: proc(ctx: rawptr, href, base: string) -> (css, url: string, ok: bool),
-	ctx:  rawptr,
+	load:    proc(ctx: rawptr, href, base: string) -> (css, url: string, ok: bool),
+	// optional: makes ref absolute against base (allocated in the temp
+	// allocator), for the url()s in a stylesheet (see absolute_urls)
+	resolve: proc(base, ref: string) -> (url: string, ok: bool),
+	ctx:     rawptr,
 }
 
 // Parses html with lexbor and copies the result into our own tree.
@@ -102,7 +105,9 @@ copy_children :: proc(lxb_doc: ^lxb.Html_Document, from: ^lxb.Dom_Node, to: ^Nod
 			node.attributes = copy_attributes(element, allocator)
 			own_props: ^Custom_Props
 			node.style, own_props = compute_style(node, element, to.style, props, report)
-			node.style.mask.image = strings.clone(node.style.mask.image, allocator) // was in the temp allocator
+			// were in the temp allocator
+			node.style.mask.image = strings.clone(node.style.mask.image, allocator)
+			node.style.background_image.image = strings.clone(node.style.background_image.image, allocator)
 			copy_children(lxb_doc, child, node, own_props, allocator, report)
 			if report != nil {
 				report_node(report, node) // after its children: an <svg> looks at its parts
@@ -344,5 +349,6 @@ sheets_load :: proc(s: ^Sheets, href, base: string, depth: int) {
 			sheets_load(s, imp.href, url, depth + 1)
 		}
 	}
+	rest = absolute_urls(rest, url, s.loader.resolve)
 	sheets_add(s, apply_media_queries(rest, s.media, allocator = context.temp_allocator))
 }

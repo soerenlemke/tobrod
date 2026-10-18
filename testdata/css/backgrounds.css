@@ -1,0 +1,2 @@
+/* url()s here are relative to this file, not to the page */
+.from-sheet { background: #e3f2fd url(../images/logo.png) no-repeat right 8px center; }
