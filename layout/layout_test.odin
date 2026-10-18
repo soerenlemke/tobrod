@@ -953,3 +953,64 @@ test_percentages_in_own_context :: proc(t: ^testing.T) {
 	testing.expect_value(t, l.boxes[2].width, 100)
 	testing.expect_value(t, l.boxes[2].x, 40)
 }
+
+@(test)
+test_details_and_sup :: proc(t: ^testing.T) {
+	doc, l := build_html(t, `<body style="margin: 0">
+		<details><summary>Menu</summary><p>hidden</p>text</details>
+		<p style="margin: 0">x<sup>2</sup> y<sub>3</sub></p>
+	</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	// the triangle (0.6 of the size, centered on the text: both centers at
+	// y = 10) starts the line; "hidden" and "text" are not there. sup is 16/3
+	// higher, sub 16/5 lower than it would sit.
+	testing.expect_value(t, runs_to_string(l), `▶@0,5.2 9.6
+Menu@12.8,2 16
+x@0,22 16
+2@8,19.6667 13.333333
+y@22.6667,22 16
+3@30.6667,28.2 13.333333
+`)
+}
+
+@(test)
+test_border_spacing :: proc(t: ^testing.T) {
+	doc, l := build_html(t, `<body style="margin: 0">
+		<table cellspacing="10"><tr><td>a</td><td>b</td></tr></table>
+	</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.runs) != 2 do return
+	testing.expect_value(t, l.runs[0].x, 11) // spacing + 1px cell padding
+	testing.expect_value(t, l.runs[1].x, 11 + 8 + 1 + 10 + 1)
+}
+
+@(test)
+test_center_and_nbsp :: proc(t: ^testing.T) {
+	// <center> centers the table, but the text in its cells starts on the left;
+	// a no-break space doesn't separate words
+	doc, l := build_html(t, `<body style="margin: 0"><center>
+		<table width="50%" cellspacing="0" cellpadding="0"><tr><td>a&nbsp;b</td></tr></table>
+		<p>c</p>
+	</center></body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, runs_to_string(l), "a\u00a0b@100,2 16\nc@196,38 16\n")
+}
+
+@(test)
+test_table_fixed_column :: proc(t: ^testing.T) {
+	// the extra space of a 100% table goes to the column without a width
+	doc, l := build_html(t, `<body style="margin: 0">
+		<table width="100%" cellspacing="0" cellpadding="0"><tr><td width="18">T</td><td>news</td></tr></table>
+	</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	if len(l.runs) != 2 do return
+	testing.expect_value(t, l.runs[1].x, 18)
+}

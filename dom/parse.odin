@@ -153,6 +153,7 @@ copy_attributes :: proc(element: ^lxb.Dom_Element, allocator: mem.Allocator) -> 
 compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inherited_props: ^Custom_Props, report: ^Css_Report = nil) -> (style: Style, props: ^Custom_Props) {
 	_, hidden := attribute(node, "hidden")
 	style = default_style(node.tag, hidden, parent)
+	apply_html_hints(node, &style, parent) // before the CSS, which wins over them
 
 	// custom properties and declarations with var(), see custom_props.odin
 	declared := walk_declarations(element)

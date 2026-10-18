@@ -32,10 +32,6 @@ Table_Row :: struct {
 	cells: [dynamic]Table_Cell,
 }
 
-// border-spacing is not parsed yet; this is its default
-@(private)
-TABLE_SPACING :: f32(2)
-
 @(private)
 MAX_CONTENT_WIDTH :: f32(1_000_000)
 
@@ -45,7 +41,7 @@ layout_table :: proc(b: ^Builder, node: ^dom.Node) {
 	style := node.style
 	available := b.right - b.left
 	margin, _, border, inset := box_edges(b, style, available)
-	spacing := 0 if style.border_collapse else TABLE_SPACING
+	spacing := 0 if style.border_collapse else style.border_spacing
 
 	// 1. grid
 	rows := make([dynamic]Table_Row, context.temp_allocator)
@@ -64,6 +60,7 @@ layout_table :: proc(b: ^Builder, node: ^dom.Node) {
 	// 2. measure the cells
 	col_min := make([]f32, columns, context.temp_allocator)
 	col_max := make([]f32, columns, context.temp_allocator)
+	col_fixed := make([]bool, columns, context.temp_allocator) // a cell in it has a fixed width
 	for &row in rows {
 		for &cell in row.cells {
 			measure_cell(b, &cell, available)
@@ -75,6 +72,7 @@ layout_table :: proc(b: ^Builder, node: ^dom.Node) {
 			if cell.span == 1 {
 				col_min[cell.col] = max(col_min[cell.col], cell.min)
 				col_max[cell.col] = max(col_max[cell.col], cell.max)
+				col_fixed[cell.col] ||= has_fixed_width(cell.node.style)
 			}
 		}
 	}
@@ -111,11 +109,24 @@ layout_table :: proc(b: ^Builder, node: ^dom.Node) {
 	switch {
 	case for_columns >= sum_max:
 		// everything fits; extra space (an explicit table width) goes to the
-		// columns in proportion to their size
+		// columns in proportion to their size - only to those without a fixed
+		// width, if there are any (<td width="18"> stays 18px wide)
 		extra := for_columns - sum_max
+		growing: f32 = 0
+		count := 0
 		for i in 0 ..< columns {
-			share := col_max[i] / sum_max if sum_max > 0 else 1 / f32(columns)
-			widths[i] = col_max[i] + extra * share
+			if !col_fixed[i] {
+				growing += col_max[i]
+				count += 1
+			}
+		}
+		for i in 0 ..< columns {
+			widths[i] = col_max[i]
+			if count == 0 {
+				widths[i] += extra * (col_max[i] / sum_max if sum_max > 0 else 1 / f32(columns))
+			} else if !col_fixed[i] {
+				widths[i] += extra * (col_max[i] / growing if growing > 0 else 1 / f32(count))
+			}
 		}
 	case sum_max > sum_min:
 		t := (for_columns - sum_min) / (sum_max - sum_min)
@@ -130,8 +141,8 @@ layout_table :: proc(b: ^Builder, node: ^dom.Node) {
 	box_width := inset[.Left] + content_width + inset[.Right]
 	free := available - box_width - margin[.Left] - margin[.Right]
 	if free > 0 {
-		left_auto := style.margin[.Left].unit == .Auto
-		right_auto := style.margin[.Right].unit == .Auto
+		left_auto := style.margin[.Left].unit == .Auto || centered_by_parent(node)
+		right_auto := style.margin[.Right].unit == .Auto || centered_by_parent(node)
 		if left_auto && right_auto {
 			margin[.Left] += free / 2
 		} else if left_auto {
@@ -202,7 +213,7 @@ layout_table :: proc(b: ^Builder, node: ^dom.Node) {
 			// vertical-align: move the content down inside the row
 			offset: f32
 			switch cell_style.vertical_align {
-			case .Top:
+			case .Top, .Super, .Sub:
 			case .Middle:
 				offset = (row_height - p.height) / 2
 			case .Bottom:
@@ -340,7 +351,7 @@ measure_cell :: proc(b: ^Builder, cell: ^Table_Cell, available: f32) {
 	extra := inset[.Left] + inset[.Right]
 	cell.min = measure_contents(b, cell.node, 0) + extra
 	cell.max = measure_contents(b, cell.node, MAX_CONTENT_WIDTH) + extra
-	if style.width.unit == .Px || style.width.unit == .Em {
+	if has_fixed_width(style) {
 		w := dom.resolve_length(style.width, style.font_size, available, b.viewport) + extra
 		cell.min = max(cell.min, w)
 		cell.max = max(cell.max, w)
@@ -506,4 +517,9 @@ fill_box :: proc(b: ^Builder, index: int, style: dom.Style, border: [dom.Edge]f3
 	}
 	b.layout.boxes[index] = box
 	b.extent = max(b.extent, x + width) // a table measures as wide as its box
+}
+
+@(private)
+has_fixed_width :: proc(style: dom.Style) -> bool {
+	return style.width.unit == .Px || style.width.unit == .Em
 }

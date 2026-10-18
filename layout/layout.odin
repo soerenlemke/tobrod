@@ -254,6 +254,7 @@ Pending_Marker :: struct {
 	text:  string,
 	right: f32, // the content edge of the li: the marker hangs left of it
 	style: dom.Style,
+	scale: f32, // of the font size (the triangles of <summary> are big glyphs)
 }
 
 @(private)
@@ -271,6 +272,9 @@ layout_node :: proc(b: ^Builder, node: ^dom.Node) {
 		}
 	case .Comment:
 	case .Text:
+		if dom.hidden_by_details(node) {
+			return
+		}
 		style := node.parent.style
 		if in_pre(node) {
 			layout_pre_text(b, node.text, style)
@@ -339,6 +343,9 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 		add_positioned(b, moved.first_box, moved.end_box)
 	}
 	inline_offset := offset if !moves_as_block else {}
+	if style.display == .Inline && node.parent != nil {
+		inline_offset.y += baseline_shift(style.vertical_align, node.parent.style.font_size)
+	}
 	if inline_offset != {} {
 		b.offset += inline_offset
 		b.can_extend = false // a run must not continue across the edge
@@ -433,8 +440,8 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	}
 	width = clamp_width(b, style, available, inset_x, width)
 
-	left_auto := style.margin[.Left].unit == .Auto
-	right_auto := style.margin[.Right].unit == .Auto
+	left_auto := style.margin[.Left].unit == .Auto || centered_by_parent(node)
+	right_auto := style.margin[.Right].unit == .Auto || centered_by_parent(node)
 	free := available - width - inset[.Left] - inset[.Right] - margin[.Left] - margin[.Right]
 	if free > 0 {
 		if left_auto && right_auto {
@@ -570,7 +577,7 @@ layout_text :: proc(b: ^Builder, text: string, style: dom.Style) {
 	}
 	rest := text
 	first := true
-	for word in strings.fields_iterator(&rest) {
+	for word in next_word(&rest) {
 		if !first {
 			request_space(b, style)
 		}
@@ -702,6 +709,7 @@ place_spaces :: proc(b: ^Builder, spaces: string, style: dom.Style) {
 set_pending_marker :: proc(b: ^Builder, node: ^dom.Node) {
 	style := node.style
 	marker: string
+	scale: f32 = 1
 	switch style.list_style {
 	case .Disc:
 		marker = "•"
@@ -711,27 +719,44 @@ set_pending_marker :: proc(b: ^Builder, node: ^dom.Node) {
 		marker = "▪"
 	case .Decimal:
 		marker = fmt.aprintf("%d.", list_index(node), allocator = b.allocator)
+	case .Disclosure_Closed:
+		marker = "▶"
+		scale = 0.6
+	case .Disclosure_Open:
+		marker = "▼"
+		scale = 0.6
 	case .None:
 		b.pending_marker = nil
 		return
 	}
-	b.pending_marker = Pending_Marker{marker, b.left, style}
+	b.pending_marker = Pending_Marker{marker, b.left, style, scale}
 }
 
-// The marker hangs left of the content, like list-style-position: outside.
+// The marker hangs left of the content (list-style-position: outside), or
+// with inside it is the first thing in the line.
 @(private)
 place_marker :: proc(b: ^Builder, marker: Pending_Marker) {
 	style := marker.style
 	bold := style.font_weight >= BOLD_WEIGHT
 	gap := b.measure(" ", style.font_size, bold)
-	width := b.measure(marker.text, style.font_size, bold)
-	b.marker_run = len(b.line) + 1
+	font_size := style.font_size * marker.scale
+	width := b.measure(marker.text, font_size, bold)
+	x := marker.right - gap - width
+	if style.list_inside {
+		x = b.x
+		b.x += width + gap
+	} else {
+		b.marker_run = len(b.line) + 1 // stays where it is with text-align
+	}
 	append(&b.line, Text_Run {
 		text      = marker.text,
-		x         = marker.right - gap - width,
+		x         = x,
 		width     = width,
-		line_height = dom.line_height_px(style),
-		font_size = style.font_size,
+		// a smaller marker (the triangle of <summary>) doesn't make the line
+		// higher, and is centered on the text instead of sitting on the baseline
+		y           = -(style.font_size - font_size) / 2,
+		line_height = dom.line_height_px(style) - style.font_size + font_size,
+		font_size = font_size,
 		bold      = bold,
 		color     = style.color,
 		hidden    = style.visibility == .Hidden,
@@ -818,7 +843,7 @@ finish_line :: proc(b: ^Builder) {
 			line_end = max(line_end, item.x + item.width)
 		}
 		shift := max(b.line_right - line_end, 0)
-		if b.text_align == .Center {
+		if b.text_align == .Center || b.text_align == .Legacy_Center {
 			shift /= 2
 		}
 		for &run in b.line {
@@ -1024,4 +1049,49 @@ list_index :: proc(node: ^dom.Node) -> int {
 @(private)
 is_space :: proc(c: u8) -> bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'
+}
+
+// The next word of text, split at white space as CSS sees it: unlike
+// strings.fields, not at a no-break space (U+00A0), which stays in the word.
+@(private)
+next_word :: proc(rest: ^string) -> (word: string, ok: bool) {
+	start := 0
+	for start < len(rest) && is_space(rest[start]) {
+		start += 1
+	}
+	if start == len(rest) {
+		rest^ = ""
+		return "", false
+	}
+	end := start
+	for end < len(rest) && !is_space(rest[end]) {
+		end += 1
+	}
+	word = rest[start:end]
+	rest^ = rest[end:]
+	return word, true
+}
+
+// <center> (or align="center") around a block centers it, as if its side
+// margins were auto - unless they are set.
+@(private)
+centered_by_parent :: proc(node: ^dom.Node) -> bool {
+	if node.parent == nil || node.parent.style.text_align != .Legacy_Center {
+		return false
+	}
+	margin := node.style.margin
+	return dom.is_zero(margin[.Left]) && dom.is_zero(margin[.Right])
+}
+
+// vertical-align: super and sub move an inline element up or down, by a part
+// of the parent's font size (like browsers do). The line doesn't get higher.
+@(private)
+baseline_shift :: proc(align: dom.Vertical_Align, parent_font_size: f32) -> f32 {
+	#partial switch align {
+	case .Super:
+		return -parent_font_size / 3
+	case .Sub:
+		return parent_font_size / 5
+	}
+	return 0
 }

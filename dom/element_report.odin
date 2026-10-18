@@ -30,12 +30,8 @@ ELEMENT_GAPS :: [?][2]string {
 	{"video", "media player (we show the poster)"},
 	{"object", "plugin content"},
 	{"embed", "plugin content"},
-	{"details", "should only show its <summary> (no open)"},
 	{"dialog", "hidden unless open"},
 	{"noscript", "we hide it, but have no JavaScript"},
-	{"center", "a centered block, inline here"},
-	{"sub", "lowered and smaller"},
-	{"sup", "raised and smaller"},
 	{"i", "italic"},
 	{"em", "italic"},
 	{"cite", "italic"},
@@ -54,8 +50,8 @@ ELEMENT_GAPS :: [?][2]string {
 }
 
 // Presentational attributes (HTML's "presentational hints"): browsers turn
-// them into CSS, we ignore them. width/height of images and the like are
-// left out, those we read.
+// them into CSS. Counted are those we ignore: not the ones html_hints.odin
+// reads, and not width/height of images and the like.
 PRESENTATIONAL_ATTRIBUTES :: [?]string {
 	"bgcolor", "background", "text", "link", "vlink", "alink", "color", "face", "size",
 	"align", "valign", "width", "height", "cellpadding", "cellspacing", "border",
@@ -86,7 +82,7 @@ report_node :: proc(r: ^Css_Report, node: ^Node) {
 		report_count(r, &r.elements, key)
 	}
 	for attr in node.attributes {
-		if is_presentational(node, attr.name) {
+		if is_presentational(node, attr.name) && !html_hint_supported(node.tag, attr.name) {
 			report_count(r, &r.attributes, strings.concatenate({node.tag, "[", attr.name, "]"}, context.temp_allocator))
 		}
 	}
@@ -132,7 +128,7 @@ element_gap :: proc(node: ^Node) -> (key: string, ok: bool) {
 			return "img: WebP", true
 		}
 		return "", false
-	case "details", "dialog":
+	case "dialog":
 		// open ones look (roughly) right
 		_, open := attribute(node, "open")
 		return node.tag, !open

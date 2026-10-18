@@ -15,6 +15,7 @@ Style :: struct {
 	text_align:  Text_Align,
 	visibility:  Visibility, // inherited, but a child can be visible again
 	list_style:  List_Style, // inherited from ul/ol to the li
+	list_inside: bool,       // list-style-position: inside, the marker starts the first line (inherited)
 	position:    Position,   // not inherited
 	offset:      Edges,      // top, right, bottom, left (the "inset" properties); .Auto by default
 	clip:        Maybe(Edges), // clip: rect(top, right, bottom, left) of absolute elements, auto = that edge of the box
@@ -26,8 +27,9 @@ Style :: struct {
 	decoration:            Decoration,
 	float:       Float,      // not inherited
 	clear:       Clear,      // not inherited
-	vertical_align:  Vertical_Align, // table cells only
+	vertical_align:  Vertical_Align, // table cells; super/sub for inline elements
 	border_collapse: bool,           // tables: no spacing between the cells (inherited)
+	border_spacing:  f32,            // tables: px between the cells (inherited)
 	caption_bottom:  bool,           // caption-side: bottom (inherited)
 
 	// box model, not inherited (see box_style.odin)
@@ -50,6 +52,10 @@ Text_Align :: enum {
 	Left,
 	Center,
 	Right,
+	// <center> and align="center" (CSS -webkit-center/-moz-center): centers
+	// the text and also the blocks inside (a table), but tables start again
+	// on the left, like in Firefox
+	Legacy_Center,
 }
 
 Visibility :: enum {
@@ -63,6 +69,8 @@ List_Style :: enum {
 	Circle,
 	Square,
 	Decimal,
+	Disclosure_Closed, // ▶ of a closed <details>
+	Disclosure_Open,   // ▼ of an open one
 	None,
 }
 
@@ -126,11 +134,15 @@ is_inline_level :: proc(display: Display) -> bool {
 	return display == .Inline || display == .Inline_Block || display == .Inline_Flex
 }
 
-// Vertical position of the content in a table cell. baseline is drawn like top.
+// Vertical position of the content in a table cell (baseline is drawn like
+// top), or of an inline element in its line (super, sub; the others are
+// ignored there).
 Vertical_Align :: enum {
 	Top,
 	Middle,
 	Bottom,
+	Super,
+	Sub,
 }
 
 // Style of the document node: the start values everything inherits from.
@@ -139,6 +151,7 @@ ROOT_STYLE :: Style {
 	color       = {0, 0, 0, 255},
 	font_size   = ROOT_FONT_SIZE,
 	font_weight = 400,
+	border_spacing = 2,
 	width       = AUTO,
 	height      = AUTO,
 	max_height  = AUTO,
@@ -168,7 +181,9 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 		text_align  = parent.text_align,
 		visibility  = parent.visibility,
 		list_style  = parent.list_style,
+		list_inside = parent.list_inside,
 		border_collapse = parent.border_collapse,
+		border_spacing  = parent.border_spacing,
 		caption_bottom  = parent.caption_bottom,
 		width       = AUTO,
 		height      = AUTO,
@@ -206,7 +221,13 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 	case "th":
 		style.font_weight = 700
 		style.text_align = .Center
-		style.vertical_align = .Middle
+		style.vertical_align = parent.vertical_align // like td
+	case "sup":
+		style.font_size = parent.font_size / 1.2
+		style.vertical_align = .Super
+	case "sub":
+		style.font_size = parent.font_size / 1.2
+		style.vertical_align = .Sub
 	case "small":
 		style.font_size = parent.font_size / 1.2
 	case "a":
@@ -217,11 +238,18 @@ default_style :: proc(tag: string, has_hidden_attribute: bool, parent: Style) ->
 	case "s", "strike", "del":
 		style.text_decoration_line = {.Line_Through}
 	case "center":
-		style.text_align = .Center
+		style.text_align = .Legacy_Center
+	case "table":
+		if parent.text_align == .Legacy_Center {
+			style.text_align = .Left
+		}
 	case "ol":
 		style.list_style = .Decimal
-	case "td":
+	case "tr", "thead", "tbody", "tfoot":
 		style.vertical_align = .Middle
+	case "td":
+		// vertical-align: inherit, so <tr valign="top"> moves its cells
+		style.vertical_align = parent.vertical_align
 	case "ul":
 		style.list_style = .Disc
 	}
@@ -284,6 +312,8 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 			style.text_align = .Left
 		case "center":
 			style.text_align = .Center
+		case "-webkit-center", "-moz-center":
+			style.text_align = .Legacy_Center
 		case "right", "end":
 			style.text_align = .Right
 		}
@@ -356,6 +386,10 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 			style.vertical_align = .Middle
 		case "bottom", "text-bottom":
 			style.vertical_align = .Bottom
+		case "super":
+			style.vertical_align = .Super
+		case "sub":
+			style.vertical_align = .Sub
 		case "inherit":
 			style.vertical_align = parent.vertical_align
 		}
@@ -377,11 +411,40 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 		case "inherit", "unset":
 			style.border_collapse = parent.border_collapse
 		}
+	case "border-spacing":
+		// one value for both directions (we have only one); with two, the
+		// horizontal one
+		if value == "inherit" || value == "unset" {
+			style.border_spacing = parent.border_spacing
+		} else if parts := split_outside_parens(value, context.temp_allocator); len(parts) > 0 {
+			if length, ok := parse_length(parts[0], false); ok && !has_percent(length) {
+				style.border_spacing = max(resolve_length(length, style.font_size, 0, {}), 0)
+			}
+		}
 	case "list-style", "list-style-type":
 		if value == "inherit" || value == "unset" {
 			style.list_style = parent.list_style
 		} else if list_style, ok := parse_list_style(value); ok {
 			style.list_style = list_style
+		}
+		if property == "list-style" {
+			// the shorthand can also set the position; missing means outside
+			style.list_inside = parent.list_inside if value == "inherit" || value == "unset" else false
+			rest := value
+			for word in strings.fields_iterator(&rest) {
+				if word == "inside" {
+					style.list_inside = true
+				}
+			}
+		}
+	case "list-style-position":
+		switch value {
+		case "inside":
+			style.list_inside = true
+		case "outside", "initial":
+			style.list_inside = false
+		case "inherit", "unset":
+			style.list_inside = parent.list_inside
 		}
 	case "text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color":
 		apply_text_declaration(style, property, value)
@@ -411,7 +474,7 @@ apply_declaration :: proc(style: ^Style, property, value: string, parent: Style)
 STYLE_PROPERTIES :: [?]string {
 	"display", "color", "font-size", "font-weight", "line-height", "text-align",
 	"visibility", "position", "inset", "top", "right", "bottom", "left", "clip",
-	"text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color", "overflow", "overflow-x", "overflow-y", "float", "clear", "list-style", "list-style-type", "vertical-align", "border-collapse", "caption-side",
+	"text-decoration", "-webkit-text-decoration", "text-decoration-line", "text-decoration-color", "overflow", "overflow-x", "overflow-y", "float", "clear", "list-style", "list-style-type", "list-style-position", "vertical-align", "border-collapse", "border-spacing", "caption-side",
 	"margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
 	"padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
 	"box-sizing", "width", "height", "min-width", "min-height", "max-height", "max-width",
@@ -431,8 +494,8 @@ default_display :: proc(tag: string) -> Display {
 	case "head", "script", "style", "template", "title", "meta", "link", "base", "noscript":
 		// noscript: we have no JS yet, but real browsers with JS enabled hide it too
 		return .None
-	case "li":
-		return .List_Item
+	case "li", "summary":
+		return .List_Item // summary: the disclosure triangle is its marker
 	case "table":
 		return .Table
 	case "thead", "tbody", "tfoot":
@@ -447,7 +510,7 @@ default_display :: proc(tag: string) -> Display {
 		return .None // column styling is not supported
 	case "html", "body", "address", "article", "aside", "blockquote", "dd", "div", "dl", "dt",
 	     "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6",
-	     "header", "hr", "main", "nav", "ol", "p", "pre", "section", "ul", "details", "summary":
+	     "header", "hr", "main", "nav", "ol", "p", "pre", "section", "ul", "details", "center":
 		return .Block
 	}
 	return .Inline
@@ -507,6 +570,10 @@ parse_list_style :: proc(value: string) -> (list_style: List_Style, ok: bool) {
 			return .Circle, true
 		case "square":
 			return .Square, true
+		case "disclosure-closed":
+			return .Disclosure_Closed, true
+		case "disclosure-open":
+			return .Disclosure_Open, true
 		case "decimal", "decimal-leading-zero", "lower-alpha", "upper-alpha", "lower-latin",
 		     "upper-latin", "lower-roman", "upper-roman", "lower-greek":
 			return .Decimal, true
