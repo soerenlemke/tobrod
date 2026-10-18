@@ -1050,3 +1050,44 @@ test_border_radius_boxes :: proc(t: ^testing.T) {
 	testing.expect_value(t, first.radius, #partial [dom.Corner]f32{.Top_Left = 3, .Bottom_Left = 3})
 	testing.expect_value(t, last.radius, #partial [dom.Corner]f32{.Top_Right = 3, .Bottom_Right = 3})
 }
+
+@(test)
+test_white_space :: proc(t: ^testing.T) {
+	// 10 characters fit into a line (8px each at 16px, 80px wide)
+	cases := []struct {
+		html, want: string,
+	} {
+		// normal: spaces collapse, the line wraps
+		{`<p style="margin: 0">aaa   bbb ccc</p>`, "aaa bbb@0,2 16\nccc@0,22 16\n"},
+		// nowrap: one line, even if it is too long
+		{`<p style="margin: 0; white-space: nowrap">aaa bbb ccc</p>`, "aaa bbb ccc@0,2 16\n"},
+		// pre: spaces and line breaks stay, no wrapping
+		{`<p style="margin: 0; white-space: pre">aaa  bbb ccc ddd
+e</p>`, "aaa@0,2 16\nbbb@40,2 16\nccc@72,2 16\nddd@104,2 16\ne@0,22 16\n"},
+		// pre-wrap: like pre, but long lines wrap
+		{`<p style="margin: 0; white-space: pre-wrap">aaa  bbb ccc</p>`, "aaa@0,2 16\nbbb@40,2 16\nccc@0,22 16\n"},
+		// pre-line: spaces collapse, line breaks stay
+		{`<p style="margin: 0; white-space: pre-line">aaa   bbb
+c</p>`, "aaa bbb@0,2 16\nc@0,22 16\n"},
+		// text-transform
+		{`<p style="margin: 0; text-transform: uppercase">ab <span style="text-transform: capitalize">cd éf</span></p>`, "AB Cd Éf@0,2 16\n"},
+	}
+	for c in cases {
+		doc, l := build_html(t, strings.concatenate({`<body style="margin: 0">`, c.html, `</body>`}, context.temp_allocator), 80)
+		testing.expectf(t, runs_to_string(l) == c.want, "%s:\n%s", c.html, runs_to_string(l))
+		destroy(l)
+		dom.destroy(doc)
+	}
+}
+
+@(test)
+test_nowrap_cell :: proc(t: ^testing.T) {
+	// <td nowrap>: the cell is as wide as its text, nothing wraps
+	doc, l := build_html(t, `<body style="margin: 0">
+		<table cellspacing="0" cellpadding="0" width="40"><tr><td nowrap>aaa bbb ccc</td></tr></table>
+	</body>`, 400)
+	defer dom.destroy(doc)
+	defer destroy(l)
+
+	testing.expect_value(t, runs_to_string(l), "aaa bbb ccc@0,2 16\n")
+}

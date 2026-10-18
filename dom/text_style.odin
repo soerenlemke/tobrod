@@ -143,3 +143,54 @@ propagate_decoration :: proc(style: ^Style, parent: Style) {
 		style.decoration.color = style.text_decoration_color.? or_else style.color
 	}
 }
+
+// white-space: what happens to spaces and line breaks in the text, and
+// whether lines wrap.
+//
+//   value     spaces     line breaks   wrapping
+//   normal    collapse   are spaces    yes
+//   nowrap    collapse   are spaces    no
+//   pre       kept       kept          no
+//   pre-wrap  kept       kept          yes   (also break-spaces)
+//   pre-line  collapse   kept          yes
+White_Space :: enum {
+	Normal,
+	Nowrap,
+	Pre,
+	Pre_Wrap,
+	Pre_Line,
+}
+
+@(private)
+parse_white_space :: proc(value: string) -> (White_Space, bool) {
+	switch value {
+	case "normal", "initial":
+		return .Normal, true
+	case "nowrap":
+		return .Nowrap, true
+	case "pre":
+		return .Pre, true
+	case "pre-wrap", "break-spaces":
+		return .Pre_Wrap, true
+	case "pre-line":
+		return .Pre_Line, true
+	}
+	return .Normal, false
+}
+
+// Whether spaces and line breaks are kept (pre, pre-wrap) or collapsed.
+keeps_spaces :: proc(white_space: White_Space) -> bool {
+	return white_space == .Pre || white_space == .Pre_Wrap
+}
+
+// Whether lines may wrap where they get too long.
+wraps :: proc(white_space: White_Space) -> bool {
+	return white_space != .Nowrap && white_space != .Pre
+}
+
+Text_Transform :: enum {
+	None,
+	Uppercase,
+	Lowercase,
+	Capitalize, // the first letter of each word
+}
