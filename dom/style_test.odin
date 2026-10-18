@@ -440,7 +440,7 @@ test_css_report :: proc(t: ^testing.T) {
 	report := css_report_init()
 	defer css_report_destroy(&report)
 	doc, err := parse(`<html><head><style>
-		p { text-indent: 1px; color: red; display: grid }
+		p { text-indent: 1px; color: red; display: contents }
 		.s { --gap: 4px; position: sticky; width: calc(100% - 2em); font-size: calc(1em + 2px); margin-left: calc(min(1px, 2px) + 1em); margin-right: calc(var(--gap)*-1) }
 	</style></head><body><p>a</p><p class="s">b</p><div style="text-overflow: ellipsis"></div></body></html>`, report = &report)
 	if e, ok := err.?; ok {
@@ -451,7 +451,7 @@ test_css_report :: proc(t: ^testing.T) {
 	testing.expect_value(t, report.properties["text-indent"], 2)
 	testing.expect_value(t, report.properties["text-overflow"], 1)
 	testing.expect(t, !("color" in report.properties), "color is supported")
-	testing.expect_value(t, report.values["display: grid"], 2)
+	testing.expect_value(t, report.values["display: contents"], 2)
 	testing.expect_value(t, report.values["position: sticky"], 1)
 	testing.expect(t, !("calc() in width" in report.values), "calc() in width is supported")
 	testing.expect(t, !("calc() in margin-right" in report.values), "calc() with var() is supported")

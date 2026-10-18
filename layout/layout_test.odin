@@ -1299,3 +1299,89 @@ test_background_tile :: proc(t: ^testing.T) {
 	testing.expect_value(t, l.boxes[1].background_image.src, "i.png")
 	testing.expect_value(t, l.boxes[1].background_image.tile, [4]f32{0, 0, 10, 10})
 }
+
+@(private = "file")
+grid_runs :: proc(t: ^testing.T, html: string) -> (l: ^Layout, doc: ^dom.Document) {
+	err: Maybe(dom.Parse_Error)
+	doc, err = dom.parse(html)
+	if e, ok := err.?; ok {
+		testing.fail_now(t, e.message)
+	}
+	return build(doc, {1000, 600}, fake_measure), doc
+}
+
+@(private = "file")
+run_at :: proc(l: ^Layout, text: string) -> [2]f32 {
+	for run in l.runs {
+		if run.text == text {
+			return {run.x, run.y}
+		}
+	}
+	return {-1, -1}
+}
+
+@(test)
+test_grid_tracks :: proc(t: ^testing.T) {
+	// fixed, fr and fixed columns with a gap; the fifth item starts row 2
+	l, doc := grid_runs(t, `<body style="margin: 0"><div style="display: grid; grid-template-columns: 200px 1fr 100px; gap: 10px">` +
+		`<div>a</div><div>b</div><div>c</div><div>d</div></div></body>`)
+	defer dom.destroy(doc)
+	defer destroy(l)
+	testing.expect_value(t, run_at(l, "a"), [2]f32{0, 2})
+	testing.expect_value(t, run_at(l, "b"), [2]f32{210, 2})
+	testing.expect_value(t, run_at(l, "c"), [2]f32{900, 2}) // 1fr = 1000 - 20 - 300 = 680
+	testing.expect_value(t, run_at(l, "d"), [2]f32{0, 32})  // a line of 20 + the gap (text sits 2px into its line)
+}
+
+@(test)
+test_grid_areas :: proc(t: ^testing.T) {
+	// named areas, in any order in the source
+	l, doc := grid_runs(t, `<body style="margin: 0"><div style="display: grid; grid-template-columns: 100px 1fr; grid-template-areas: 'head head' 'side main'">` +
+		`<div style="grid-area: main">m</div><div style="grid-area: head">h</div><div style="grid-area: side">s</div></div></body>`)
+	defer dom.destroy(doc)
+	defer destroy(l)
+	testing.expect_value(t, run_at(l, "h"), [2]f32{0, 2})
+	testing.expect_value(t, run_at(l, "s"), [2]f32{0, 22})
+	testing.expect_value(t, run_at(l, "m"), [2]f32{100, 22})
+}
+
+@(test)
+test_grid_placement :: proc(t: ^testing.T) {
+	// auto placement around a span and an item on a fixed line; one item
+	// over two rows makes the second one higher
+	l, doc := grid_runs(t, `<body style="margin: 0"><div style="display: grid; grid-template-columns: repeat(3, 100px)">` +
+		`<div style="grid-column: span 2">a</div><div>b</div><div style="grid-column: 3; grid-row: 2 / span 2">c<br>c<br>c<br>c</div>` +
+		`<div>d</div><div>e</div><div>f</div></div></body>`)
+	defer dom.destroy(doc)
+	defer destroy(l)
+	testing.expect_value(t, run_at(l, "a"), [2]f32{0, 2})
+	testing.expect_value(t, run_at(l, "b"), [2]f32{200, 2})
+	testing.expect_value(t, run_at(l, "d"), [2]f32{0, 22})
+	testing.expect_value(t, run_at(l, "e"), [2]f32{100, 22})
+	// c covers rows 2 and 3 (80 high): row 3 gets 60
+	testing.expect_value(t, run_at(l, "f"), [2]f32{0, 42})
+	testing.expect_value(t, l.height, 100)
+}
+
+@(test)
+test_grid_auto_columns :: proc(t: ^testing.T) {
+	// auto tracks: their content, then they share the rest; justify-self
+	l, doc := grid_runs(t, `<body style="margin: 0"><div style="display: grid; grid-template-columns: auto auto">` +
+		`<div>aaaa</div><div style="justify-self: end">bb</div></div></body>`)
+	defer dom.destroy(doc)
+	defer destroy(l)
+	// 32 and 16 px of content, 952 left: 476 each -> 508 and 492
+	testing.expect_value(t, run_at(l, "aaaa"), [2]f32{0, 2})
+	testing.expect_value(t, run_at(l, "bb"), [2]f32{1000 - 16, 2})
+}
+
+@(test)
+test_grid_display_contents :: proc(t: ^testing.T) {
+	// the children of a display: contents element are the grid's items (MDN)
+	l, doc := grid_runs(t, `<body style="margin: 0"><div style="display: grid; grid-template-columns: 100px 1fr; grid-template-areas: 'side main'">` +
+		`<main style="display: contents"><div style="grid-area: main">m</div><div style="grid-area: side">s</div></main></div></body>`)
+	defer dom.destroy(doc)
+	defer destroy(l)
+	testing.expect_value(t, run_at(l, "s"), [2]f32{0, 2})
+	testing.expect_value(t, run_at(l, "m"), [2]f32{100, 2})
+}

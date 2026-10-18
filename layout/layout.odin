@@ -355,7 +355,7 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 		return
 	}
 	// placed in the line as a whole; inside, laid out as its own root below
-	if (style.display == .Inline_Block || style.display == .Inline_Flex) && node != b.unfloat && !is_replaced_element(node.tag) {
+	if (style.display == .Inline_Block || style.display == .Inline_Flex || style.display == .Inline_Grid) && node != b.unfloat && !is_replaced_element(node.tag) {
 		layout_inline_block(b, node)
 		return
 	}
@@ -449,6 +449,10 @@ layout_element :: proc(b: ^Builder, node: ^dom.Node) {
 	}
 	if dom.is_flex_container(style.display) {
 		layout_flex(b, node)
+		return
+	}
+	if dom.is_grid_container(style.display) {
+		layout_grid(b, node)
 		return
 	}
 

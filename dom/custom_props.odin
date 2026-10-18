@@ -292,6 +292,14 @@ shorthands_of :: proc(property: string) -> [5]string {
 		return {0 = "padding"}
 	case "background-color", "background-image", "background-size", "background-position", "background-repeat":
 		return {0 = "background"}
+	case "grid-template-columns", "grid-template-rows", "grid-template-areas":
+		return {0 = "grid-template"}
+	case "grid-column-start", "grid-column-end":
+		return {"grid-column", "grid-area", "", "", ""}
+	case "grid-row-start", "grid-row-end":
+		return {"grid-row", "grid-area", "", "", ""}
+	case "grid-column", "grid-row":
+		return {0 = "grid-area"}
 	case "mask-image", "mask-size", "mask-position", "mask-repeat":
 		return {0 = "mask"}
 	case "-webkit-mask-image", "-webkit-mask-size", "-webkit-mask-position", "-webkit-mask-repeat":

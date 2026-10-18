@@ -11,8 +11,8 @@ import "../dom"
 // y = 0: where the line ends up is only known in finish_line, which moves
 // everything it added (Display_Range) into place.
 //
-// Vertically it sits on the baseline like text: its last line of text lines
-// up with the text of the line; what is below that (padding, border, margin)
+// Vertically it sits on the baseline like text: its last line of text (for
+// inline-flex and inline-grid its first one) lines up with the text of the line; what is below that (padding, border, margin)
 // hangs below the line's text and makes the line higher there. Without text
 // its bottom margin edge sits on the baseline, like an image.
 
@@ -69,15 +69,20 @@ layout_inline_block :: proc(b: ^Builder, node: ^dom.Node) {
 	node.style = old_style
 	drawn = display_range_end(b, drawn)
 
-	// the baseline: the bottom of the line box of its last text
+	// the baseline: the bottom of the line box of its last text, or of its
+	// first text for flex and grid containers (CSS takes their first item's)
 	above := bottom
-	last_line_bottom: f32 = -1
+	first_item := style.display == .Inline_Flex || style.display == .Inline_Grid
+	line_bottom: f32 = -1
 	for run in b.layout.runs[drawn.first_run:drawn.end_run] {
-		last_line_bottom = max(last_line_bottom, run.y + (run.line_height + run.font_size) / 2)
+		run_bottom := run.y + (run.line_height + run.font_size) / 2
+		if line_bottom < 0 || (first_item && run_bottom < line_bottom) || (!first_item && run_bottom > line_bottom) {
+			line_bottom = run_bottom
+		}
 	}
 	clips_x, clips_y := clips_overflow(style)
-	if last_line_bottom >= 0 && !clips_x && !clips_y {
-		above = min(last_line_bottom, bottom)
+	if line_bottom >= 0 && !clips_x && !clips_y {
+		above = min(line_bottom, bottom)
 	}
 
 	append(&b.line_blocks, Inline_Block_Item{drawn, x, outer, above, bottom - above})

@@ -108,6 +108,7 @@ copy_children :: proc(lxb_doc: ^lxb.Html_Document, from: ^lxb.Dom_Node, to: ^Nod
 			// were in the temp allocator
 			node.style.mask.image = strings.clone(node.style.mask.image, allocator)
 			node.style.background_image.image = strings.clone(node.style.background_image.image, allocator)
+			clone_grid(&node.style.grid, allocator)
 			copy_children(lxb_doc, child, node, own_props, allocator, report)
 			if report != nil {
 				report_node(report, node) // after its children: an <svg> looks at its parts
@@ -203,17 +204,20 @@ compute_style :: proc(node: ^Node, element: ^lxb.Dom_Element, parent: Style, inh
 			apply_logical(&style, property, value, parent)
 		}
 	}
-	// floated elements and the children of a flex container are always
-	// block-level (CSS "blockification"); floats don't apply to flex items
-	if style.float != .None || is_flex_container(parent.display) {
+	// floated elements and the children of a flex or grid container are
+	// always block-level (CSS "blockification"); floats don't apply to items
+	item := is_flex_container(parent.display) || is_grid_container(parent.display)
+	if style.float != .None || item {
 		#partial switch style.display {
 		case .Inline, .Inline_Block, .Table_Cell, .Table_Row:
 			style.display = .Block
 		case .Inline_Flex:
 			style.display = .Flex
+		case .Inline_Grid:
+			style.display = .Grid
 		}
 	}
-	if is_flex_container(parent.display) {
+	if item {
 		style.float = .None
 	}
 	propagate_decoration(&style, parent)

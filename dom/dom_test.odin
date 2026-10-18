@@ -63,7 +63,8 @@ test_parse_display :: proc(t: ^testing.T) {
 		{"flex", .Flex, true},
 		{"inline-block", .Inline_Block, true},
 		{"inline-flex", .Inline_Flex, true},
-		{"inline-grid", .Inline_Block, true},
+		{"inline-grid", .Inline_Grid, true},
+		{"grid", .Grid, true},
 		{"list-item", .List_Item, true},
 		{"ruby", .Inline, false},
 	}

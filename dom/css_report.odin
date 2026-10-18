@@ -55,7 +55,7 @@ report_count :: proc(r: ^Css_Report, m: ^map[string]int, key: string) {
 // outer behavior (see parse_display).
 @(private)
 SUPPORTED_DISPLAY :: []string {
-	"none", "block", "inline", "list-item", "flex", "flow-root", "inline-block", "inline-flex",
+	"none", "block", "inline", "list-item", "flex", "flow-root", "inline-block", "inline-flex", "grid", "inline-grid",
 	"table", "table-row-group", "table-header-group", "table-footer-group",
 	"table-row", "table-cell", "table-caption",
 }
