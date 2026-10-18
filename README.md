@@ -21,7 +21,7 @@ It is a toy: it renders many real pages surprisingly well (try a Wikipedia artic
 - **HTML**: parsed by lexbor into tobrod's own DOM tree; presentational attributes (`bgcolor`, `align`, `valign`, `cellpadding`, `<center>`, `<font>`, ...), `<details>`/`<summary>`, `<sup>`/`<sub>`; plain text documents are shown like in Chrome
 - **CSS**: `<style>`, `style=""` and external stylesheets, `@media` queries, custom properties (`var()`), `calc()` in lengths, inheritance and the user agent defaults
 - **Layout**: block and inline layout with margin collapsing, the box model (margin, padding, borders, width / min-width / max-width, height / min-height / max-height, `box-sizing`, `margin: auto`), `overflow: hidden`, `position: relative`, `absolute` and `fixed`, backgrounds (also of inline elements like `code` or `mark`, one box per line), `text-align`, lists, images, tables, floats, flexbox and inline blocks (`inline-block`, `inline-flex`)
-- **Rendering**: text in [Inter](https://github.com/rsms/inter) (regular, bold, italic) and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) with sizes, colors, `line-height` and `text-decoration`, boxes, borders, rounded corners (`border-radius`), images (PNG, JPG, GIF, BMP, QOI, and SVG with an own small renderer)
+- **Rendering**: text in [Inter](https://github.com/rsms/inter) (regular, bold, italic) and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) with sizes, colors, `line-height` and `text-decoration`, boxes, borders, rounded corners (`border-radius`), images (PNG, JPG, GIF, BMP, QOI, and SVG with an own small renderer, also inline `<svg>`)
 
 See the [roadmap](#roadmap) for the details and [known limitations](#known-limitations) for what's missing.
 
@@ -130,7 +130,7 @@ The detailed developer notes (in German) are in [CLAUDE.md](CLAUDE.md).
 The full list, measured against Firefox on real pages, is in [docs/rendering-gaps.md](docs/rendering-gaps.md). In short:
 
 - no JavaScript yet
-- SVG images are drawn by tobrod's own small renderer: filled, stroked and dashed shapes and paths, no gradients or inline `<svg>` yet; no WebP (its place stays empty, like a broken image; no `alt` text yet), no video playback (the poster image is shown)
+- SVG (as `<img>` and inline `<svg>`) is drawn by tobrod's own small renderer: filled, stroked and dashed shapes and paths, no gradients, `<use>` or text yet, and the page's CSS doesn't reach the SVG's parts; no WebP (its place stays empty, like a broken image; no `alt` text yet), no video playback (the poster image is shown)
 - fonts: only Latin characters (Latin-1 and a few more); other scripts show `?`
 - layout: no CSS grid, no percentage heights in the flow, no scrolling inside boxes (`overflow: scroll/auto` just clip), `position: sticky` behaves like `static`, no `rowspan`
 - `@media` queries are evaluated once, for the window size at load time
@@ -184,8 +184,8 @@ Stage 4 — HTML & CSS
 - [x] `position: fixed` (own layer that doesn't scroll)
 - [x] `z-index` (paint order in layers, stacking contexts)
 - [ ] `position: sticky`
-- [x] SVG images: own renderer for filled and stroked shapes and paths (package `svg`)
-- [ ] SVG: inline `<svg>`, `<use>`, gradients
+- [x] SVG: own renderer for filled, stroked and dashed shapes and paths (package `svg`), as `<img>` and inline `<svg>`
+- [ ] SVG: `<use>`, gradients, CSS of the page
 
 Stage 5 — Threads
 

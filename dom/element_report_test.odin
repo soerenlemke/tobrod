@@ -14,7 +14,7 @@ test_element_report :: proc(t: ^testing.T) {
 		<noscript>Please enable JavaScript</noscript>
 		<table cellpadding="4"><tr><td bgcolor="red" align="right" width="50%" background="x.png">a</td></tr></table>
 		<hr noshade><dialog>hidden</dialog>
-		<my-widget></my-widget><svg width="10"><rect width="5" height="5"></rect></svg>
+		<my-widget></my-widget><svg width="10"><rect width="5" height="5"></rect></svg><svg><g><use href="#a"></use></g></svg>
 		<div style="display: none"><select><option>a</option></select><td bgcolor="red"></td></div>
 	</body></html>`, report = &report)
 	if e, ok := err.?; ok {
@@ -40,8 +40,10 @@ test_element_report :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, !("img[width]" in report.attributes), "image sizes are read")
 	testing.expect(t, !("input[name]" in report.attributes), "not presentational")
-	testing.expect_value(t, report.elements["svg"], 1)
+	// inline SVG is drawn; only the parts our renderer can't draw count
+	testing.expect(t, !("svg" in report.elements), "inline SVG is drawn")
+	testing.expect_value(t, report.elements["svg: use"], 1)
 	testing.expect(t, !("rect[width]" in report.attributes), "parts of an SVG")
 
-	testing.expect_value(t, element_gap_reason("svg"), "inline SVG, needs an SVG renderer")
+	testing.expect_value(t, element_gap_reason("svg: use"), "SVG with <use>, the reused part is missing")
 }

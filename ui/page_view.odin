@@ -15,6 +15,7 @@ PageView :: struct {
 	content_height: f32,
 	images:         map[string]rl.Texture2D, // decoded images of the document, see page_images.odin
 	image_sizes:    layout.Image_Sizes,      // their natural sizes, for the layout
+	svg_textures:   map[^dom.Node]rl.Texture2D, // inline <svg>s, drawn at their layout size
 	loading:        bool,                    // the page or its images are still loading (set_loading)
 }
 
@@ -52,6 +53,7 @@ page_view_destroy :: proc(pv: ^PageView) {
 	page_view_clear(pv)
 	delete(pv.images)
 	delete(pv.image_sizes)
+	delete(pv.svg_textures)
 }
 
 // Drops the cached layout; the next render builds a new one.
@@ -160,7 +162,11 @@ draw_display_list :: proc(pv: ^PageView, boxes: []layout.Box, images: []layout.I
 		}
 		set_clip(pv, image.clip, scroll_y, &current)
 		dest := rl.Rectangle{pv.rect.x + image.x, pv.rect.y + top, image.width, image.height}
-		if texture, ok := pv.images[image.src]; ok {
+		if image.svg != nil {
+			if texture, ok := inline_svg_texture(pv, image.svg, image.width, image.height); ok {
+				rl.DrawTexturePro(texture, {0, 0, f32(texture.width), f32(texture.height)}, dest, {0, 0}, 0, rl.WHITE)
+			}
+		} else if texture, ok := pv.images[image.src]; ok {
 			source := rl.Rectangle{0, 0, f32(texture.width), f32(texture.height)}
 			rl.DrawTexturePro(texture, source, dest, {0, 0}, 0, rl.WHITE)
 		} else if pv.loading {

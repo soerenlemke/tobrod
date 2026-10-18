@@ -20,7 +20,11 @@ ELEMENT_GAPS :: [?][2]string {
 	{"input: time", "drawn as a text field"},
 	{"progress", "form control, nothing is drawn"},
 	{"meter", "form control, nothing is drawn"},
-	{"svg", "inline SVG, needs an SVG renderer"},
+	{"svg: use", "SVG with <use>, the reused part is missing"},
+	{"svg: gradient", "SVG with a gradient, drawn in its first color"},
+	{"svg: text", "SVG with <text>, the text is missing"},
+	{"svg: clip/mask", "SVG with clipPath, mask, pattern or filter, drawn without them"},
+	{"svg: image", "SVG with <image> or <foreignObject>, missing"},
 	{"img: WebP", "<img> with a WebP source, we can't decode it"},
 	{"img: data URL", "<img> with the image in its src (data:), we don't load those"},
 	{"math", "MathML"},
@@ -97,6 +101,32 @@ is_visible :: proc(node: ^Node) -> bool {
 	return true
 }
 
+// The first part of an SVG our renderer (package svg) doesn't draw yet.
+@(private)
+svg_gap :: proc(node: ^Node) -> (key: string, ok: bool) {
+	for child in node.children {
+		if child.kind != .Element {
+			continue
+		}
+		switch child.tag {
+		case "use":
+			return "svg: use", true
+		case "lineargradient", "radialgradient":
+			return "svg: gradient", true
+		case "text":
+			return "svg: text", true
+		case "clippath", "mask", "pattern", "filter":
+			return "svg: clip/mask", true
+		case "image", "foreignobject":
+			return "svg: image", true
+		}
+		if key, found := svg_gap(child); found {
+			return key, true
+		}
+	}
+	return "", false
+}
+
 // The key in ELEMENT_GAPS for this element, if it has one.
 @(private)
 element_gap :: proc(node: ^Node) -> (key: string, ok: bool) {
@@ -125,6 +155,9 @@ element_gap :: proc(node: ^Node) -> (key: string, ok: bool) {
 			return "img: WebP", true
 		}
 		return "", false
+	case "svg":
+		// our renderer draws shapes; count the parts it can't draw yet
+		return svg_gap(node)
 	case "dialog":
 		// open ones look (roughly) right
 		_, open := attribute(node, "open")

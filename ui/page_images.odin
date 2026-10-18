@@ -1,6 +1,8 @@
 package ui
 
+import "core:math"
 import "core:strings"
+import "../dom"
 import "../layout"
 import "../svg"
 import rl "vendor:raylib"
@@ -75,6 +77,34 @@ load_svg :: proc(data: []u8) -> (texture: rl.Texture2D, natural: layout.Natural_
 	return texture, natural, texture.id != 0
 }
 
+// An inline <svg> of the page as a texture of width x height (rounded up),
+// rendered the first time it is drawn at that size; only visible ones are
+// ever rendered.
+@(private)
+inline_svg_texture :: proc(pv: ^PageView, node: ^dom.Node, width, height: f32) -> (texture: rl.Texture2D, ok: bool) {
+	w, h := int(math.ceil(width)), int(math.ceil(height))
+	if w <= 0 || h <= 0 || w > svg.MAX_SIZE || h > svg.MAX_SIZE {
+		return
+	}
+	if texture, ok = pv.svg_textures[node]; ok && int(texture.width) == w && int(texture.height) == h {
+		return texture, texture.id != 0
+	}
+	if ok {
+		rl.UnloadTexture(texture) // drawn at another size before (window resized)
+	}
+	picture := svg.render(node, w, h)
+	defer delete(picture.pixels)
+	texture = rl.LoadTextureFromImage(rl.Image {
+		data    = raw_data(picture.pixels),
+		width   = i32(w),
+		height  = i32(h),
+		mipmaps = 1,
+		format  = .UNCOMPRESSED_R8G8B8A8,
+	})
+	pv.svg_textures[node] = texture
+	return texture, texture.id != 0
+}
+
 @(private)
 page_view_clear_images :: proc(pv: ^PageView) {
 	for key, texture in pv.images {
@@ -82,6 +112,10 @@ page_view_clear_images :: proc(pv: ^PageView) {
 		delete(key) // image_sizes shares the keys
 	}
 	clear(&pv.images)
+	for _, texture in pv.svg_textures {
+		rl.UnloadTexture(texture)
+	}
+	clear(&pv.svg_textures)
 	clear(&pv.image_sizes)
 }
 
