@@ -282,6 +282,8 @@ shorthands_of :: proc(property: string) -> [5]string {
 	switch property {
 	case "font-size", "font-weight", "line-height", "font-family", "font-style":
 		return {0 = "font"}
+	case "border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius":
+		return {0 = "border-radius"}
 	case "list-style-type", "list-style-position":
 		return {0 = "list-style"}
 	case "margin-top", "margin-right", "margin-bottom", "margin-left":

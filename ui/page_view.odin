@@ -127,6 +127,10 @@ draw_display_list :: proc(pv: ^PageView, boxes: []layout.Box, images: []layout.I
 		}
 		set_clip(pv, box.clip, scroll_y, &current)
 		x, y := pv.rect.x + box.x, pv.rect.y + top
+		if box.radius != {} {
+			draw_rounded_box(x, y, box)
+			continue
+		}
 		if box.color[3] > 0 {
 			rl.DrawRectangleRec({x, y, box.width, box.height}, rl.Color(box.color))
 		}

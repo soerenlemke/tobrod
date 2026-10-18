@@ -40,6 +40,7 @@ Box :: struct {
 	border:              [dom.Edge]f32, // widths in px, 0 = none
 	border_color:        [dom.Edge]dom.Color,
 	clip:                Clip,
+	radius:              [dom.Corner]f32, // rounded corners in px, see box_radius
 }
 
 // An <img>: where it goes and how big it is. The ui draws the decoded image
@@ -526,7 +527,7 @@ layout_block :: proc(b: ^Builder, node: ^dom.Node) {
 	}
 	b.last_box = {box_x, top.y, box_width, b.y - top.y, border, box_index}
 	if box_index >= 0 {
-		box := Box{box_x, top.y, box_width, b.y - top.y, box_background, border, {}, 0}
+		box := Box{box_x, top.y, box_width, b.y - top.y, box_background, border, {}, 0, box_radius(b, style, box_width, b.y - top.y)}
 		for edge in dom.Edge {
 			box.border_color[edge] = dom.border_color(style.border[edge], style.color)
 		}

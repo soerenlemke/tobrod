@@ -70,3 +70,17 @@ fix_percentages :: proc(b: ^Builder, style: ^dom.Style, available: f32) -> (old:
 	}
 	return
 }
+
+// border-radius in px for a box of this size. Percentages refer to the
+// width (elliptical corners, whose vertical radius would use the height, are
+// drawn round). A radius bigger than half the box is cut down, so 50% on a
+// wide box gives a pill instead of an ellipse.
+@(private)
+box_radius :: proc(b: ^Builder, style: dom.Style, width, height: f32) -> (radius: [dom.Corner]f32) {
+	limit := max(min(width, height) / 2, 0)
+	for corner in dom.Corner {
+		r := dom.resolve_length(style.border_radius[corner], style.font_size, width, b.viewport)
+		radius[corner] = clamp(r, 0, limit)
+	}
+	return
+}

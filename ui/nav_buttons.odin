@@ -152,8 +152,8 @@ draw_reload :: proc(center: rl.Vector2, color: rl.Color) {
 }
 
 // raylib skips triangles whose corners are not counter-clockwise on screen
-// (backface culling), so sort them first.
-@(private = "file")
+// (backface culling), so sort them first. Also used for rounded boxes.
+@(private)
 draw_triangle_any_order :: proc(a, b, c: rl.Vector2, color: rl.Color) {
 	cross := (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
 	if cross < 0 {
