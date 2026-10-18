@@ -186,6 +186,7 @@ Stage 4 — HTML & CSS
 - [x] `opacity` (a block is faded as a group, drawn into a texture first)
 - [x] `background-image` and `mask-image` with an image (size, position, repeat), `data:` URLs
 - [x] `box-shadow` (outer and inset, blur, spread, several per box)
+- [x] `transform` (2D: translate, rotate, scale, skew, matrix; `transform-origin`)
 - [ ] `position: sticky`
 - [x] SVG: own renderer for filled, stroked and dashed shapes and paths (package `svg`), as `<img>` and inline `<svg>`
 - [ ] SVG: `<use>`, gradients, CSS of the page

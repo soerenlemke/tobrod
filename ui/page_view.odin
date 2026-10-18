@@ -133,12 +133,20 @@ page_view_render :: proc(pv: ^PageView) {
 // page, a background would shine through the text on it.
 @(private)
 draw_layer :: proc(pv: ^PageView, layer: layout.Layer, boxes: []layout.Box, images: []layout.Image_Item, runs: []layout.Text_Run, scroll_y: f32) {
-	if layer.fade <= 0 {
-		draw_display_list(pv, boxes, images, runs, scroll_y)
-		return
-	}
 	if layer.fade >= 1 {
 		return // opacity: 0
+	}
+	// a transformed layer (rotate, scale): everything drawn through its matrix
+	m, transformed := layer.transform.?
+	if layer.fade <= 0 {
+		if transformed {
+			push_page_transform(pv, m, scroll_y)
+		}
+		draw_display_list(pv, boxes, images, runs, scroll_y)
+		if transformed {
+			pop_page_transform()
+		}
+		return
 	}
 	w, h := rl.GetScreenWidth(), rl.GetScreenHeight()
 	if pv.group_target.id == 0 || pv.group_target.texture.width != w || pv.group_target.texture.height != h {
@@ -148,7 +156,11 @@ draw_layer :: proc(pv: ^PageView, layer: layout.Layer, boxes: []layout.Box, imag
 		pv.group_target = rl.LoadRenderTexture(w, h)
 	}
 
+	// the layer's matrix applies inside the texture, which is drawn untransformed
 	rl.BeginTextureMode(pv.group_target)
+	if transformed {
+		push_page_transform(pv, m, scroll_y)
+	}
 	rl.ClearBackground({0, 0, 0, 0})
 	// colors are blended as usual, but the alpha adds up instead of being
 	// multiplied by itself: the texture holds premultiplied colors
@@ -156,6 +168,9 @@ draw_layer :: proc(pv: ^PageView, layer: layout.Layer, boxes: []layout.Box, imag
 	rl.BeginBlendMode(.CUSTOM_SEPARATE)
 	draw_display_list(pv, boxes, images, runs, scroll_y)
 	rl.EndBlendMode()
+	if transformed {
+		pop_page_transform()
+	}
 	rl.EndTextureMode()
 
 	// premultiplied: the tint fades color and alpha alike
@@ -219,6 +234,12 @@ draw_display_list :: proc(pv: ^PageView, boxes: []layout.Box, images: []layout.I
 		set_clip(pv, image.clip, scroll_y, &current)
 		dest := rl.Rectangle{pv.rect.x + image.x, pv.rect.y + top, image.width, image.height}
 		tint := rl.Color(dom.faded({255, 255, 255, 255}, image.fade)) // opacity
+		if m, ok := image.transform.?; ok {
+			push_page_transform(pv, layout.absolute_transform(m, {image.x, image.y}), scroll_y)
+		}
+		defer if image.transform != nil {
+			pop_page_transform()
+		}
 		if image.svg != nil {
 			if texture, ok := inline_svg_texture(pv, image.svg, image.width, image.height); ok {
 				rl.DrawTexturePro(texture, {0, 0, f32(texture.width), f32(texture.height)}, dest, {0, 0}, 0, tint)
@@ -417,4 +438,36 @@ page_view_handle_scroll :: proc(pv: ^PageView, wheel_y: f32) {
 clamp_scroll :: proc(pv: ^PageView) {
 	max_scroll := max(pv.content_height - pv.rect.height, 0)
 	pv.scroll_y = clamp(pv.scroll_y, 0, max_scroll)
+}
+
+// Pushes a matrix in page coordinates (like the layout's) for drawing: the
+// items are drawn shifted by the page view's position and the scrolling,
+// so the matrix is moved there too.
+@(private)
+push_page_transform :: proc(pv: ^PageView, m: [6]f32, scroll_y: f32) {
+	ox, oy := pv.rect.x, pv.rect.y - scroll_y
+	// screen = offset + m(page), page = screen - offset
+	e := m[4] + ox - (m[0] * ox + m[2] * oy)
+	f := m[5] + oy - (m[1] * ox + m[3] * oy)
+	// a 4x4 matrix, column by column
+	columns := [16]f32{
+		m[0], m[1], 0, 0,
+		m[2], m[3], 0, 0,
+		0,    0,    1, 0,
+		e,    f,    0, 1,
+	}
+	rlgl.PushMatrix()
+	rlgl.MultMatrixf(raw_data(columns[:]))
+	// a mirroring matrix (scaleX(-1)) turns the triangles around, and
+	// raylib would drop them as back faces
+	rlgl.DrawRenderBatchActive()
+	rlgl.DisableBackfaceCulling()
+}
+
+// Undoes push_page_transform.
+@(private)
+pop_page_transform :: proc() {
+	rlgl.DrawRenderBatchActive()
+	rlgl.EnableBackfaceCulling()
+	rlgl.PopMatrix()
 }
