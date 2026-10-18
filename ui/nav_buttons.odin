@@ -41,7 +41,7 @@ visible_buttons :: proc(nav: ^NavButtons) -> [3]Nav_Action {
 nav_button_rect :: proc(action: Nav_Action) -> rl.Rectangle {
 	slot := min(int(action), int(Nav_Action.Reload)) // Stop shares the slot of Reload
 	x := NAV_BUTTONS_LEFT + f32(slot) * (NAV_BUTTON_SIZE + NAV_BUTTON_GAP)
-	y := (ADDRESS_BAR_HEIGHT - NAV_BUTTON_SIZE) / 2
+	y := TAB_BAR_HEIGHT + (ADDRESS_BAR_HEIGHT - NAV_BUTTON_SIZE) / 2
 	return {x, y, NAV_BUTTON_SIZE, NAV_BUTTON_SIZE}
 }
 

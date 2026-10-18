@@ -26,9 +26,9 @@ page_view_init :: proc(window_width, window_height: i32) -> PageView {
 	return PageView {
 		rect = rl.Rectangle {
 			x = 0,
-			y = f32(ADDRESS_BAR_HEIGHT),
+			y = f32(CHROME_HEIGHT),
 			width = f32(window_width),
-			height = f32(window_height) - f32(ADDRESS_BAR_HEIGHT),
+			height = f32(window_height) - f32(CHROME_HEIGHT),
 		},
 		bg_color = rl.Color{255, 255, 255, 255},
 	}
@@ -409,17 +409,20 @@ page_view_handle_mouse :: proc(ui: ^MainWindow, pv: ^PageView) {
 
 	rl.SetMouseCursor(.POINTING_HAND if on_link else .DEFAULT)
 
-	if on_link && rl.IsMouseButtonPressed(.LEFT) && ui.on_link_click != nil {
+	// a middle click or Ctrl+click opens the link in a new tab
+	ctrl := rl.IsKeyDown(.LEFT_CONTROL) || rl.IsKeyDown(.RIGHT_CONTROL)
+	left, middle := rl.IsMouseButtonPressed(.LEFT), rl.IsMouseButtonPressed(.MIDDLE)
+	if on_link && (left || middle) && ui.on_link_click != nil {
 		// The callback usually loads a new page, which destroys the layout the
 		// link string lives in. So hand over a copy that lives until frame end.
 		href := strings.clone(link, context.temp_allocator)
-		ui.on_link_click(href, ui.on_link_click_ctx)
+		ui.on_link_click(href, middle || ctrl, ui.on_link_click_ctx)
 	}
 }
 
 page_view_handle_resize :: proc(pv: ^PageView, window_width, window_height: i32) {
 	pv.rect.width = f32(window_width)
-	pv.rect.height = f32(window_height) - ADDRESS_BAR_HEIGHT
+	pv.rect.height = f32(window_height) - CHROME_HEIGHT
 	// the layout notices the new width on the next render
 }
 

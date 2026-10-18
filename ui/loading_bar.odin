@@ -22,6 +22,6 @@ loading_bar_render :: proc(width: f32) {
 	// to fully right of it
 	progress := f32(math.mod(rl.GetTime(), SECONDS_PER_PASS) / SECONDS_PER_PASS)
 	x := -segment + progress * (width + segment)
-	y := f32(ADDRESS_BAR_HEIGHT) - LOADING_BAR_HEIGHT
+	y := f32(CHROME_HEIGHT) - LOADING_BAR_HEIGHT
 	rl.DrawRectangleRec({x, y, segment, LOADING_BAR_HEIGHT}, LOADING_BAR_COLOR)
 }

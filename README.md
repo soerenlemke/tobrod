@@ -18,6 +18,7 @@ It is a toy: it renders many real pages surprisingly well (try a Wikipedia artic
 
 - **Networking**: HTTP(S) via libcurl, redirects, relative URLs, a User-Agent; loading and parsing run on a worker thread, so the window stays responsive (loading bar, stop button)
 - **Navigation**: address bar, clickable links, back / forward / reload with a session history (also Alt+←/→, F5, Ctrl+R, Escape to stop)
+- **Tabs**: each with its own history and loader, loading in the background; Ctrl+T / Ctrl+W, Ctrl+Tab / Ctrl+Shift+Tab, Ctrl+1–9, middle click or Ctrl+click on a link opens it in a new tab, middle click on a tab closes it
 - **HTML**: parsed by lexbor into tobrod's own DOM tree; presentational attributes (`bgcolor`, `align`, `valign`, `cellpadding`, `<center>`, `<font>`, ...), `<details>`/`<summary>`, `<sup>`/`<sub>`; plain text documents are shown like in Chrome
 - **CSS**: `<style>`, `style=""` and external stylesheets, `@media` queries, custom properties (`var()`), `calc()` in lengths, inheritance and the user agent defaults
 - **Layout**: block and inline layout with margin collapsing, the box model (margin, padding, borders, width / min-width / max-width, height / min-height / max-height, `box-sizing`, `margin: auto`), `overflow: hidden`, `position: relative`, `absolute` and `fixed`, backgrounds (also of inline elements like `code` or `mark`, one box per line), `text-align`, lists, images, tables, floats, flexbox and inline blocks (`inline-block`, `inline-flex`)
@@ -69,6 +70,7 @@ Type a URL into the address bar and press Enter; the scheme can be left out (`ex
 | Option | |
 |---|---|
 | `--url <url>` | load this URL on startup |
+| `--tab <url>` | open another tab with this URL (can be given more than once) |
 | `--screenshot <file.png>` | wait until the page (and its images) has loaded, save a PNG of the window and exit |
 | `--scroll <px>` | with `--screenshot`: scroll down this far first |
 | `--record <dir>` | save every HTTP response to this directory |
@@ -134,7 +136,7 @@ The full list, measured against Firefox on real pages, is in [docs/rendering-gap
 - fonts: only Latin characters (Latin-1 and a few more); other scripts show `?`
 - layout: CSS grid only in its common form (no fr rows, dense packing or column flow), no percentage heights in the flow, no scrolling inside boxes (`overflow: scroll/auto` just clip), `position: sticky` behaves like `static`, no `rowspan`
 - `@media` queries are evaluated once, for the window size at load time
-- form controls are drawn, but can't be used yet; no text selection, no tabs, no cookies
+- form controls are drawn, but can't be used yet; no text selection, no cookies
 
 ## Roadmap
 
@@ -151,7 +153,7 @@ Stage 2 — Window & UI
 - [x] Clickable links
 - [x] Back, forward, reload with a session history; keyboard shortcuts
 - [x] Complete URLs without a scheme (`example.com` → `https://example.com`, `localhost:8000` → `http://…`)
-- [ ] Tabs
+- [x] Tabs (own history and loader per tab, keyboard shortcuts, links in new tabs, page titles)
 
 Stage 3 — Text rendering
 

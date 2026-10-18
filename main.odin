@@ -10,6 +10,7 @@ import "ui"
 // Command line options, mainly for scripted visual tests.
 Options :: struct {
 	url:        string `usage:"URL to load on startup."`,
+	tab:        [dynamic]string `usage:"Open another tab with this URL (can be given more than once)."`,
 	screenshot: string `usage:"Save a PNG of the window to this path, then exit."`,
 	scroll:     f32    `usage:"With --screenshot: scroll down this many pixels first."`,
 	record:     string `usage:"Save every HTTP response to this directory (see http/recording.odin)."`,
@@ -45,7 +46,7 @@ run :: proc(opts: Options) -> (ok: bool) {
 	settings := ui.WindowSettings {
 		name        = "Browser",
 		init_width  = 1024,
-		init_height = 768,
+		init_height = 800, // a page view of 1024 x 732 below tabs and address bar
 	}
 
 	b, err := browser.init(settings)
@@ -59,6 +60,9 @@ run :: proc(opts: Options) -> (ok: bool) {
 
 	if opts.url != "" {
 		browser.navigate_typed(b, opts.url)
+	}
+	for url in opts.tab {
+		browser.open_tab_typed(b, url)
 	}
 
 	if err, has_err := browser.run(b, opts.screenshot, opts.scroll).?; has_err {

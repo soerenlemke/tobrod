@@ -1,7 +1,9 @@
 package ui
 
 // ui wide constants
-ADDRESS_BAR_HEIGHT :: 36
+TAB_BAR_HEIGHT :: 32     // the tabs, at the very top (tab_bar.odin)
+ADDRESS_BAR_HEIGHT :: 36 // navigation buttons and address bar, below the tabs
+CHROME_HEIGHT :: TAB_BAR_HEIGHT + ADDRESS_BAR_HEIGHT // everything above the page
 PAGE_VIEW_SCROLL_SPEED :: f32(30)
 
 // The font is rasterized once at this size and scaled down when drawn;
